@@ -5,6 +5,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include <fire_engine/display.hpp>
+#include <fire_engine/geometry.hpp>
 
 namespace fire_engine
 {
@@ -32,8 +33,7 @@ private:
     void createDepthResources();
     void createFramebuffers();
     void createCommandPool();
-    void createVertexBuffer();
-    void createIndexBuffer();
+    void createGeometryBuffer();
     void createUniformBuffers();
     void createDescriptorPool();
     void createDescriptorSets();
@@ -85,6 +85,7 @@ private:
     vk::DeviceMemory depthMem_;
     vk::ImageView depthView_;
 
+    Geometry::IndexedRenderData renderData_;
     vk::Buffer vertexBuf_;
     vk::DeviceMemory vertexMem_;
     vk::Buffer indexBuf_;

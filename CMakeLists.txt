@@ -19,6 +19,7 @@ add_library(fireengine SHARED
     src/fire_engine.cpp
     src/geometry.cpp
     src/graphics_driver.cpp
+    src/material.cpp
     src/math.cpp
 )
 
@@ -59,6 +60,21 @@ foreach(shader IN LISTS SHADER_SOURCES)
 endforeach()
 
 add_custom_target(shaders ALL DEPENDS ${SHADER_SPVS} COMMENT "Building shaders")
+
+# --- Assets -------------------------------------------------------------
+
+file(GLOB_RECURSE ASSET_FILES
+  ${PROJECT_SOURCE_DIR}/assets/*.png
+  ${PROJECT_SOURCE_DIR}/assets/*.mtl
+  ${PROJECT_SOURCE_DIR}/assets/*.obj
+)
+
+add_custom_command(
+  TARGET fireEngineApp POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSET_FILES} ${CMAKE_CURRENT_BINARY_DIR}/
+  COMMENT "Copying assets to build directory"
+  VERBATIM
+)
 
 # --- Tests --------------------------------------------------------------
 

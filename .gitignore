@@ -7,3 +7,4 @@ docs
 CMakeCache.txt
 .cache
 CMakeFiles
+.DS_Store

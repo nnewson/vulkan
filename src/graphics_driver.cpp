@@ -3,7 +3,7 @@
 #include <string>
 
 #include "fire_engine/display.hpp"
-#include "fire_engine/geometry.hpp"
+#include "fire_engine/material.hpp"
 
 #include <fire_engine/graphics_driver.hpp>
 
@@ -15,26 +15,6 @@ constexpr bool enableValidation = false;
 #else
 constexpr bool enableValidation = true;
 #endif
-
-// ---------------------------------------------------------------------------
-// Cube geometry
-// ---------------------------------------------------------------------------
-static const std::vector<Vertex> cubeVertices = {
-    // positions              colors
-    {{-0.5f, -0.5f, -0.5f}, {1, 0, 0}}, {{0.5f, -0.5f, -0.5f}, {0, 1, 0}},
-    {{0.5f, 0.5f, -0.5f}, {0, 0, 1}},   {{-0.5f, 0.5f, -0.5f}, {1, 1, 0}},
-    {{-0.5f, -0.5f, 0.5f}, {1, 0, 1}},  {{0.5f, -0.5f, 0.5f}, {0, 1, 1}},
-    {{0.5f, 0.5f, 0.5f}, {1, 1, 1}},    {{-0.5f, 0.5f, 0.5f}, {0, 0, 0}},
-};
-
-static const std::vector<uint16_t> cubeIndices = {
-    0, 1, 2, 2, 3, 0, // back
-    4, 6, 5, 6, 4, 7, // front
-    0, 3, 7, 7, 4, 0, // left
-    1, 5, 6, 6, 2, 1, // right
-    3, 2, 6, 6, 7, 3, // top
-    0, 4, 5, 5, 1, 0, // bottom
-};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -135,8 +115,7 @@ void GraphicsDriver::init(const Display& display)
     createDepthResources();
     createFramebuffers();
     createCommandPool();
-    createVertexBuffer();
-    createIndexBuffer();
+    createGeometryBuffer();
     createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
@@ -461,27 +440,29 @@ void GraphicsDriver::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usag
     device_.bindBufferMemory(buf, mem, 0);
 }
 
-void GraphicsDriver::createVertexBuffer()
+void GraphicsDriver::createGeometryBuffer()
 {
-    vk::DeviceSize size = sizeof(cubeVertices[0]) * cubeVertices.size();
-    createBuffer(size, vk::BufferUsageFlagBits::eVertexBuffer,
+    std::list<Material> materials = Material::load_from_file("cube.mtl");
+    Geometry geometry = Geometry::load_from_file("cube.obj");
+
+    renderData_ = geometry.to_coloured_indexed_geometry(materials);
+
+    vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices[0]) * renderData_.vertices.size();
+    createBuffer(vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
                  vk::MemoryPropertyFlagBits::eHostVisible |
                      vk::MemoryPropertyFlagBits::eHostCoherent,
                  vertexBuf_, vertexMem_);
-    void* data = device_.mapMemory(vertexMem_, 0, size);
-    memcpy(data, cubeVertices.data(), size);
+    void* vertData = device_.mapMemory(vertexMem_, 0, vertexBufSize);
+    memcpy(vertData, renderData_.vertices.data(), vertexBufSize);
     device_.unmapMemory(vertexMem_);
-}
 
-void GraphicsDriver::createIndexBuffer()
-{
-    vk::DeviceSize size = sizeof(cubeIndices[0]) * cubeIndices.size();
-    createBuffer(size, vk::BufferUsageFlagBits::eIndexBuffer,
+    vk::DeviceSize indexBufSize = sizeof(renderData_.indices[0]) * renderData_.indices.size();
+    createBuffer(indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
                  vk::MemoryPropertyFlagBits::eHostVisible |
                      vk::MemoryPropertyFlagBits::eHostCoherent,
                  indexBuf_, indexMem_);
-    void* data = device_.mapMemory(indexMem_, 0, size);
-    memcpy(data, cubeIndices.data(), size);
+    void* indexData = device_.mapMemory(indexMem_, 0, indexBufSize);
+    memcpy(indexData, renderData_.indices.data(), indexBufSize);
     device_.unmapMemory(indexMem_);
 }
 
@@ -548,7 +529,7 @@ void GraphicsDriver::recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIn
     cmd.bindIndexBuffer(indexBuf_, 0, vk::IndexType::eUint16);
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout_, 0,
                            descSets_[currentFrame_], {});
-    cmd.drawIndexed(static_cast<uint32_t>(cubeIndices.size()), 1, 0, 0, 0);
+    cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices.size()), 1, 0, 0, 0);
     cmd.endRenderPass();
     cmd.end();
 }
