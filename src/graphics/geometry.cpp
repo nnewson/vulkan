@@ -1,8 +1,10 @@
-#include "fire_engine/material.hpp"
 #include <fstream>
 #include <unordered_map>
 
-#include <fire_engine/geometry.hpp>
+#include <fire_engine/material.hpp>
+#include <fire_engine/math/mat4.hpp>
+
+#include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
 {
@@ -36,7 +38,7 @@ Geometry Geometry::load_from_file(const std::string& path)
         if (keyword == "v")
         {
             Vec3 v{};
-            if (!(iss >> v.x_ >> v.y_ >> v.z_))
+            if (!(iss >> v))
             {
                 throw std::runtime_error("Invalid vertex line in OBJ");
             }
@@ -45,7 +47,7 @@ Geometry Geometry::load_from_file(const std::string& path)
         else if (keyword == "vn")
         {
             Vec3 n{};
-            if (!(iss >> n.x_ >> n.y_ >> n.z_))
+            if (!(iss >> n))
             {
                 throw std::runtime_error("Invalid vertex normal line in OBJ");
             }
@@ -112,9 +114,9 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
 
             std::size_t h = std::hash<std::size_t>{}(key.position_index);
             h ^= std::hash<std::size_t>{}(key.normal_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= hash_float(key.colour.r) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= hash_float(key.colour.g) + 0x9e3779b9 + (h << 6) + (h >> 2);
-            h ^= hash_float(key.colour.b) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= hash_float(key.colour.r()) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= hash_float(key.colour.g()) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= hash_float(key.colour.b()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             return h;
         }
     };
@@ -230,7 +232,7 @@ std::vector<FaceVertex> Geometry::parse_face_vertices(std::istringstream& iss)
 
 void Geometry::computeNormals()
 {
-    normals.resize(positions.size(), Vec3{0.0f, 0.0f, 0.0f});
+    normals.resize(positions.size(), {0.0f, 0.0f, 0.0f});
 
     for (const Face& tri : triangles)
     {
@@ -243,9 +245,7 @@ void Geometry::computeNormals()
         for (const FaceVertex& fv : tri.vertices)
         {
             Vec3& n = normals[fv.position_index];
-            n.x_ += faceNormal.x_;
-            n.y_ += faceNormal.y_;
-            n.z_ += faceNormal.z_;
+            n += faceNormal;
         }
     }
 

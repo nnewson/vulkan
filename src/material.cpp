@@ -127,7 +127,7 @@ std::list<Material> Material::load_from_file(const std::string& path)
 Colour3 Material::parse_colour3(std::istringstream& iss)
 {
     Colour3 c{};
-    if (!(iss >> c.r >> c.g >> c.b))
+    if (!(iss >> c))
     {
         throw std::runtime_error("Invalid color in MTL");
     }

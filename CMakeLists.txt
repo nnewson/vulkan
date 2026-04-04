@@ -17,10 +17,9 @@ find_package(GTest REQUIRED)
 add_library(fireengine SHARED
     src/display.cpp
     src/fire_engine.cpp
-    src/geometry.cpp
+    src/graphics/geometry.cpp
     src/graphics_driver.cpp
     src/material.cpp
-    src/math.cpp
 )
 
 target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include)
@@ -77,7 +76,11 @@ add_custom_command(
 
 enable_testing()
 
-add_executable(test_fire_engine tests/test_fire_engine.cpp)
+add_executable(test_fire_engine
+    tests/math/test_mat4.cpp
+    tests/math/test_vec3.cpp
+    tests/graphics/test_colour3.cpp
+)
 target_link_libraries(test_fire_engine PRIVATE fireengine GTest::gtest_main)
 target_compile_options(test_fire_engine PRIVATE -Wall -Wextra -Wpedantic)
 

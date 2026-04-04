@@ -7,7 +7,6 @@
 #include <vulkan/vulkan.hpp>
 
 #include <fire_engine/material.hpp>
-#include <fire_engine/math.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine

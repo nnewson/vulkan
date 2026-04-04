@@ -5,7 +5,7 @@
 #include <vulkan/vulkan.hpp>
 
 #include <fire_engine/display.hpp>
-#include <fire_engine/geometry.hpp>
+#include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
 {

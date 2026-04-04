@@ -4,7 +4,7 @@
 
 #include <fire_engine/fire_engine.hpp>
 
-#include <fire_engine/geometry.hpp>
+#include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
 {
@@ -53,10 +53,10 @@ void FireEngine::mainLoop()
         glfwPollEvents();
         pollCamera(dt);
 
-        Vec3 target = {
-            cameraPos_.x_ + std::cos(cameraPitch_) * std::cos(cameraYaw_),
-            cameraPos_.y_ + std::sin(cameraPitch_),
-            cameraPos_.z_ + std::cos(cameraPitch_) * std::sin(cameraYaw_),
+        Vec3 target{
+            cameraPos_.x() + std::cos(cameraPitch_) * std::cos(cameraYaw_),
+            cameraPos_.y() + std::sin(cameraPitch_),
+            cameraPos_.z() + std::cos(cameraPitch_) * std::sin(cameraYaw_),
         };
         driver_->drawFrame(*display_, cameraPos_, target);
     }
@@ -82,17 +82,17 @@ void FireEngine::pollCamera(float dt)
     float speed = 10.0f;
 
     if (glfwGetKey(w, GLFW_KEY_W) == GLFW_PRESS)
-        cameraPos_.z_ -= speed * dt;
+        cameraPos_.z(cameraPos_.z() - speed * dt);
     if (glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS)
-        cameraPos_.z_ += speed * dt;
+        cameraPos_.z(cameraPos_.z() + speed * dt);
     if (glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS)
-        cameraPos_.x_ -= speed * dt;
+        cameraPos_.x(cameraPos_.x() - speed * dt);
     if (glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS)
-        cameraPos_.x_ += speed * dt;
+        cameraPos_.x(cameraPos_.x() + speed * dt);
     if (glfwGetKey(w, GLFW_KEY_Q) == GLFW_PRESS)
-        cameraPos_.y_ += speed * dt;
+        cameraPos_.y(cameraPos_.y() + speed * dt);
     if (glfwGetKey(w, GLFW_KEY_E) == GLFW_PRESS)
-        cameraPos_.y_ -= speed * dt;
+        cameraPos_.y(cameraPos_.y() - speed * dt);
 
     double mouseX, mouseY;
     glfwGetCursorPos(w, &mouseX, &mouseY);

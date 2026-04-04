@@ -2,8 +2,9 @@
 #include <set>
 #include <string>
 
-#include "fire_engine/display.hpp"
-#include "fire_engine/material.hpp"
+#include <fire_engine/display.hpp>
+#include <fire_engine/material.hpp>
+#include <fire_engine/math/mat4.hpp>
 
 #include <fire_engine/graphics_driver.hpp>
 
@@ -524,18 +525,18 @@ void GraphicsDriver::createUniformBuffers()
         materialMapped_[i] = device_.mapMemory(materialMems_[i], 0, matSize);
 
         MaterialUBO matUbo{};
-        matUbo.ambient[0] = material_.ambient.r;
-        matUbo.ambient[1] = material_.ambient.g;
-        matUbo.ambient[2] = material_.ambient.b;
-        matUbo.diffuse[0] = material_.diffuse.r;
-        matUbo.diffuse[1] = material_.diffuse.g;
-        matUbo.diffuse[2] = material_.diffuse.b;
-        matUbo.specular[0] = material_.specular.r;
-        matUbo.specular[1] = material_.specular.g;
-        matUbo.specular[2] = material_.specular.b;
-        matUbo.emissive[0] = material_.emissive.r;
-        matUbo.emissive[1] = material_.emissive.g;
-        matUbo.emissive[2] = material_.emissive.b;
+        matUbo.ambient[0] = material_.ambient.r();
+        matUbo.ambient[1] = material_.ambient.g();
+        matUbo.ambient[2] = material_.ambient.b();
+        matUbo.diffuse[0] = material_.diffuse.r();
+        matUbo.diffuse[1] = material_.diffuse.g();
+        matUbo.diffuse[2] = material_.diffuse.b();
+        matUbo.specular[0] = material_.specular.r();
+        matUbo.specular[1] = material_.specular.g();
+        matUbo.specular[2] = material_.specular.b();
+        matUbo.emissive[0] = material_.emissive.r();
+        matUbo.emissive[1] = material_.emissive.g();
+        matUbo.emissive[2] = material_.emissive.b();
         matUbo.shininess = material_.shininess;
         matUbo.ior = material_.ior;
         matUbo.transparency = material_.transparency;
@@ -633,14 +634,14 @@ void GraphicsDriver::updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget)
     float t = static_cast<float>(glfwGetTime() - startTime);
 
     UniformBufferObject ubo{};
-    ubo.model = mat4Mul(mat4RotateY(t * 1.0f), mat4RotateX(t * 0.5f));
-    // ubo.model = mat4Identity();
-    ubo.view = mat4LookAt(cameraPos, cameraTarget, {0, 1, 0});
+    ubo.model = Mat4::rotateY(t * 1.0f) * Mat4::rotateX(t * 0.5f);
+    // ubo.model = Mat4::identity();
+    ubo.view = Mat4::lookAt(cameraPos, cameraTarget, {0, 1, 0});
     float aspect = static_cast<float>(swapExtent_.width) / static_cast<float>(swapExtent_.height);
-    ubo.proj = mat4Perspective(45.0f * 3.14159265f / 180.0f, aspect, 0.1f, 1000.0f);
-    ubo.cameraPos[0] = cameraPos.x_;
-    ubo.cameraPos[1] = cameraPos.y_;
-    ubo.cameraPos[2] = cameraPos.z_;
+    ubo.proj = Mat4::perspective(45.0f * 3.14159265f / 180.0f, aspect, 0.1f, 1000.0f);
+    ubo.cameraPos[0] = cameraPos.x();
+    ubo.cameraPos[1] = cameraPos.y();
+    ubo.cameraPos[2] = cameraPos.z();
     ubo.cameraPos[3] = 0.0f;
 
     memcpy(uniformMapped_[currentFrame_], &ubo, sizeof(ubo));
