@@ -44,6 +44,27 @@ struct UniformBufferObject
     Mat4 model;
     Mat4 view;
     Mat4 proj;
+    alignas(16) float cameraPos[4];
+};
+
+struct MaterialUBO
+{
+    alignas(16) float ambient[3];
+    alignas(16) float diffuse[3];
+    alignas(16) float specular[3];
+    alignas(16) float emissive[3];
+    float shininess;
+    float ior;
+    float transparency;
+    int illum;
+    float roughness;
+    float metallic;
+    float sheen;
+    float clearcoat;
+    float clearcoatRoughness;
+    float anisotropy;
+    float anisotropyRotation;
+    float _pad0;
 };
 
 // ---------------------------------------------------------------------------
@@ -84,6 +105,8 @@ GraphicsDriver::~GraphicsDriver()
         device_.destroyFence(inFlight_[i]);
         device_.destroyBuffer(uniformBufs_[i]);
         device_.freeMemory(uniformMems_[i]);
+        device_.destroyBuffer(materialBufs_[i]);
+        device_.freeMemory(materialMems_[i]);
     }
     device_.destroyDescriptorPool(descPool_);
     device_.destroyBuffer(indexBuf_);
@@ -306,10 +329,13 @@ void GraphicsDriver::createRenderPass()
 
 void GraphicsDriver::createDescriptorSetLayout()
 {
-    vk::DescriptorSetLayoutBinding uboBinding(0, vk::DescriptorType::eUniformBuffer, 1,
-                                              vk::ShaderStageFlagBits::eVertex);
+    std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {{
+        {0, vk::DescriptorType::eUniformBuffer, 1,
+         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
+        {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+    }};
 
-    vk::DescriptorSetLayoutCreateInfo ci({}, uboBinding);
+    vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
     descSetLayout_ = device_.createDescriptorSetLayout(ci);
 }
 
@@ -442,9 +468,13 @@ void GraphicsDriver::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usag
 
 void GraphicsDriver::createGeometryBuffer()
 {
-    std::list<Material> materials = Material::load_from_file("cube.mtl");
-    Geometry geometry = Geometry::load_from_file("cube.obj");
+    // std::list<Material> materials = Material::load_from_file("cube.mtl");
+    std::list<Material> materials = Material::load_from_file("utah_blend.mtl");
+    // Geometry geometry = Geometry::load_from_file("cube.obj");
+    Geometry geometry = Geometry::load_from_file("utah_blend.obj");
 
+    if (!materials.empty())
+        material_ = materials.front();
     renderData_ = geometry.to_coloured_indexed_geometry(materials);
 
     vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices[0]) * renderData_.vertices.size();
@@ -480,12 +510,51 @@ void GraphicsDriver::createUniformBuffers()
                      uniformBufs_[i], uniformMems_[i]);
         uniformMapped_[i] = device_.mapMemory(uniformMems_[i], 0, size);
     }
+
+    vk::DeviceSize matSize = sizeof(MaterialUBO);
+    materialBufs_.resize(MAX_FRAMES_IN_FLIGHT);
+    materialMems_.resize(MAX_FRAMES_IN_FLIGHT);
+    materialMapped_.resize(MAX_FRAMES_IN_FLIGHT);
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
+                     vk::MemoryPropertyFlagBits::eHostVisible |
+                         vk::MemoryPropertyFlagBits::eHostCoherent,
+                     materialBufs_[i], materialMems_[i]);
+        materialMapped_[i] = device_.mapMemory(materialMems_[i], 0, matSize);
+
+        MaterialUBO matUbo{};
+        matUbo.ambient[0] = material_.ambient.r;
+        matUbo.ambient[1] = material_.ambient.g;
+        matUbo.ambient[2] = material_.ambient.b;
+        matUbo.diffuse[0] = material_.diffuse.r;
+        matUbo.diffuse[1] = material_.diffuse.g;
+        matUbo.diffuse[2] = material_.diffuse.b;
+        matUbo.specular[0] = material_.specular.r;
+        matUbo.specular[1] = material_.specular.g;
+        matUbo.specular[2] = material_.specular.b;
+        matUbo.emissive[0] = material_.emissive.r;
+        matUbo.emissive[1] = material_.emissive.g;
+        matUbo.emissive[2] = material_.emissive.b;
+        matUbo.shininess = material_.shininess;
+        matUbo.ior = material_.ior;
+        matUbo.transparency = material_.transparency;
+        matUbo.illum = material_.illum;
+        matUbo.roughness = material_.roughness;
+        matUbo.metallic = material_.metallic;
+        matUbo.sheen = material_.sheen;
+        matUbo.clearcoat = material_.clearcoat;
+        matUbo.clearcoatRoughness = material_.clearcoatRoughness;
+        matUbo.anisotropy = material_.anisotropy;
+        matUbo.anisotropyRotation = material_.anisotropyRotation;
+        memcpy(materialMapped_[i], &matUbo, sizeof(matUbo));
+    }
 }
 
 void GraphicsDriver::createDescriptorPool()
 {
     vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer,
-                                    static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+                                    static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2));
     vk::DescriptorPoolCreateInfo ci({}, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSize);
     descPool_ = device_.createDescriptorPool(ci);
 }
@@ -498,10 +567,14 @@ void GraphicsDriver::createDescriptorSets()
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        vk::DescriptorBufferInfo bufInfo(uniformBufs_[i], 0, sizeof(UniformBufferObject));
-        vk::WriteDescriptorSet write(descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer,
-                                     nullptr, &bufInfo);
-        device_.updateDescriptorSets(write, {});
+        vk::DescriptorBufferInfo uboBufInfo(uniformBufs_[i], 0, sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo matBufInfo(materialBufs_[i], 0, sizeof(MaterialUBO));
+
+        std::array<vk::WriteDescriptorSet, 2> writes = {{
+            {descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
+            {descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
+        }};
+        device_.updateDescriptorSets(writes, {});
     }
 }
 
@@ -554,16 +627,21 @@ void GraphicsDriver::createSyncObjects()
     }
 }
 
-void GraphicsDriver::updateUniformBuffer()
+void GraphicsDriver::updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget)
 {
     static auto startTime = glfwGetTime();
     float t = static_cast<float>(glfwGetTime() - startTime);
 
     UniformBufferObject ubo{};
     ubo.model = mat4Mul(mat4RotateY(t * 1.0f), mat4RotateX(t * 0.5f));
-    ubo.view = mat4LookAt({2.0f, 2.0f, 2.0f}, {0, 0, 0}, {0, 1, 0});
+    // ubo.model = mat4Identity();
+    ubo.view = mat4LookAt(cameraPos, cameraTarget, {0, 1, 0});
     float aspect = static_cast<float>(swapExtent_.width) / static_cast<float>(swapExtent_.height);
-    ubo.proj = mat4Perspective(45.0f * 3.14159265f / 180.0f, aspect, 0.1f, 10.0f);
+    ubo.proj = mat4Perspective(45.0f * 3.14159265f / 180.0f, aspect, 0.1f, 1000.0f);
+    ubo.cameraPos[0] = cameraPos.x_;
+    ubo.cameraPos[1] = cameraPos.y_;
+    ubo.cameraPos[2] = cameraPos.z_;
+    ubo.cameraPos[3] = 0.0f;
 
     memcpy(uniformMapped_[currentFrame_], &ubo, sizeof(ubo));
 }
@@ -605,7 +683,7 @@ void GraphicsDriver::recreateSwapchain(const Display& display)
         renderDone_[i] = device_.createSemaphore(sci);
 }
 
-void GraphicsDriver::drawFrame(const Display& display)
+void GraphicsDriver::drawFrame(const Display& display, Vec3 cameraPos, Vec3 cameraTarget)
 {
     (void)device_.waitForFences(inFlight_[currentFrame_], vk::True, UINT64_MAX);
 
@@ -621,7 +699,7 @@ void GraphicsDriver::drawFrame(const Display& display)
 
     device_.resetFences(inFlight_[currentFrame_]);
 
-    updateUniformBuffer();
+    updateUniformBuffer(cameraPos, cameraTarget);
 
     cmdBufs_[currentFrame_].reset();
     recordCommandBuffer(cmdBufs_[currentFrame_], imageIndex);

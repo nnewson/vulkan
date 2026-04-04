@@ -1,19 +1,9 @@
 #pragma once
 
+#include <fire_engine/math/vec3.hpp>
+
 namespace fire_engine
 {
-
-struct Vec3
-{
-    float x{};
-    float y{};
-    float z{};
-
-    bool operator==(const Vec3& other) const noexcept
-    {
-        return x == other.x && y == other.y && z == other.z;
-    }
-};
 
 struct Mat4
 {

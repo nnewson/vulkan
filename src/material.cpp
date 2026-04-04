@@ -56,9 +56,63 @@ std::list<Material> Material::load_from_file(const std::string& path)
         {
             current->specular = parse_colour3(iss);
         }
+        else if (keyword == "Ke")
+        {
+            current->emissive = parse_colour3(iss);
+        }
         else if (keyword == "Ns")
         {
             iss >> current->shininess;
+        }
+        else if (keyword == "Ni")
+        {
+            iss >> current->ior;
+        }
+        else if (keyword == "Tr")
+        {
+            iss >> current->transparency;
+        }
+        else if (keyword == "d")
+        {
+            float d;
+            iss >> d;
+            current->transparency = 1.0f - d;
+        }
+        else if (keyword == "illum")
+        {
+            iss >> current->illum;
+        }
+        else if (keyword == "map_Kd")
+        {
+            iss >> current->mapKd;
+        }
+        else if (keyword == "Pr")
+        {
+            iss >> current->roughness;
+        }
+        else if (keyword == "Pm")
+        {
+            iss >> current->metallic;
+        }
+        else if (keyword == "Ps")
+        {
+            iss >> current->sheen;
+        }
+        else if (keyword == "Pc")
+        {
+            iss >> current->clearcoat;
+        }
+        else if (keyword == "Pcr")
+        {
+            iss >> current->clearcoatRoughness;
+        }
+        else if (keyword == "aniso")
+        {
+            iss >> current->anisotropy;
+        }
+        else if (keyword == "anisor")
+        {
+            iss >> current->anisotropyRotation;
         }
     }
 

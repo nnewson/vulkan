@@ -63,15 +63,12 @@ add_custom_target(shaders ALL DEPENDS ${SHADER_SPVS} COMMENT "Building shaders")
 
 # --- Assets -------------------------------------------------------------
 
-file(GLOB_RECURSE ASSET_FILES
-  ${PROJECT_SOURCE_DIR}/assets/*.png
-  ${PROJECT_SOURCE_DIR}/assets/*.mtl
-  ${PROJECT_SOURCE_DIR}/assets/*.obj
-)
-
 add_custom_command(
   TARGET fireEngineApp POST_BUILD
-  COMMAND ${CMAKE_COMMAND} -E copy_if_different ${ASSET_FILES} ${CMAKE_CURRENT_BINARY_DIR}/
+  COMMAND ${CMAKE_COMMAND}
+    -DASSET_DIR=${PROJECT_SOURCE_DIR}/assets
+    -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
+    -P ${PROJECT_SOURCE_DIR}/cmake/copy_assets.cmake
   COMMENT "Copying assets to build directory"
   VERBATIM
 )

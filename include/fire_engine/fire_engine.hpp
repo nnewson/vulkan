@@ -26,8 +26,16 @@ public:
 private:
     std::unique_ptr<GraphicsDriver> driver_;
     std::unique_ptr<Display> display_;
+    Vec3 cameraPos_ = {2.0f, 2.0f, 2.0f};
+    float cameraYaw_ = -2.356f;   // radians, initially facing toward origin
+    float cameraPitch_ = -0.615f; // radians
+    double lastMouseX_ = 0.0;
+    double lastMouseY_ = 0.0;
+    bool firstMouse_ = true;
+    bool mouseCaptured_ = true;
 
     void mainLoop();
+    void pollCamera(float dt);
     void framebufferResized();
 };
 

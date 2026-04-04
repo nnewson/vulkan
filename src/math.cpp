@@ -46,12 +46,12 @@ Mat4 mat4RotateX(float rad)
 
 Mat4 mat4LookAt(Vec3 eye, Vec3 center, Vec3 up)
 {
-    float fx = center.x - eye.x, fy = center.y - eye.y, fz = center.z - eye.z;
+    float fx = center.x_ - eye.x_, fy = center.y_ - eye.y_, fz = center.z_ - eye.z_;
     float len = sqrtf(fx * fx + fy * fy + fz * fz);
     fx /= len;
     fy /= len;
     fz /= len;
-    float sx = fy * up.z - fz * up.y, sy = fz * up.x - fx * up.z, sz = fx * up.y - fy * up.x;
+    float sx = fy * up.z_ - fz * up.y_, sy = fz * up.x_ - fx * up.z_, sz = fx * up.y_ - fy * up.x_;
     len = sqrtf(sx * sx + sy * sy + sz * sz);
     sx /= len;
     sy /= len;
@@ -61,15 +61,15 @@ Mat4 mat4LookAt(Vec3 eye, Vec3 center, Vec3 up)
     r.m[0] = sx;
     r.m[4] = sy;
     r.m[8] = sz;
-    r.m[12] = -(sx * eye.x + sy * eye.y + sz * eye.z);
+    r.m[12] = -(sx * eye.x_ + sy * eye.y_ + sz * eye.z_);
     r.m[1] = ux;
     r.m[5] = uy;
     r.m[9] = uz;
-    r.m[13] = -(ux * eye.x + uy * eye.y + uz * eye.z);
+    r.m[13] = -(ux * eye.x_ + uy * eye.y_ + uz * eye.z_);
     r.m[2] = -fx;
     r.m[6] = -fy;
     r.m[10] = -fz;
-    r.m[14] = (fx * eye.x + fy * eye.y + fz * eye.z);
+    r.m[14] = (fx * eye.x_ + fy * eye.y_ + fz * eye.z_);
     return r;
 }
 

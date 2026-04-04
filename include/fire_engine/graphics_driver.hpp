@@ -17,7 +17,7 @@ public:
     ~GraphicsDriver();
 
     void init(const Display& display);
-    void drawFrame(const Display& display);
+    void drawFrame(const Display& display, Vec3 cameraPos, Vec3 cameraTarget);
     void waitIdle();
     void framebufferResized();
 
@@ -54,7 +54,7 @@ private:
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags props, vk::Buffer& buf, vk::DeviceMemory& mem);
     void recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex);
-    void updateUniformBuffer();
+    void updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget);
     void cleanupSwapchain();
     void recreateSwapchain(const Display& display);
 
@@ -86,6 +86,7 @@ private:
     vk::ImageView depthView_;
 
     Geometry::IndexedRenderData renderData_;
+    Material material_;
     vk::Buffer vertexBuf_;
     vk::DeviceMemory vertexMem_;
     vk::Buffer indexBuf_;
@@ -94,6 +95,10 @@ private:
     std::vector<vk::Buffer> uniformBufs_;
     std::vector<vk::DeviceMemory> uniformMems_;
     std::vector<void*> uniformMapped_;
+
+    std::vector<vk::Buffer> materialBufs_;
+    std::vector<vk::DeviceMemory> materialMems_;
+    std::vector<void*> materialMapped_;
 
     vk::DescriptorPool descPool_;
     std::vector<vk::DescriptorSet> descSets_;
