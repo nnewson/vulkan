@@ -2,7 +2,7 @@
 #include <set>
 #include <string>
 
-#include <fire_engine/display.hpp>
+#include <fire_engine/platform/window.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/mat4.hpp>
@@ -128,7 +128,7 @@ GraphicsDriver::~GraphicsDriver()
     instance_.destroy();
 }
 
-void GraphicsDriver::init(const Display& display)
+void GraphicsDriver::init(const Window& display)
 {
     createSurface(display);
     pickPhysicalDevice();
@@ -150,7 +150,7 @@ void GraphicsDriver::init(const Display& display)
     createSyncObjects();
 }
 
-void GraphicsDriver::createSurface(const Display& display)
+void GraphicsDriver::createSurface(const Window& display)
 {
     VkSurfaceKHR surface;
     if (glfwCreateWindowSurface(instance_, display.getWindow(), nullptr, &surface) != VK_SUCCESS)
@@ -250,7 +250,7 @@ vk::PresentModeKHR GraphicsDriver::chooseSwapPresentMode()
     return vk::PresentModeKHR::eFifo;
 }
 
-vk::Extent2D GraphicsDriver::chooseSwapExtent(const Display& display,
+vk::Extent2D GraphicsDriver::chooseSwapExtent(const Window& display,
                                               const vk::SurfaceCapabilitiesKHR& caps)
 {
     if (caps.currentExtent.width != std::numeric_limits<uint32_t>::max())
@@ -263,7 +263,7 @@ vk::Extent2D GraphicsDriver::chooseSwapExtent(const Display& display,
     return ext;
 }
 
-void GraphicsDriver::createSwapchain(const Display& display)
+void GraphicsDriver::createSwapchain(const Window& display)
 {
     auto caps = physDevice_.getSurfaceCapabilitiesKHR(surface_);
     auto fmt = chooseSwapFormat();
@@ -508,7 +508,7 @@ void GraphicsDriver::createGeometryBuffer()
 
 void GraphicsDriver::createTexture()
 {
-    std::string texPath = material_.mapKd;
+    std::string texPath = material_.mapKd();
     if (texPath.empty())
         texPath = "default.png";
     texture_ = Texture::load_from_file(texPath, device_, physDevice_, cmdPool_, graphicsQueue_);
@@ -542,29 +542,29 @@ void GraphicsDriver::createUniformBuffers()
         materialMapped_[i] = device_.mapMemory(materialMems_[i], 0, matSize);
 
         MaterialUBO matUbo{};
-        matUbo.ambient[0] = material_.ambient.r();
-        matUbo.ambient[1] = material_.ambient.g();
-        matUbo.ambient[2] = material_.ambient.b();
-        matUbo.diffuse[0] = material_.diffuse.r();
-        matUbo.diffuse[1] = material_.diffuse.g();
-        matUbo.diffuse[2] = material_.diffuse.b();
-        matUbo.specular[0] = material_.specular.r();
-        matUbo.specular[1] = material_.specular.g();
-        matUbo.specular[2] = material_.specular.b();
-        matUbo.emissive[0] = material_.emissive.r();
-        matUbo.emissive[1] = material_.emissive.g();
-        matUbo.emissive[2] = material_.emissive.b();
-        matUbo.shininess = material_.shininess;
-        matUbo.ior = material_.ior;
-        matUbo.transparency = material_.transparency;
-        matUbo.illum = material_.illum;
-        matUbo.roughness = material_.roughness;
-        matUbo.metallic = material_.metallic;
-        matUbo.sheen = material_.sheen;
-        matUbo.clearcoat = material_.clearcoat;
-        matUbo.clearcoatRoughness = material_.clearcoatRoughness;
-        matUbo.anisotropy = material_.anisotropy;
-        matUbo.anisotropyRotation = material_.anisotropyRotation;
+        matUbo.ambient[0] = material_.ambient().r();
+        matUbo.ambient[1] = material_.ambient().g();
+        matUbo.ambient[2] = material_.ambient().b();
+        matUbo.diffuse[0] = material_.diffuse().r();
+        matUbo.diffuse[1] = material_.diffuse().g();
+        matUbo.diffuse[2] = material_.diffuse().b();
+        matUbo.specular[0] = material_.specular().r();
+        matUbo.specular[1] = material_.specular().g();
+        matUbo.specular[2] = material_.specular().b();
+        matUbo.emissive[0] = material_.emissive().r();
+        matUbo.emissive[1] = material_.emissive().g();
+        matUbo.emissive[2] = material_.emissive().b();
+        matUbo.shininess = material_.shininess();
+        matUbo.ior = material_.ior();
+        matUbo.transparency = material_.transparency();
+        matUbo.illum = material_.illum();
+        matUbo.roughness = material_.roughness();
+        matUbo.metallic = material_.metallic();
+        matUbo.sheen = material_.sheen();
+        matUbo.clearcoat = material_.clearcoat();
+        matUbo.clearcoatRoughness = material_.clearcoatRoughness();
+        matUbo.anisotropy = material_.anisotropy();
+        matUbo.anisotropyRotation = material_.anisotropyRotation();
         memcpy(materialMapped_[i], &matUbo, sizeof(matUbo));
     }
 }
@@ -684,7 +684,7 @@ void GraphicsDriver::cleanupSwapchain()
     device_.destroySwapchainKHR(swapchain_);
 }
 
-void GraphicsDriver::recreateSwapchain(const Display& display)
+void GraphicsDriver::recreateSwapchain(const Window& display)
 {
     int w = 0, h = 0;
     glfwGetFramebufferSize(display.getWindow(), &w, &h);
@@ -706,7 +706,7 @@ void GraphicsDriver::recreateSwapchain(const Display& display)
         renderDone_[i] = device_.createSemaphore(sci);
 }
 
-void GraphicsDriver::drawFrame(const Display& display, Vec3 cameraPos, Vec3 cameraTarget)
+void GraphicsDriver::drawFrame(const Window& display, Vec3 cameraPos, Vec3 cameraTarget)
 {
     (void)device_.waitForFences(inFlight_[currentFrame_], vk::True, UINT64_MAX);
 

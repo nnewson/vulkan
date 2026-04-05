@@ -15,6 +15,13 @@ public:
     {
     }
 
+    ~Mat4() = default;
+
+    Mat4(const Mat4&) = default;
+    Mat4& operator=(const Mat4&) = default;
+    Mat4(Mat4&&) noexcept = default;
+    Mat4& operator=(Mat4&&) noexcept = default;
+
     [[nodiscard]]
     constexpr float operator()(int row, int col) const noexcept
     {

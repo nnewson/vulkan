@@ -18,7 +18,9 @@ std::list<Material> Material::load_from_file(const std::string& path)
                 materials.push_back(std::move(*current));
             }
             current = Material{};
-            iss >> current->name;
+            std::string n;
+            iss >> n;
+            current->name(n);
         }
         else if (!current.has_value())
         {
@@ -26,73 +28,97 @@ std::list<Material> Material::load_from_file(const std::string& path)
         }
         else if (keyword == "Ka")
         {
-            current->ambient = parse_colour3(iss);
+            current->ambient(parse_colour3(iss));
         }
         else if (keyword == "Kd")
         {
-            current->diffuse = parse_colour3(iss);
+            current->diffuse(parse_colour3(iss));
         }
         else if (keyword == "Ks")
         {
-            current->specular = parse_colour3(iss);
+            current->specular(parse_colour3(iss));
         }
         else if (keyword == "Ke")
         {
-            current->emissive = parse_colour3(iss);
+            current->emissive(parse_colour3(iss));
         }
         else if (keyword == "Ns")
         {
-            iss >> current->shininess;
+            float v;
+            iss >> v;
+            current->shininess(v);
         }
         else if (keyword == "Ni")
         {
-            iss >> current->ior;
+            float v;
+            iss >> v;
+            current->ior(v);
         }
         else if (keyword == "Tr")
         {
-            iss >> current->transparency;
+            float v;
+            iss >> v;
+            current->transparency(v);
         }
         else if (keyword == "d")
         {
             float d;
             iss >> d;
-            current->transparency = 1.0f - d;
+            current->transparency(1.0f - d);
         }
         else if (keyword == "illum")
         {
-            iss >> current->illum;
+            int v;
+            iss >> v;
+            current->illum(v);
         }
         else if (keyword == "map_Kd")
         {
-            iss >> current->mapKd;
+            std::string v;
+            iss >> v;
+            current->mapKd(v);
         }
         else if (keyword == "Pr")
         {
-            iss >> current->roughness;
+            float v;
+            iss >> v;
+            current->roughness(v);
         }
         else if (keyword == "Pm")
         {
-            iss >> current->metallic;
+            float v;
+            iss >> v;
+            current->metallic(v);
         }
         else if (keyword == "Ps")
         {
-            iss >> current->sheen;
+            float v;
+            iss >> v;
+            current->sheen(v);
         }
         else if (keyword == "Pc")
         {
-            iss >> current->clearcoat;
+            float v;
+            iss >> v;
+            current->clearcoat(v);
         }
         else if (keyword == "Pcr")
         {
-            iss >> current->clearcoatRoughness;
+            float v;
+            iss >> v;
+            current->clearcoatRoughness(v);
         }
         else if (keyword == "aniso")
         {
-            iss >> current->anisotropy;
+            float v;
+            iss >> v;
+            current->anisotropy(v);
         }
         else if (keyword == "anisor")
         {
-            iss >> current->anisotropyRotation;
+            float v;
+            iss >> v;
+            current->anisotropyRotation(v);
         }
     });
 

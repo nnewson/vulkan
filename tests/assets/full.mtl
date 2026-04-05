@@ -1,0 +1,18 @@
+# Full material with all supported properties
+newmtl full_material
+Ka 0.1 0.1 0.1
+Kd 0.8 0.2 0.3
+Ks 1.0 1.0 1.0
+Ke 0.0 0.0 0.0
+Ns 64.0
+Ni 1.45
+Tr 0.25
+illum 2
+map_Kd diffuse.png
+Pr 0.5
+Pm 0.75
+Ps 0.1
+Pc 0.3
+Pcr 0.2
+aniso 0.6
+anisor 0.4

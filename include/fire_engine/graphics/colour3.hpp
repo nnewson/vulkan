@@ -15,6 +15,13 @@ public:
     {
     }
 
+    ~Colour3() = default;
+
+    Colour3(const Colour3&) = default;
+    Colour3& operator=(const Colour3&) = default;
+    Colour3(Colour3&&) noexcept = default;
+    Colour3& operator=(Colour3&&) noexcept = default;
+
     [[nodiscard]]
     constexpr float r() const noexcept
     {

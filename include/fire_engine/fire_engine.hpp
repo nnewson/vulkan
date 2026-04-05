@@ -5,8 +5,11 @@
 #include <cstddef>
 #include <memory>
 
-#include <fire_engine/display.hpp>
 #include <fire_engine/graphics_driver.hpp>
+#include <fire_engine/platform/keyboard.hpp>
+#include <fire_engine/platform/mouse.hpp>
+#include <fire_engine/platform/window.hpp>
+#include <fire_engine/scene/camera.hpp>
 
 namespace fire_engine
 {
@@ -24,14 +27,10 @@ public:
 
 private:
     std::unique_ptr<GraphicsDriver> driver_;
-    std::unique_ptr<Display> display_;
-    Vec3 cameraPos_{2.0f, 2.0f, 2.0f};
-    float cameraYaw_ = -2.356f;   // radians, initially facing toward origin
-    float cameraPitch_ = -0.615f; // radians
-    double lastMouseX_ = 0.0;
-    double lastMouseY_ = 0.0;
-    bool firstMouse_ = true;
-    bool mouseCaptured_ = true;
+    std::unique_ptr<Window> window_;
+    Camera camera_;
+    Keyboard keyboard_;
+    Mouse mouse_;
 
     void mainLoop();
     void pollCamera(float dt);

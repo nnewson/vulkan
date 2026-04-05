@@ -11,19 +11,6 @@
 namespace fire_engine
 {
 
-struct FaceVertex
-{
-    std::size_t position_index{};              // 0-based
-    std::optional<std::size_t> texcoord_index; // 0-based, from vt
-    std::optional<std::size_t> normal_index;   // 0-based, from vn
-};
-
-struct Face
-{
-    std::array<FaceVertex, 3> vertices{};
-    std::string material_name;
-};
-
 class Geometry
 {
 public:
@@ -31,6 +18,11 @@ public:
 
     Geometry() = default;
     ~Geometry() = default;
+
+    Geometry(const Geometry&) = default;
+    Geometry& operator=(const Geometry&) = default;
+    Geometry(Geometry&&) noexcept = default;
+    Geometry& operator=(Geometry&&) noexcept = default;
 
     struct IndexedRenderData
     {
@@ -42,6 +34,19 @@ public:
     to_coloured_indexed_geometry(const std::list<Material> materials) const;
 
 private:
+    struct FaceVertex
+    {
+        std::size_t position_index{};
+        std::optional<std::size_t> texcoord_index;
+        std::optional<std::size_t> normal_index;
+    };
+
+    struct Face
+    {
+        std::array<FaceVertex, 3> vertices{};
+        std::string material_name;
+    };
+
     static std::vector<FaceVertex> parse_face_vertices(std::istringstream& iss);
     void computeNormals();
 

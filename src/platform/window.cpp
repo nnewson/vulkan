@@ -1,10 +1,10 @@
-#include <fire_engine/display.hpp>
+#include <fire_engine/platform/window.hpp>
 
 namespace fire_engine
 {
 
-Display::Display(size_t width, size_t height, std::string_view title,
-                 GLFWframebuffersizefun framebufferResizeCallback)
+Window::Window(size_t width, size_t height, std::string_view title,
+               GLFWframebuffersizefun framebufferResizeCallback)
 {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     window_ = glfwCreateWindow(width, height, title.data(), nullptr, nullptr);
@@ -12,7 +12,7 @@ Display::Display(size_t width, size_t height, std::string_view title,
     glfwSetFramebufferSizeCallback(window_, framebufferResizeCallback);
 }
 
-Display::~Display()
+Window::~Window()
 {
     glfwDestroyWindow(window_);
 }

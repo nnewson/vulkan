@@ -119,11 +119,11 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
         if (!face.material_name.empty())
         {
             auto it = std::find_if(materials.begin(), materials.end(), [&face](const Material& m)
-                                   { return m.name == face.material_name; });
+                                   { return m.name() == face.material_name; });
 
             if (it != materials.end())
             {
-                face_colour = it->diffuse;
+                face_colour = it->diffuse();
             }
         }
 
@@ -169,10 +169,10 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
             }
 
             result.vertices.push_back(Vertex{
-                .position = positions[fv.position_index],
-                .colour = face_colour,
-                .normal = normals[ni],
-                .texCoord = {u, v},
+                positions[fv.position_index],
+                face_colour,
+                normals[ni],
+                u, v,
             });
 
             result.indices.push_back(new_index);
@@ -182,7 +182,7 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
     return result;
 }
 
-std::vector<FaceVertex> Geometry::parse_face_vertices(std::istringstream& iss)
+std::vector<Geometry::FaceVertex> Geometry::parse_face_vertices(std::istringstream& iss)
 {
     std::vector<FaceVertex> result;
     std::string token;

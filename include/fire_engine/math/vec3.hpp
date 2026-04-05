@@ -18,6 +18,13 @@ public:
     {
     }
 
+    ~Vec3() = default;
+
+    Vec3(const Vec3&) = default;
+    Vec3& operator=(const Vec3&) = default;
+    Vec3(Vec3&&) noexcept = default;
+    Vec3& operator=(Vec3&&) noexcept = default;
+
     [[nodiscard]]
     constexpr float x() const noexcept
     {

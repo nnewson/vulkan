@@ -4,7 +4,7 @@
 
 #include <vulkan/vulkan.hpp>
 
-#include <fire_engine/display.hpp>
+#include <fire_engine/platform/window.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/texture.hpp>
 
@@ -17,16 +17,16 @@ public:
     explicit GraphicsDriver();
     ~GraphicsDriver();
 
-    void init(const Display& display);
-    void drawFrame(const Display& display, Vec3 cameraPos, Vec3 cameraTarget);
+    void init(const Window& display);
+    void drawFrame(const Window& display, Vec3 cameraPos, Vec3 cameraTarget);
     void waitIdle();
     void framebufferResized();
 
 private:
-    void createSurface(const Display& display);
+    void createSurface(const Window& display);
     void pickPhysicalDevice();
     void createLogicalDevice();
-    void createSwapchain(const Display& display);
+    void createSwapchain(const Window& display);
     void createImageViews();
     void createRenderPass();
     void createDescriptorSetLayout();
@@ -48,7 +48,7 @@ private:
 
     vk::SurfaceFormatKHR chooseSwapFormat();
     vk::PresentModeKHR chooseSwapPresentMode();
-    vk::Extent2D chooseSwapExtent(const Display& display, const vk::SurfaceCapabilitiesKHR& caps);
+    vk::Extent2D chooseSwapExtent(const Window& display, const vk::SurfaceCapabilitiesKHR& caps);
 
     vk::ShaderModule createShaderModule(const std::vector<char>& code);
     uint32_t findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props);
@@ -58,7 +58,7 @@ private:
     void recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex);
     void updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget);
     void cleanupSwapchain();
-    void recreateSwapchain(const Display& display);
+    void recreateSwapchain(const Window& display);
 
     vk::Instance instance_;
     vk::SurfaceKHR surface_;
