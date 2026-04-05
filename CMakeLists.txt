@@ -16,11 +16,12 @@ find_package(Stb REQUIRED)
 # --- Library ------------------------------------------------------------
 
 add_library(fireengine SHARED
+    src/core/model_loader.cpp
+    src/core/shader_loader.cpp
     src/fire_engine.cpp
     src/graphics/geometry.cpp
     src/graphics/image.cpp
     src/graphics/material.cpp
-    src/graphics/model_loader.cpp
     src/graphics/texture.cpp
     src/graphics_driver.cpp
     src/platform/window.cpp
@@ -87,6 +88,7 @@ add_executable(test_fire_engine
     tests/graphics/test_image.cpp
     tests/graphics/test_material.cpp
     tests/graphics/test_model_loader.cpp
+    tests/core/test_shader_loader.cpp
     tests/scene/test_camera.cpp
 )
 target_link_libraries(test_fire_engine PRIVATE fireengine GTest::gtest_main)

@@ -4,7 +4,7 @@
 #include <fire_engine/math/mat4.hpp>
 
 #include <fire_engine/graphics/geometry.hpp>
-#include <fire_engine/graphics/model_loader.hpp>
+#include <fire_engine/core/model_loader.hpp>
 
 namespace fire_engine
 {
@@ -14,7 +14,7 @@ Geometry Geometry::load_from_file(const std::string& path)
     Geometry geometry;
     std::string current_material;
 
-    ModelLoader::parse_file(path, [&](const std::string& keyword, std::istringstream& iss)
+    ModelLoader::load_from_file(path, [&](const std::string& keyword, std::istringstream& iss)
     {
         if (keyword == "v")
         {

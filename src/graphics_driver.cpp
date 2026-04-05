@@ -2,6 +2,7 @@
 #include <set>
 #include <string>
 
+#include <fire_engine/core/shader_loader.hpp>
 #include <fire_engine/platform/window.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
@@ -17,21 +18,6 @@ constexpr bool enableValidation = false;
 #else
 constexpr bool enableValidation = true;
 #endif
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-static std::vector<char> readFile(const std::string& path)
-{
-    std::ifstream f(path, std::ios::ate | std::ios::binary);
-    if (!f.is_open())
-        throw std::runtime_error("failed to open file: " + path);
-    size_t sz = static_cast<size_t>(f.tellg());
-    std::vector<char> buf(sz);
-    f.seekg(0);
-    f.read(buf.data(), static_cast<std::streamsize>(sz));
-    return buf;
-}
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -353,8 +339,8 @@ vk::ShaderModule GraphicsDriver::createShaderModule(const std::vector<char>& cod
 
 void GraphicsDriver::createGraphicsPipeline()
 {
-    auto vertCode = readFile("shader.vert.spv");
-    auto fragCode = readFile("shader.frag.spv");
+    auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
+    auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
     vk::ShaderModule vertMod = createShaderModule(vertCode);
     vk::ShaderModule fragMod = createShaderModule(fragCode);
 

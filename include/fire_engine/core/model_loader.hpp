@@ -16,7 +16,7 @@ public:
     static void trim(std::string& s);
 
     using LineHandler = std::function<void(const std::string& keyword, std::istringstream& iss)>;
-    static void parse_file(const std::string& path, const LineHandler& handler);
+    static void load_from_file(const std::string& path, const LineHandler& handler);
 };
 
 } // namespace fire_engine

@@ -1,4 +1,4 @@
-#include <fire_engine/graphics/model_loader.hpp>
+#include <fire_engine/core/model_loader.hpp>
 
 #include <fstream>
 #include <stdexcept>
@@ -27,7 +27,7 @@ void ModelLoader::trim(std::string& s)
     s = s.substr(first, last - first + 1);
 }
 
-void ModelLoader::parse_file(const std::string& path, const LineHandler& handler)
+void ModelLoader::load_from_file(const std::string& path, const LineHandler& handler)
 {
     std::ifstream input(path);
     if (!input)

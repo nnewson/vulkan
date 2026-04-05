@@ -1,4 +1,4 @@
-#include <fire_engine/graphics/model_loader.hpp>
+#include <fire_engine/core/model_loader.hpp>
 
 #include <stdexcept>
 #include <vector>
@@ -121,7 +121,7 @@ TEST(ModelLoaderParseFile, ParsesKeywordsAndValues)
 {
     std::vector<std::pair<std::string, std::string>> parsed;
 
-    ModelLoader::parse_file("test_assets/triangle.obj",
+    ModelLoader::load_from_file("test_assets/triangle.obj",
         [&](const std::string& keyword, std::istringstream& iss)
         {
             std::string rest;
@@ -140,7 +140,7 @@ TEST(ModelLoaderParseFile, SkipsCommentsAndBlankLines)
 {
     std::vector<std::string> keywords;
 
-    ModelLoader::parse_file("test_assets/comments.obj",
+    ModelLoader::load_from_file("test_assets/comments.obj",
         [&](const std::string& keyword, std::istringstream&)
         {
             keywords.push_back(keyword);
@@ -157,7 +157,7 @@ TEST(ModelLoaderParseFile, SkipsCommentsAndBlankLines)
 TEST(ModelLoaderParseFile, NonExistentFileThrows)
 {
     EXPECT_THROW(
-        ModelLoader::parse_file("test_assets/nonexistent.obj",
+        ModelLoader::load_from_file("test_assets/nonexistent.obj",
             [](const std::string&, std::istringstream&) {}),
         std::runtime_error);
 }

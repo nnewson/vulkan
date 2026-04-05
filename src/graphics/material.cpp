@@ -1,4 +1,4 @@
-#include <fire_engine/graphics/model_loader.hpp>
+#include <fire_engine/core/model_loader.hpp>
 #include <fire_engine/graphics/material.hpp>
 
 namespace fire_engine
@@ -9,7 +9,7 @@ std::list<Material> Material::load_from_file(const std::string& path)
     std::list<Material> materials;
     std::optional<Material> current;
 
-    ModelLoader::parse_file(path, [&](const std::string& keyword, std::istringstream& iss)
+    ModelLoader::load_from_file(path, [&](const std::string& keyword, std::istringstream& iss)
     {
         if (keyword == "newmtl")
         {
