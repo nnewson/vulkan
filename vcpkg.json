@@ -1,6 +1,7 @@
 {
   "dependencies": [
     "gtest",
-    "vulkan-headers"
+    "vulkan-headers",
+    "stb"
   ]
 }

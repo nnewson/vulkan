@@ -25,9 +25,12 @@ layout(binding = 1) uniform MaterialUBO {
     float anisotropyRotation;
 } material;
 
+layout(binding = 2) uniform sampler2D texSampler;
+
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec3 fragWorldPos;
+layout(location = 3) in vec2 fragTexCoord;
 
 layout(location = 0) out vec4 outColor;
 
@@ -37,12 +40,14 @@ void main() {
     vec3 V = normalize(ubo.cameraPos.xyz - fragWorldPos);
     vec3 H = normalize(lightDir + V);
 
+    vec4 texColor = texture(texSampler, fragTexCoord);
+
     // Ambient
     vec3 ambientTerm = material.ambient * 0.15;
 
-    // Diffuse (Lambertian)
+    // Diffuse (Lambertian) — modulate by texture color
     float diff = max(dot(N, lightDir), 0.0);
-    vec3 diffuseTerm = diff * material.diffuse * fragColor;
+    vec3 diffuseTerm = diff * material.diffuse * fragColor * texColor.rgb;
 
     // Specular (Blinn-Phong)
     float spec = 0.0;
@@ -53,6 +58,6 @@ void main() {
     vec3 specularTerm = spec * material.specular;
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + material.emissive;
-    float alpha = 1.0 - material.transparency;
+    float alpha = (1.0 - material.transparency) * texColor.a;
     outColor = vec4(color, alpha);
 }

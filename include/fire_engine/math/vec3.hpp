@@ -3,6 +3,8 @@
 #include <cmath>
 #include <istream>
 
+#include <fire_engine/math/constants.hpp>
+
 namespace fire_engine
 {
 
@@ -152,7 +154,7 @@ public:
     static constexpr Vec3 normalise(const Vec3& v) noexcept
     {
         float len = v.magnitude();
-        if (len < 1e-8f)
+        if (len < float_epsilon)
         {
             return {0.0f, 0.0f, 0.0f};
         }

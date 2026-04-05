@@ -1,40 +1,21 @@
-#include <fstream>
 #include <unordered_map>
 
-#include <fire_engine/material.hpp>
+#include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/mat4.hpp>
 
 #include <fire_engine/graphics/geometry.hpp>
+#include <fire_engine/graphics/model_loader.hpp>
 
 namespace fire_engine
 {
 
 Geometry Geometry::load_from_file(const std::string& path)
 {
-    std::ifstream input(path);
-    if (!input)
-    {
-        throw std::runtime_error("Failed to open OBJ file: " + path);
-    }
-
     Geometry geometry;
-    std::string line;
     std::string current_material;
 
-    while (std::getline(input, line))
+    ModelLoader::parse_file(path, [&](const std::string& keyword, std::istringstream& iss)
     {
-        trim_comment(line);
-        trim(line);
-
-        if (line.empty())
-        {
-            continue;
-        }
-
-        std::istringstream iss(line);
-        std::string keyword;
-        iss >> keyword;
-
         if (keyword == "v")
         {
             Vec3 v{};
@@ -43,6 +24,12 @@ Geometry Geometry::load_from_file(const std::string& path)
                 throw std::runtime_error("Invalid vertex line in OBJ");
             }
             geometry.positions.push_back(v);
+        }
+        else if (keyword == "vt")
+        {
+            float u = 0.0f, v = 0.0f;
+            iss >> u >> v;
+            geometry.texcoords.push_back({u, v});
         }
         else if (keyword == "vn")
         {
@@ -77,7 +64,7 @@ Geometry Geometry::load_from_file(const std::string& path)
                 geometry.triangles.push_back(tri);
             }
         }
-    }
+    });
 
     if (geometry.normals.empty())
     {
@@ -96,12 +83,13 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
     {
         std::size_t position_index{};
         std::size_t normal_index{};
+        std::size_t texcoord_index{};
         Colour3 colour{};
 
         bool operator==(const Key& other) const noexcept
         {
             return position_index == other.position_index && normal_index == other.normal_index &&
-                   colour == other.colour;
+                   texcoord_index == other.texcoord_index && colour == other.colour;
         }
     };
 
@@ -114,6 +102,7 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
 
             std::size_t h = std::hash<std::size_t>{}(key.position_index);
             h ^= std::hash<std::size_t>{}(key.normal_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
+            h ^= std::hash<std::size_t>{}(key.texcoord_index) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= hash_float(key.colour.r()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= hash_float(key.colour.g()) + 0x9e3779b9 + (h << 6) + (h >> 2);
             h ^= hash_float(key.colour.b()) + 0x9e3779b9 + (h << 6) + (h >> 2);
@@ -151,7 +140,10 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
                 throw std::runtime_error("Face references out-of-range normal index");
             }
 
-            Key key{fv.position_index, ni, face_colour};
+            // Use texcoord index if available, otherwise 0 (sentinel for no UVs)
+            std::size_t ti = fv.texcoord_index.value_or(0);
+
+            Key key{fv.position_index, ni, ti, face_colour};
 
             auto it = vertex_map.find(key);
             if (it != vertex_map.end())
@@ -169,10 +161,18 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
             const uint16_t new_index = static_cast<uint16_t>(result.vertices.size());
             vertex_map.emplace(key, new_index);
 
+            float u = 0.0f, v = 0.0f;
+            if (fv.texcoord_index.has_value() && ti < texcoords.size())
+            {
+                u = texcoords[ti][0];
+                v = texcoords[ti][1];
+            }
+
             result.vertices.push_back(Vertex{
                 .position = positions[fv.position_index],
                 .colour = face_colour,
                 .normal = normals[ni],
+                .texCoord = {u, v},
             });
 
             result.indices.push_back(new_index);
@@ -208,10 +208,23 @@ std::vector<FaceVertex> Geometry::parse_face_vertices(std::istringstream& iss)
         }
         fv.position_index = static_cast<std::size_t>(obj_index - 1);
 
-        // Parse normal index if present (third component: v/vt/vn or v//vn)
+        // Parse texcoord and normal indices if present
         if (slash1 != std::string::npos)
         {
             const auto slash2 = token.find('/', slash1 + 1);
+
+            // Texcoord index (second component: v/vt or v/vt/vn)
+            const std::string tc_part = (slash2 != std::string::npos)
+                                            ? token.substr(slash1 + 1, slash2 - slash1 - 1)
+                                            : token.substr(slash1 + 1);
+            if (!tc_part.empty())
+            {
+                int ti = std::stoi(tc_part);
+                if (ti > 0)
+                    fv.texcoord_index = static_cast<std::size_t>(ti - 1);
+            }
+
+            // Normal index (third component: v/vt/vn or v//vn)
             if (slash2 != std::string::npos)
             {
                 const std::string normal_part = token.substr(slash2 + 1);
@@ -253,27 +266,6 @@ void Geometry::computeNormals()
     {
         n = n.normalise();
     }
-}
-
-void Geometry::trim_comment(std::string& line)
-{
-    const auto pos = line.find('#');
-    if (pos != std::string::npos)
-    {
-        line.erase(pos);
-    }
-}
-
-void Geometry::trim(std::string& s)
-{
-    const auto first = s.find_first_not_of(" \t\r\n");
-    if (first == std::string::npos)
-    {
-        s.clear();
-        return;
-    }
-    const auto last = s.find_last_not_of(" \t\r\n");
-    s = s.substr(first, last - first + 1);
 }
 
 } // namespace fire_engine

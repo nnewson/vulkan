@@ -6,6 +6,7 @@
 
 #include <fire_engine/display.hpp>
 #include <fire_engine/graphics/geometry.hpp>
+#include <fire_engine/graphics/texture.hpp>
 
 namespace fire_engine
 {
@@ -34,6 +35,7 @@ private:
     void createFramebuffers();
     void createCommandPool();
     void createGeometryBuffer();
+    void createTexture();
     void createUniformBuffers();
     void createDescriptorPool();
     void createDescriptorSets();
@@ -87,6 +89,7 @@ private:
 
     Geometry::IndexedRenderData renderData_;
     Material material_;
+    Texture texture_;
     vk::Buffer vertexBuf_;
     vk::DeviceMemory vertexMem_;
     vk::Buffer indexBuf_;

@@ -1,5 +1,6 @@
 file(GLOB_RECURSE ASSET_FILES
   "${ASSET_DIR}/*.png"
+  "${ASSET_DIR}/*.jpg"
   "${ASSET_DIR}/*.mtl"
   "${ASSET_DIR}/*.obj"
 )

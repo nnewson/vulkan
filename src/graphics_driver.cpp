@@ -3,7 +3,8 @@
 #include <string>
 
 #include <fire_engine/display.hpp>
-#include <fire_engine/material.hpp>
+#include <fire_engine/graphics/material.hpp>
+#include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/mat4.hpp>
 
 #include <fire_engine/graphics_driver.hpp>
@@ -109,6 +110,7 @@ GraphicsDriver::~GraphicsDriver()
         device_.destroyBuffer(materialBufs_[i]);
         device_.freeMemory(materialMems_[i]);
     }
+    texture_.destroy(device_);
     device_.destroyDescriptorPool(descPool_);
     device_.destroyBuffer(indexBuf_);
     device_.freeMemory(indexMem_);
@@ -140,6 +142,7 @@ void GraphicsDriver::init(const Display& display)
     createFramebuffers();
     createCommandPool();
     createGeometryBuffer();
+    createTexture();
     createUniformBuffers();
     createDescriptorPool();
     createDescriptorSets();
@@ -219,6 +222,7 @@ void GraphicsDriver::createLogicalDevice()
     }
 
     vk::PhysicalDeviceFeatures features{};
+    features.samplerAnisotropy = vk::True;
 
     vk::DeviceCreateInfo ci({}, qcis, {}, deviceExtensions, &features);
 
@@ -330,10 +334,11 @@ void GraphicsDriver::createRenderPass()
 
 void GraphicsDriver::createDescriptorSetLayout()
 {
-    std::array<vk::DescriptorSetLayoutBinding, 2> bindings = {{
+    std::array<vk::DescriptorSetLayoutBinding, 3> bindings = {{
         {0, vk::DescriptorType::eUniformBuffer, 1,
          vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
         {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+        {2, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     }};
 
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
@@ -470,9 +475,13 @@ void GraphicsDriver::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usag
 void GraphicsDriver::createGeometryBuffer()
 {
     // std::list<Material> materials = Material::load_from_file("cube.mtl");
-    std::list<Material> materials = Material::load_from_file("utah_blend.mtl");
+    // std::list<Material> materials = Material::load_from_file("utah_blend.mtl");
+    // std::list<Material> materials = Material::load_from_file("default.mtl");
+    std::list<Material> materials = Material::load_from_file("capsule.mtl");
     // Geometry geometry = Geometry::load_from_file("cube.obj");
-    Geometry geometry = Geometry::load_from_file("utah_blend.obj");
+    // Geometry geometry = Geometry::load_from_file("utah_blend.obj");
+    // Geometry geometry = Geometry::load_from_file("teapot.obj");
+    Geometry geometry = Geometry::load_from_file("capsule.obj");
 
     if (!materials.empty())
         material_ = materials.front();
@@ -495,6 +504,14 @@ void GraphicsDriver::createGeometryBuffer()
     void* indexData = device_.mapMemory(indexMem_, 0, indexBufSize);
     memcpy(indexData, renderData_.indices.data(), indexBufSize);
     device_.unmapMemory(indexMem_);
+}
+
+void GraphicsDriver::createTexture()
+{
+    std::string texPath = material_.mapKd;
+    if (texPath.empty())
+        texPath = "default.png";
+    texture_ = Texture::load_from_file(texPath, device_, physDevice_, cmdPool_, graphicsQueue_);
 }
 
 void GraphicsDriver::createUniformBuffers()
@@ -554,9 +571,11 @@ void GraphicsDriver::createUniformBuffers()
 
 void GraphicsDriver::createDescriptorPool()
 {
-    vk::DescriptorPoolSize poolSize(vk::DescriptorType::eUniformBuffer,
-                                    static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2));
-    vk::DescriptorPoolCreateInfo ci({}, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSize);
+    std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
+        {vk::DescriptorType::eUniformBuffer, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2)},
+        {vk::DescriptorType::eCombinedImageSampler, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)},
+    }};
+    vk::DescriptorPoolCreateInfo ci({}, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSizes);
     descPool_ = device_.createDescriptorPool(ci);
 }
 
@@ -570,10 +589,13 @@ void GraphicsDriver::createDescriptorSets()
     {
         vk::DescriptorBufferInfo uboBufInfo(uniformBufs_[i], 0, sizeof(UniformBufferObject));
         vk::DescriptorBufferInfo matBufInfo(materialBufs_[i], 0, sizeof(MaterialUBO));
+        vk::DescriptorImageInfo texInfo(texture_.sampler(), texture_.view(),
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
 
-        std::array<vk::WriteDescriptorSet, 2> writes = {{
+        std::array<vk::WriteDescriptorSet, 3> writes = {{
             {descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
             {descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
+            {descSets_[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
         }};
         device_.updateDescriptorSets(writes, {});
     }
@@ -638,7 +660,7 @@ void GraphicsDriver::updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget)
     // ubo.model = Mat4::identity();
     ubo.view = Mat4::lookAt(cameraPos, cameraTarget, {0, 1, 0});
     float aspect = static_cast<float>(swapExtent_.width) / static_cast<float>(swapExtent_.height);
-    ubo.proj = Mat4::perspective(45.0f * 3.14159265f / 180.0f, aspect, 0.1f, 1000.0f);
+    ubo.proj = Mat4::perspective(45.0f * deg_to_rad, aspect, 0.1f, 1000.0f);
     ubo.cameraPos[0] = cameraPos.x();
     ubo.cameraPos[1] = cameraPos.y();
     ubo.cameraPos[2] = cameraPos.z();

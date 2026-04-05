@@ -39,8 +39,6 @@ public:
 
 private:
     static Colour3 parse_colour3(std::istringstream& iss);
-    static void trim_comment(std::string& line);
-    static void trim(std::string& s);
 };
 
 } // namespace fire_engine

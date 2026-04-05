@@ -11,6 +11,7 @@ project(fire_engine
 find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(GTest REQUIRED)
+find_package(Stb REQUIRED)
 
 # --- Library ------------------------------------------------------------
 
@@ -18,11 +19,14 @@ add_library(fireengine SHARED
     src/display.cpp
     src/fire_engine.cpp
     src/graphics/geometry.cpp
+    src/graphics/image.cpp
+    src/graphics/material.cpp
+    src/graphics/model_loader.cpp
+    src/graphics/texture.cpp
     src/graphics_driver.cpp
-    src/material.cpp
 )
 
-target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include)
+target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR})
 target_compile_features(fireengine PUBLIC cxx_std_23)
 target_compile_options(fireengine PRIVATE -Wall -Wextra -Wpedantic)
 target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw)
@@ -62,8 +66,7 @@ add_custom_target(shaders ALL DEPENDS ${SHADER_SPVS} COMMENT "Building shaders")
 
 # --- Assets -------------------------------------------------------------
 
-add_custom_command(
-  TARGET fireEngineApp POST_BUILD
+add_custom_target(assets ALL
   COMMAND ${CMAKE_COMMAND}
     -DASSET_DIR=${PROJECT_SOURCE_DIR}/assets
     -DBUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}
