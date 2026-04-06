@@ -30,20 +30,50 @@ public:
     {
     }
 
-    [[nodiscard]] Vec3 position() const noexcept { return position_; }
-    void position(Vec3 v) noexcept { position_ = v; }
+    [[nodiscard]] Vec3 position() const noexcept
+    {
+        return position_;
+    }
+    void position(Vec3 v) noexcept
+    {
+        position_ = v;
+    }
 
-    [[nodiscard]] Colour3 colour() const noexcept { return colour_; }
-    void colour(Colour3 c) noexcept { colour_ = c; }
+    [[nodiscard]] Colour3 colour() const noexcept
+    {
+        return colour_;
+    }
+    void colour(Colour3 c) noexcept
+    {
+        colour_ = c;
+    }
 
-    [[nodiscard]] Vec3 normal() const noexcept { return normal_; }
-    void normal(Vec3 v) noexcept { normal_ = v; }
+    [[nodiscard]] Vec3 normal() const noexcept
+    {
+        return normal_;
+    }
+    void normal(Vec3 v) noexcept
+    {
+        normal_ = v;
+    }
 
-    [[nodiscard]] float texU() const noexcept { return texCoord_[0]; }
-    void texU(float u) noexcept { texCoord_[0] = u; }
+    [[nodiscard]] float texU() const noexcept
+    {
+        return texCoord_[0];
+    }
+    void texU(float u) noexcept
+    {
+        texCoord_[0] = u;
+    }
 
-    [[nodiscard]] float texV() const noexcept { return texCoord_[1]; }
-    void texV(float v) noexcept { texCoord_[1] = v; }
+    [[nodiscard]] float texV() const noexcept
+    {
+        return texCoord_[1];
+    }
+    void texV(float v) noexcept
+    {
+        texCoord_[1] = v;
+    }
 
     [[nodiscard]]
     bool operator==(const Vertex& other) const noexcept

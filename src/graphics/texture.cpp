@@ -38,8 +38,8 @@ Texture Texture::load_from_file(const std::string& path, vk::Device device,
     // Create Vulkan image
     vk::ImageCreateInfo imgCi(
         {}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Srgb,
-        vk::Extent3D(static_cast<uint32_t>(img.width()), static_cast<uint32_t>(img.height()), 1),
-        1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::Extent3D(static_cast<uint32_t>(img.width()), static_cast<uint32_t>(img.height()), 1), 1,
+        1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
         vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     tex.image_ = device.createImage(imgCi);
@@ -63,13 +63,12 @@ Texture Texture::load_from_file(const std::string& path, vk::Device device,
         {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined,
         vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
         tex.image_, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
-                        vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, toTransfer);
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer,
+                        {}, {}, {}, toTransfer);
 
     // Copy buffer to image
     vk::BufferImageCopy region(
-        0, 0, 0,
-        vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), {0, 0, 0},
+        0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), {0, 0, 0},
         {static_cast<uint32_t>(img.width()), static_cast<uint32_t>(img.height()), 1});
     cmd.copyBufferToImage(stagingBuf, tex.image_, vk::ImageLayout::eTransferDstOptimal, region);
 
@@ -93,10 +92,9 @@ Texture Texture::load_from_file(const std::string& path, vk::Device device,
     device.freeMemory(stagingMem);
 
     // Create image view
-    vk::ImageViewCreateInfo viewCi({}, tex.image_, vk::ImageViewType::e2D,
-                                   vk::Format::eR8G8B8A8Srgb, {},
-                                   vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1,
-                                                             0, 1));
+    vk::ImageViewCreateInfo viewCi(
+        {}, tex.image_, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Srgb, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     tex.view_ = device.createImageView(viewCi);
 
     // Create sampler
@@ -104,9 +102,8 @@ Texture Texture::load_from_file(const std::string& path, vk::Device device,
     vk::SamplerCreateInfo samplerCi(
         {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
         vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat,
-        vk::SamplerAddressMode::eRepeat, 0.0f, vk::True,
-        props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f,
-        vk::BorderColor::eIntOpaqueBlack, vk::False);
+        vk::SamplerAddressMode::eRepeat, 0.0f, vk::True, props.limits.maxSamplerAnisotropy,
+        vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f, vk::BorderColor::eIntOpaqueBlack, vk::False);
     tex.sampler_ = device.createSampler(samplerCi);
 
     return tex;

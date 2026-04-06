@@ -1,5 +1,7 @@
+#include "fire_engine/scene/camera.hpp"
 #include <cstdlib>
 #include <cstring>
+#include <memory>
 
 #include <fire_engine/fire_engine.hpp>
 
@@ -27,17 +29,30 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name)
     driver_ = std::make_unique<GraphicsDriver>();
 
     window_ = std::make_unique<Window>(width, height, app_name,
-                                         [](GLFWwindow* w, int, int)
-                                         {
-                                             auto* engine = static_cast<FireEngine*>(
-                                                 glfwGetWindowUserPointer(w));
-                                             engine->framebufferResized();
-                                         });
+                                       [](GLFWwindow* w, int, int)
+                                       {
+                                           auto* engine = static_cast<FireEngine*>(
+                                               glfwGetWindowUserPointer(w));
+                                           engine->framebufferResized();
+                                       });
 
-    mouse_.enable(*window_);
+    input_.enable(*window_);
 
     driver_->init(*window_);
+    loadScene();
     mainLoop();
+}
+
+void FireEngine::loadScene()
+{
+    auto cameraNode = std::make_unique<Node>("Camera");
+    auto camera = cameraNode->component().emplace<Camera>();
+
+    camera.position({2.0f, 2.0f, 2.0f});
+    camera.pitch(-0.615f);
+    camera.yaw(-2.356f);
+
+    scene_.addNode(std::move(cameraNode));
 }
 
 void FireEngine::mainLoop()
@@ -50,48 +65,15 @@ void FireEngine::mainLoop()
         lastTime = now;
 
         glfwPollEvents();
-        pollCamera(dt);
+        auto input_state = input_.update(*window_, dt);
+        scene_.update(input_state);
 
-        driver_->drawFrame(*window_, camera_.position(), camera_.target());
+        scene_.render();
+        auto camera = get<Camera>((*scene_.nodes()[0]).component());
+
+        driver_->drawFrame(*window_, camera.position(), camera.target());
     }
     driver_->waitIdle();
-}
-
-void FireEngine::pollCamera(float dt)
-{
-    keyboard_.poll(*window_);
-
-    if (keyboard_.escape())
-    {
-        mouse_.release(*window_);
-    }
-    mouse_.capture(*window_);
-
-    float speed = 10.0f;
-    Vec3 pos = camera_.position();
-
-    if (keyboard_.w())
-        pos.z(pos.z() - speed * dt);
-    if (keyboard_.s())
-        pos.z(pos.z() + speed * dt);
-    if (keyboard_.a())
-        pos.x(pos.x() - speed * dt);
-    if (keyboard_.d())
-        pos.x(pos.x() + speed * dt);
-    if (keyboard_.q())
-        pos.y(pos.y() + speed * dt);
-    if (keyboard_.e())
-        pos.y(pos.y() - speed * dt);
-
-    camera_.position(pos);
-
-    mouse_.poll(*window_);
-    if (mouse_.captured())
-    {
-        float sensitivity = 0.003f;
-        camera_.yaw(camera_.yaw() + static_cast<float>(mouse_.deltaX()) * sensitivity);
-        camera_.pitch(camera_.pitch() - static_cast<float>(mouse_.deltaY()) * sensitivity);
-    }
 }
 
 void FireEngine::framebufferResized()

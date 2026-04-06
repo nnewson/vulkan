@@ -31,13 +31,34 @@ public:
         e_ = glfwGetKey(w, GLFW_KEY_E) == GLFW_PRESS;
     }
 
-    [[nodiscard]] bool escape() const noexcept { return escape_; }
-    [[nodiscard]] bool w() const noexcept { return w_; }
-    [[nodiscard]] bool s() const noexcept { return s_; }
-    [[nodiscard]] bool a() const noexcept { return a_; }
-    [[nodiscard]] bool d() const noexcept { return d_; }
-    [[nodiscard]] bool q() const noexcept { return q_; }
-    [[nodiscard]] bool e() const noexcept { return e_; }
+    [[nodiscard]] bool escape() const noexcept
+    {
+        return escape_;
+    }
+    [[nodiscard]] bool w() const noexcept
+    {
+        return w_;
+    }
+    [[nodiscard]] bool s() const noexcept
+    {
+        return s_;
+    }
+    [[nodiscard]] bool a() const noexcept
+    {
+        return a_;
+    }
+    [[nodiscard]] bool d() const noexcept
+    {
+        return d_;
+    }
+    [[nodiscard]] bool q() const noexcept
+    {
+        return q_;
+    }
+    [[nodiscard]] bool e() const noexcept
+    {
+        return e_;
+    }
 
 private:
     bool escape_{false};

@@ -3,8 +3,8 @@
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/mat4.hpp>
 
-#include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/core/model_loader.hpp>
+#include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
 {
@@ -14,57 +14,59 @@ Geometry Geometry::load_from_file(const std::string& path)
     Geometry geometry;
     std::string current_material;
 
-    ModelLoader::load_from_file(path, [&](const std::string& keyword, std::istringstream& iss)
-    {
-        if (keyword == "v")
+    ModelLoader::load_from_file(
+        path,
+        [&](const std::string& keyword, std::istringstream& iss)
         {
-            Vec3 v{};
-            if (!(iss >> v))
+            if (keyword == "v")
             {
-                throw std::runtime_error("Invalid vertex line in OBJ");
+                Vec3 v{};
+                if (!(iss >> v))
+                {
+                    throw std::runtime_error("Invalid vertex line in OBJ");
+                }
+                geometry.positions.push_back(v);
             }
-            geometry.positions.push_back(v);
-        }
-        else if (keyword == "vt")
-        {
-            float u = 0.0f, v = 0.0f;
-            iss >> u >> v;
-            geometry.texcoords.push_back({u, v});
-        }
-        else if (keyword == "vn")
-        {
-            Vec3 n{};
-            if (!(iss >> n))
+            else if (keyword == "vt")
             {
-                throw std::runtime_error("Invalid vertex normal line in OBJ");
+                float u = 0.0f, v = 0.0f;
+                iss >> u >> v;
+                geometry.texcoords.push_back({u, v});
             }
-            geometry.normals.push_back(n);
-        }
-        else if (keyword == "usemtl")
-        {
-            iss >> current_material;
-        }
-        else if (keyword == "f")
-        {
-            std::vector<FaceVertex> face_verts = parse_face_vertices(iss);
+            else if (keyword == "vn")
+            {
+                Vec3 n{};
+                if (!(iss >> n))
+                {
+                    throw std::runtime_error("Invalid vertex normal line in OBJ");
+                }
+                geometry.normals.push_back(n);
+            }
+            else if (keyword == "usemtl")
+            {
+                iss >> current_material;
+            }
+            else if (keyword == "f")
+            {
+                std::vector<FaceVertex> face_verts = parse_face_vertices(iss);
 
-            if (face_verts.size() < 3)
-            {
-                throw std::runtime_error("OBJ face must have at least 3 vertices");
-            }
+                if (face_verts.size() < 3)
+                {
+                    throw std::runtime_error("OBJ face must have at least 3 vertices");
+                }
 
-            // Fan triangulation
-            for (std::size_t i = 1; i + 1 < face_verts.size(); ++i)
-            {
-                Face tri;
-                tri.material_name = current_material;
-                tri.vertices[0] = face_verts[0];
-                tri.vertices[1] = face_verts[i];
-                tri.vertices[2] = face_verts[i + 1];
-                geometry.triangles.push_back(tri);
+                // Fan triangulation
+                for (std::size_t i = 1; i + 1 < face_verts.size(); ++i)
+                {
+                    Face tri;
+                    tri.material_name = current_material;
+                    tri.vertices[0] = face_verts[0];
+                    tri.vertices[1] = face_verts[i];
+                    tri.vertices[2] = face_verts[i + 1];
+                    geometry.triangles.push_back(tri);
+                }
             }
-        }
-    });
+        });
 
     if (geometry.normals.empty())
     {
@@ -172,7 +174,8 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
                 positions[fv.position_index],
                 face_colour,
                 normals[ni],
-                u, v,
+                u,
+                v,
             });
 
             result.indices.push_back(new_index);

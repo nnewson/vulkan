@@ -98,6 +98,38 @@ public:
     }
 
     [[nodiscard]]
+    static Mat4 rotateZ(float rad) noexcept
+    {
+        Mat4 r = identity();
+        float c = std::cos(rad), s = std::sin(rad);
+        r.m_[0] = c;
+        r.m_[4] = -s;
+        r.m_[1] = s;
+        r.m_[5] = c;
+        return r;
+    }
+
+    [[nodiscard]]
+    static constexpr Mat4 translate(Vec3 v) noexcept
+    {
+        Mat4 r = identity();
+        r.m_[12] = v.x();
+        r.m_[13] = v.y();
+        r.m_[14] = v.z();
+        return r;
+    }
+
+    [[nodiscard]]
+    static constexpr Mat4 scale(Vec3 v) noexcept
+    {
+        Mat4 r = identity();
+        r.m_[0] = v.x();
+        r.m_[5] = v.y();
+        r.m_[10] = v.z();
+        return r;
+    }
+
+    [[nodiscard]]
     static Mat4 lookAt(Vec3 eye, Vec3 center, Vec3 up) noexcept
     {
         float fx = center.x() - eye.x(), fy = center.y() - eye.y(), fz = center.z() - eye.z();

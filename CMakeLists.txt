@@ -24,7 +24,12 @@ add_library(fireengine SHARED
     src/graphics/material.cpp
     src/graphics/texture.cpp
     src/graphics_driver.cpp
+    src/input/input.cpp
     src/platform/window.cpp
+    src/scene/camera.cpp
+    src/scene/node.cpp
+    src/scene/scene_graph.cpp
+    src/scene/transform.cpp
 )
 
 target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR})

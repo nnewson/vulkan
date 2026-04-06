@@ -3,20 +3,23 @@
 #include <cmath>
 
 #include <fire_engine/math/vec3.hpp>
+#include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
 {
 
-class Camera
+class Camera : public Component
 {
 public:
     Camera() = default;
-    ~Camera() = default;
+    ~Camera() override = default;
 
     Camera(const Camera&) = default;
     Camera& operator=(const Camera&) = default;
     Camera(Camera&&) noexcept = default;
     Camera& operator=(Camera&&) noexcept = default;
+
+    void update(const CameraState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
     Vec3 position() const noexcept

@@ -1,7 +1,8 @@
 {
   "dependencies": [
     "gtest",
+    "stb",
     "vulkan-headers",
-    "stb"
+    "tinyobjloader"
   ]
 }

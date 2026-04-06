@@ -14,7 +14,8 @@ Image Image::load_from_file(const std::string& path)
     int fileChannels = 0;
     constexpr int desiredChannels = 4; // Always load as RGBA
 
-    stbi_uc* raw = stbi_load(path.c_str(), &img.width_, &img.height_, &fileChannels, desiredChannels);
+    stbi_uc* raw =
+        stbi_load(path.c_str(), &img.width_, &img.height_, &fileChannels, desiredChannels);
     if (!raw)
     {
         throw std::runtime_error("Failed to load image: " + path);
