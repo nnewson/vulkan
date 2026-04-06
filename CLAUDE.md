@@ -18,29 +18,32 @@ Shaders are compiled from GLSL to SPIR-V via `glslc` as part of the build. Asset
 
 ## Dependencies
 
-Managed via vcpkg: `vulkan-headers`, `gtest`, `stb`. Also requires system GLFW 3.3+ and the Vulkan SDK (for `glslc`).
+Managed via vcpkg: `vulkan-headers`, `gtest`, `stb`, `tinyobjloader`. Also requires system GLFW 3.3+ and the Vulkan SDK (for `glslc`).
 
 ## Project Structure
 
 ```
 include/fire_engine/
+  core/            # ShaderLoader
   math/            # Vec3, Mat4, constants (header-only)
-  graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture, ModelLoader
+  graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture
+  platform/        # Window, Keyboard, Mouse (Keyboard/Mouse header-only)
   scene/           # Camera (header-only)
   graphics_driver.hpp
   fire_engine.hpp
-  display.hpp
 src/
+  core/            # shader_loader.cpp
   graphics/        # Implementations for graphics classes
+  platform/        # window.cpp, application.cpp (main entry point)
   graphics_driver.cpp
   fire_engine.cpp
-  display.cpp
 shaders/           # GLSL vertex/fragment shaders
 tests/
+  core/            # test_shader_loader.cpp
   math/            # test_vec3.cpp, test_mat4.cpp
-  graphics/        # test_colour3.cpp, test_image.cpp, test_geometry.cpp, test_material.cpp, test_model_loader.cpp
+  graphics/        # test_colour3.cpp, test_image.cpp, test_geometry.cpp, test_material.cpp
   scene/           # test_camera.cpp
-  assets/          # Minimal OBJ, MTL, PNG files for testing
+  assets/          # Minimal OBJ, MTL, PNG, BIN files for testing
 assets/            # OBJ, MTL, PNG, JPG model assets
 cmake/             # Build-time scripts (copy_assets.cmake)
 ```
@@ -57,9 +60,52 @@ cmake/             # Build-time scripts (copy_assets.cmake)
 - Static factory methods for file loading: `Class::load_from_file(path)`
 - Compound assignment as primitives (`+=` modifies directly), binary operators delegate to them
 - Math constants in `math/constants.hpp` (`pi`, `deg_to_rad`, `rad_to_deg`, `float_epsilon`)
-- Shared file-parsing utilities in `ModelLoader` (trim, trim_comment, parse_file)
-- Header-only math and scene types (Vec3, Mat4, Camera); other classes split into header + source
+- OBJ/MTL loading via tinyobjloader (`Geometry::load_from_file`, `Material::load_from_file`)
+- Shader loading via `core/ShaderLoader::load_from_file(path)`
+- Header-only math, scene, and platform input types (Vec3, Mat4, Camera, Keyboard, Mouse); other classes split into header + source
 - Explicit rule-of-five on all classes (defaulted or deleted as appropriate)
+
+### Class Template (Image as reference)
+
+New classes should follow the structure of `Image` (`include/fire_engine/graphics/image.hpp`):
+
+```cpp
+class ClassName
+{
+public:
+    // Static factory for file loading (if applicable)
+    static ClassName load_from_file(const std::string& path);
+
+    // Default constructor
+    ClassName() = default;
+    ~ClassName() = default;
+
+    // Rule-of-five: explicit copy/move (defaulted or deleted)
+    ClassName(const ClassName&) = default;
+    ClassName& operator=(const ClassName&) = default;
+    ClassName(ClassName&&) noexcept = default;
+    ClassName& operator=(ClassName&&) noexcept = default;
+
+    // Getters: [[nodiscard]], noexcept, same name as member without underscore
+    [[nodiscard]] int width() const noexcept { return width_; }
+
+    // Setters: same name as getter, take value by appropriate type
+    void width(int w) noexcept { width_ = w; }
+
+private:
+    // Members: trailing underscore, in-class default initialisers
+    int width_{0};
+};
+```
+
+Key points:
+- All members private with trailing underscore and default initialisers
+- Getter/setter pairs share the same name (overloaded)
+- `[[nodiscard]]` and `noexcept` on all getters
+- `noexcept` on setters that cannot throw
+- Rule-of-five always explicit, even if all defaulted
+- Static `load_from_file` factory for any class that loads from disk
+- Non-instantiable utility classes use `ClassName() = delete` (e.g. ShaderLoader)
 
 ## Testing
 
@@ -69,6 +115,6 @@ Google Test framework. All tests in a single executable `test_fire_engine`. Test
 
 - Vulkan with vulkan.hpp (C++ bindings)
 - Descriptor set layout: binding 0 (UBO: model/view/proj/cameraPos), binding 1 (MaterialUBO), binding 2 (texture sampler)
-- OBJ loading with vt/vn support, fan triangulation, automatic normal computation
+- OBJ/MTL loading via tinyobjloader with automatic triangulation and normal computation
 - Texture loading via stb_image (RGBA), uploaded to GPU via staging buffer
 - GLFW for windowing with keyboard (WASD/QE) and mouse camera controls
