@@ -12,12 +12,13 @@ find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(Stb REQUIRED)
+find_package(tinyobjloader CONFIG REQUIRED)
 
 # --- Library ------------------------------------------------------------
 
 add_library(fireengine SHARED
-    src/core/model_loader.cpp
     src/core/shader_loader.cpp
+    src/core/system.cpp
     src/fire_engine.cpp
     src/graphics/geometry.cpp
     src/graphics/image.cpp
@@ -26,6 +27,9 @@ add_library(fireengine SHARED
     src/graphics_driver.cpp
     src/input/input.cpp
     src/platform/window.cpp
+    src/renderer/device.cpp
+    src/renderer/renderer.cpp
+    src/renderer/swapchain.cpp
     src/scene/camera.cpp
     src/scene/node.cpp
     src/scene/scene_graph.cpp
@@ -35,7 +39,7 @@ add_library(fireengine SHARED
 target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR})
 target_compile_features(fireengine PUBLIC cxx_std_23)
 target_compile_options(fireengine PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw)
+target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw tinyobjloader::tinyobjloader)
 
 # --- Executable ---------------------------------------------------------
 
@@ -92,7 +96,6 @@ add_executable(test_fire_engine
     tests/graphics/test_geometry.cpp
     tests/graphics/test_image.cpp
     tests/graphics/test_material.cpp
-    tests/graphics/test_model_loader.cpp
     tests/core/test_shader_loader.cpp
     tests/scene/test_camera.cpp
 )

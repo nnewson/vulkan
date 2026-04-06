@@ -1,9 +1,7 @@
-#include <fstream>
-#include <set>
 #include <string>
 
 #include <fire_engine/core/shader_loader.hpp>
-#include <fire_engine/platform/window.hpp>
+#include <fire_engine/core/system.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/mat4.hpp>
@@ -12,12 +10,6 @@
 
 namespace fire_engine
 {
-
-#ifdef NDEBUG
-constexpr bool enableValidation = false;
-#else
-constexpr bool enableValidation = true;
-#endif
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -55,77 +47,45 @@ struct MaterialUBO
     float _pad0;
 };
 
-// ---------------------------------------------------------------------------
-// Validation / device extension lists
-// ---------------------------------------------------------------------------
-static const std::vector<const char*> validationLayers = {"VK_LAYER_KHRONOS_validation"};
-static const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    "VK_KHR_portability_subset", // required on macOS/MoltenVK
-};
-
-GraphicsDriver::GraphicsDriver()
+GraphicsDriver::GraphicsDriver(Renderer& renderer)
+    : renderer_(&renderer)
 {
-    vk::ApplicationInfo appInfo("Vulkan Cube", VK_MAKE_VERSION(1, 0, 0), "No Engine",
-                                VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
-
-    uint32_t glfwExtCount = 0;
-    const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-    std::vector<const char*> exts(glfwExts, glfwExts + glfwExtCount);
-    exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
-    exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-
-    std::vector<const char*> layers;
-    if (enableValidation)
-        layers = validationLayers;
-
-    vk::InstanceCreateInfo ci(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo,
-                              layers, exts);
-
-    instance_ = vk::createInstance(ci);
 }
 
 GraphicsDriver::~GraphicsDriver()
 {
+    auto dev = renderer_->device().device();
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        device_.destroySemaphore(imageAvail_[i]);
-        device_.destroyFence(inFlight_[i]);
-        device_.destroyBuffer(uniformBufs_[i]);
-        device_.freeMemory(uniformMems_[i]);
-        device_.destroyBuffer(materialBufs_[i]);
-        device_.freeMemory(materialMems_[i]);
+        dev.destroySemaphore(imageAvail_[i]);
+        dev.destroyFence(inFlight_[i]);
+        dev.destroyBuffer(uniformBufs_[i]);
+        dev.freeMemory(uniformMems_[i]);
+        dev.destroyBuffer(materialBufs_[i]);
+        dev.freeMemory(materialMems_[i]);
     }
-    texture_.destroy(device_);
-    device_.destroyDescriptorPool(descPool_);
-    device_.destroyBuffer(indexBuf_);
-    device_.freeMemory(indexMem_);
-    device_.destroyBuffer(vertexBuf_);
-    device_.freeMemory(vertexMem_);
-    device_.destroyCommandPool(cmdPool_);
-    cleanupSwapchain();
-    device_.destroyPipeline(pipeline_);
-    device_.destroyPipelineLayout(pipelineLayout_);
-    device_.destroyRenderPass(renderPass_);
-    device_.destroyDescriptorSetLayout(descSetLayout_);
-    device_.destroy();
-
-    instance_.destroySurfaceKHR(surface_);
-    instance_.destroy();
+    texture_.destroy(dev);
+    dev.destroyDescriptorPool(descPool_);
+    dev.destroyBuffer(indexBuf_);
+    dev.freeMemory(indexMem_);
+    dev.destroyBuffer(vertexBuf_);
+    dev.freeMemory(vertexMem_);
+    dev.destroyCommandPool(cmdPool_);
+    for (auto sem : renderDone_)
+        dev.destroySemaphore(sem);
+    dev.destroyPipeline(pipeline_);
+    dev.destroyPipelineLayout(pipelineLayout_);
+    dev.destroyRenderPass(renderPass_);
+    dev.destroyDescriptorSetLayout(descSetLayout_);
 }
 
-void GraphicsDriver::init(const Window& display)
+void GraphicsDriver::init()
 {
-    createSurface(display);
-    pickPhysicalDevice();
-    createLogicalDevice();
-    createSwapchain(display);
-    createImageViews();
     createRenderPass();
     createDescriptorSetLayout();
     createGraphicsPipeline();
-    createDepthResources();
-    createFramebuffers();
+    renderer_->swapchain().createDepthResources(renderer_->device());
+    renderer_->swapchain().createFramebuffers(renderPass_);
     createCommandPool();
     createGeometryBuffer();
     createTexture();
@@ -136,161 +96,13 @@ void GraphicsDriver::init(const Window& display)
     createSyncObjects();
 }
 
-void GraphicsDriver::createSurface(const Window& display)
-{
-    VkSurfaceKHR surface;
-    if (glfwCreateWindowSurface(instance_, display.getWindow(), nullptr, &surface) != VK_SUCCESS)
-        throw std::runtime_error("failed to create window surface");
-    surface_ = surface;
-}
-
-void GraphicsDriver::pickPhysicalDevice()
-{
-    auto devs = instance_.enumeratePhysicalDevices();
-    for (auto& d : devs)
-    {
-        if (isDeviceSuitable(d))
-        {
-            physDevice_ = d;
-            return;
-        }
-    }
-    throw std::runtime_error("no suitable GPU found");
-}
-
-bool GraphicsDriver::isDeviceSuitable(vk::PhysicalDevice d)
-{
-    auto [gf, pf] = findQueueFamilies(d);
-    if (!gf.has_value() || !pf.has_value())
-        return false;
-
-    auto avail = d.enumerateDeviceExtensionProperties();
-    std::set<std::string> required(deviceExtensions.begin(), deviceExtensions.end());
-    for (auto& e : avail)
-        required.erase(e.extensionName);
-    if (!required.empty())
-        return false;
-
-    auto fmts = d.getSurfaceFormatsKHR(surface_);
-    auto modes = d.getSurfacePresentModesKHR(surface_);
-    return !fmts.empty() && !modes.empty();
-}
-
-std::pair<std::optional<uint32_t>, std::optional<uint32_t>>
-GraphicsDriver::findQueueFamilies(vk::PhysicalDevice d)
-{
-    auto families = d.getQueueFamilyProperties();
-    std::optional<uint32_t> gf, pf;
-    for (uint32_t i = 0; i < families.size(); ++i)
-    {
-        if (families[i].queueFlags & vk::QueueFlagBits::eGraphics)
-            gf = i;
-        if (d.getSurfaceSupportKHR(i, surface_))
-            pf = i;
-        if (gf && pf)
-            break;
-    }
-    return {gf, pf};
-}
-
-void GraphicsDriver::createLogicalDevice()
-{
-    auto [gf, pf] = findQueueFamilies(physDevice_);
-    graphicsFamily_ = gf.value();
-    presentFamily_ = pf.value();
-
-    std::set<uint32_t> uniqueFamilies = {graphicsFamily_, presentFamily_};
-    std::vector<vk::DeviceQueueCreateInfo> qcis;
-    float prio = 1.0f;
-    for (uint32_t fam : uniqueFamilies)
-    {
-        qcis.emplace_back(vk::DeviceQueueCreateFlags{}, fam, 1, &prio);
-    }
-
-    vk::PhysicalDeviceFeatures features{};
-    features.samplerAnisotropy = vk::True;
-
-    vk::DeviceCreateInfo ci({}, qcis, {}, deviceExtensions, &features);
-
-    device_ = physDevice_.createDevice(ci);
-    graphicsQueue_ = device_.getQueue(graphicsFamily_, 0);
-    presentQueue_ = device_.getQueue(presentFamily_, 0);
-}
-
-vk::SurfaceFormatKHR GraphicsDriver::chooseSwapFormat()
-{
-    auto fmts = physDevice_.getSurfaceFormatsKHR(surface_);
-    for (auto& f : fmts)
-        if (f.format == vk::Format::eB8G8R8A8Srgb &&
-            f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
-            return f;
-    return fmts[0];
-}
-
-vk::PresentModeKHR GraphicsDriver::chooseSwapPresentMode()
-{
-    auto modes = physDevice_.getSurfacePresentModesKHR(surface_);
-    for (auto& m : modes)
-        if (m == vk::PresentModeKHR::eMailbox)
-            return m;
-    return vk::PresentModeKHR::eFifo;
-}
-
-vk::Extent2D GraphicsDriver::chooseSwapExtent(const Window& display,
-                                              const vk::SurfaceCapabilitiesKHR& caps)
-{
-    if (caps.currentExtent.width != std::numeric_limits<uint32_t>::max())
-        return caps.currentExtent;
-    int w, h;
-    glfwGetFramebufferSize(display.getWindow(), &w, &h);
-    vk::Extent2D ext(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
-    ext.width = std::clamp(ext.width, caps.minImageExtent.width, caps.maxImageExtent.width);
-    ext.height = std::clamp(ext.height, caps.minImageExtent.height, caps.maxImageExtent.height);
-    return ext;
-}
-
-void GraphicsDriver::createSwapchain(const Window& display)
-{
-    auto caps = physDevice_.getSurfaceCapabilitiesKHR(surface_);
-    auto fmt = chooseSwapFormat();
-    auto mode = chooseSwapPresentMode();
-    auto extent = chooseSwapExtent(display, caps);
-
-    uint32_t imgCount = caps.minImageCount + 1;
-    if (caps.maxImageCount > 0)
-        imgCount = std::min(imgCount, caps.maxImageCount);
-
-    uint32_t families[] = {graphicsFamily_, presentFamily_};
-    bool concurrent = graphicsFamily_ != presentFamily_;
-
-    vk::SwapchainCreateInfoKHR ci(
-        {}, surface_, imgCount, fmt.format, fmt.colorSpace, extent, 1,
-        vk::ImageUsageFlagBits::eColorAttachment,
-        concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
-        concurrent ? 2u : 0u, concurrent ? families : nullptr, caps.currentTransform,
-        vk::CompositeAlphaFlagBitsKHR::eOpaque, mode, vk::True);
-
-    swapchain_ = device_.createSwapchainKHR(ci);
-    swapImages_ = device_.getSwapchainImagesKHR(swapchain_);
-    swapFormat_ = fmt.format;
-    swapExtent_ = extent;
-}
-
-void GraphicsDriver::createImageViews()
-{
-    swapViews_.resize(swapImages_.size());
-    for (size_t i = 0; i < swapImages_.size(); ++i)
-        swapViews_[i] =
-            createImageView(swapImages_[i], swapFormat_, vk::ImageAspectFlagBits::eColor);
-}
-
 void GraphicsDriver::createRenderPass()
 {
     vk::AttachmentDescription colorAtt(
-        {}, swapFormat_, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::ePresentSrcKHR);
+        {}, renderer_->swapchain().format(), vk::SampleCountFlagBits::e1,
+        vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
+        vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+        vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR);
 
     vk::AttachmentDescription depthAtt(
         {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
@@ -315,7 +127,7 @@ void GraphicsDriver::createRenderPass()
 
     std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
     vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
-    renderPass_ = device_.createRenderPass(ci);
+    renderPass_ = renderer_->device().device().createRenderPass(ci);
 }
 
 void GraphicsDriver::createDescriptorSetLayout()
@@ -328,17 +140,20 @@ void GraphicsDriver::createDescriptorSetLayout()
     }};
 
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
-    descSetLayout_ = device_.createDescriptorSetLayout(ci);
+    descSetLayout_ = renderer_->device().device().createDescriptorSetLayout(ci);
 }
 
 vk::ShaderModule GraphicsDriver::createShaderModule(const std::vector<char>& code)
 {
     vk::ShaderModuleCreateInfo ci({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()));
-    return device_.createShaderModule(ci);
+    return renderer_->device().device().createShaderModule(ci);
 }
 
 void GraphicsDriver::createGraphicsPipeline()
 {
+    auto dev = renderer_->device().device();
+    auto extent = renderer_->swapchain().extent();
+
     auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
     auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
     vk::ShaderModule vertMod = createShaderModule(vertCode);
@@ -355,9 +170,9 @@ void GraphicsDriver::createGraphicsPipeline()
 
     vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);
 
-    vk::Viewport viewport(0, 0, static_cast<float>(swapExtent_.width),
-                          static_cast<float>(swapExtent_.height), 0, 1);
-    vk::Rect2D scissor({0, 0}, swapExtent_);
+    vk::Viewport viewport(0, 0, static_cast<float>(extent.width),
+                          static_cast<float>(extent.height), 0, 1);
+    vk::Rect2D scissor({0, 0}, extent);
     vk::PipelineViewportStateCreateInfo vpState({}, viewport, scissor);
 
     vk::PipelineRasterizationStateCreateInfo raster(
@@ -376,90 +191,46 @@ void GraphicsDriver::createGraphicsPipeline()
     vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
 
     vk::PipelineLayoutCreateInfo plci({}, descSetLayout_);
-    pipelineLayout_ = device_.createPipelineLayout(plci);
+    pipelineLayout_ = dev.createPipelineLayout(plci);
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
                                        &raster, &ms, &depthStencil, &colorBlend, nullptr,
                                        pipelineLayout_, renderPass_, 0);
 
-    auto result = device_.createGraphicsPipeline(nullptr, pci);
+    auto result = dev.createGraphicsPipeline(nullptr, pci);
     if (result.result != vk::Result::eSuccess)
         throw std::runtime_error("failed to create graphics pipeline");
     pipeline_ = result.value;
 
-    device_.destroyShaderModule(fragMod);
-    device_.destroyShaderModule(vertMod);
-}
-
-uint32_t GraphicsDriver::findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props)
-{
-    auto mem = physDevice_.getMemoryProperties();
-    for (uint32_t i = 0; i < mem.memoryTypeCount; ++i)
-        if ((filter & (1 << i)) && (mem.memoryTypes[i].propertyFlags & props) == props)
-            return i;
-    throw std::runtime_error("failed to find suitable memory type");
-}
-
-vk::ImageView GraphicsDriver::createImageView(vk::Image img, vk::Format fmt,
-                                              vk::ImageAspectFlags aspect)
-{
-    vk::ImageViewCreateInfo ci({}, img, vk::ImageViewType::e2D, fmt, {},
-                               vk::ImageSubresourceRange(aspect, 0, 1, 0, 1));
-    return device_.createImageView(ci);
-}
-
-void GraphicsDriver::createDepthResources()
-{
-    vk::Format depthFmt = vk::Format::eD32Sfloat;
-    vk::ImageCreateInfo ci({}, vk::ImageType::e2D, depthFmt,
-                           vk::Extent3D(swapExtent_.width, swapExtent_.height, 1), 1, 1,
-                           vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-                           vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                           vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
-    depthImage_ = device_.createImage(ci);
-
-    auto req = device_.getImageMemoryRequirements(depthImage_);
-    vk::MemoryAllocateInfo ai(
-        req.size, findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
-    depthMem_ = device_.allocateMemory(ai);
-    device_.bindImageMemory(depthImage_, depthMem_, 0);
-    depthView_ = createImageView(depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
-}
-
-void GraphicsDriver::createFramebuffers()
-{
-    framebuffers_.resize(swapViews_.size());
-    for (size_t i = 0; i < swapViews_.size(); ++i)
-    {
-        std::array<vk::ImageView, 2> attachments = {swapViews_[i], depthView_};
-        vk::FramebufferCreateInfo ci({}, renderPass_, attachments, swapExtent_.width,
-                                     swapExtent_.height, 1);
-        framebuffers_[i] = device_.createFramebuffer(ci);
-    }
+    dev.destroyShaderModule(fragMod);
+    dev.destroyShaderModule(vertMod);
 }
 
 void GraphicsDriver::createCommandPool()
 {
     vk::CommandPoolCreateInfo ci(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-                                 graphicsFamily_);
-    cmdPool_ = device_.createCommandPool(ci);
+                                 renderer_->device().graphicsFamily());
+    cmdPool_ = renderer_->device().device().createCommandPool(ci);
 }
 
 void GraphicsDriver::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                                   vk::MemoryPropertyFlags props, vk::Buffer& buf,
                                   vk::DeviceMemory& mem)
 {
+    auto dev = renderer_->device().device();
     vk::BufferCreateInfo ci({}, size, usage, vk::SharingMode::eExclusive);
-    buf = device_.createBuffer(ci);
+    buf = dev.createBuffer(ci);
 
-    auto req = device_.getBufferMemoryRequirements(buf);
-    vk::MemoryAllocateInfo ai(req.size, findMemoryType(req.memoryTypeBits, props));
-    mem = device_.allocateMemory(ai);
-    device_.bindBufferMemory(buf, mem, 0);
+    auto req = dev.getBufferMemoryRequirements(buf);
+    vk::MemoryAllocateInfo ai(req.size, renderer_->device().findMemoryType(req.memoryTypeBits, props));
+    mem = dev.allocateMemory(ai);
+    dev.bindBufferMemory(buf, mem, 0);
 }
 
 void GraphicsDriver::createGeometryBuffer()
 {
+    auto dev = renderer_->device().device();
+
     // std::list<Material> materials = Material::load_from_file("cube.mtl");
     // std::list<Material> materials = Material::load_from_file("utah_blend.mtl");
     // std::list<Material> materials = Material::load_from_file("default.mtl");
@@ -478,18 +249,18 @@ void GraphicsDriver::createGeometryBuffer()
                  vk::MemoryPropertyFlagBits::eHostVisible |
                      vk::MemoryPropertyFlagBits::eHostCoherent,
                  vertexBuf_, vertexMem_);
-    void* vertData = device_.mapMemory(vertexMem_, 0, vertexBufSize);
+    void* vertData = dev.mapMemory(vertexMem_, 0, vertexBufSize);
     memcpy(vertData, renderData_.vertices.data(), vertexBufSize);
-    device_.unmapMemory(vertexMem_);
+    dev.unmapMemory(vertexMem_);
 
     vk::DeviceSize indexBufSize = sizeof(renderData_.indices[0]) * renderData_.indices.size();
     createBuffer(indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
                  vk::MemoryPropertyFlagBits::eHostVisible |
                      vk::MemoryPropertyFlagBits::eHostCoherent,
                  indexBuf_, indexMem_);
-    void* indexData = device_.mapMemory(indexMem_, 0, indexBufSize);
+    void* indexData = dev.mapMemory(indexMem_, 0, indexBufSize);
     memcpy(indexData, renderData_.indices.data(), indexBufSize);
-    device_.unmapMemory(indexMem_);
+    dev.unmapMemory(indexMem_);
 }
 
 void GraphicsDriver::createTexture()
@@ -497,11 +268,15 @@ void GraphicsDriver::createTexture()
     std::string texPath = material_.mapKd();
     if (texPath.empty())
         texPath = "default.png";
-    texture_ = Texture::load_from_file(texPath, device_, physDevice_, cmdPool_, graphicsQueue_);
+    texture_ = Texture::load_from_file(texPath, renderer_->device().device(),
+                                       renderer_->device().physicalDevice(), cmdPool_,
+                                       renderer_->device().graphicsQueue());
 }
 
 void GraphicsDriver::createUniformBuffers()
 {
+    auto dev = renderer_->device().device();
+
     vk::DeviceSize size = sizeof(UniformBufferObject);
     uniformBufs_.resize(MAX_FRAMES_IN_FLIGHT);
     uniformMems_.resize(MAX_FRAMES_IN_FLIGHT);
@@ -512,7 +287,7 @@ void GraphicsDriver::createUniformBuffers()
                      vk::MemoryPropertyFlagBits::eHostVisible |
                          vk::MemoryPropertyFlagBits::eHostCoherent,
                      uniformBufs_[i], uniformMems_[i]);
-        uniformMapped_[i] = device_.mapMemory(uniformMems_[i], 0, size);
+        uniformMapped_[i] = dev.mapMemory(uniformMems_[i], 0, size);
     }
 
     vk::DeviceSize matSize = sizeof(MaterialUBO);
@@ -525,7 +300,7 @@ void GraphicsDriver::createUniformBuffers()
                      vk::MemoryPropertyFlagBits::eHostVisible |
                          vk::MemoryPropertyFlagBits::eHostCoherent,
                      materialBufs_[i], materialMems_[i]);
-        materialMapped_[i] = device_.mapMemory(materialMems_[i], 0, matSize);
+        materialMapped_[i] = dev.mapMemory(materialMems_[i], 0, matSize);
 
         MaterialUBO matUbo{};
         matUbo.ambient[0] = material_.ambient().r();
@@ -562,14 +337,16 @@ void GraphicsDriver::createDescriptorPool()
         {vk::DescriptorType::eCombinedImageSampler, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)},
     }};
     vk::DescriptorPoolCreateInfo ci({}, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSizes);
-    descPool_ = device_.createDescriptorPool(ci);
+    descPool_ = renderer_->device().device().createDescriptorPool(ci);
 }
 
 void GraphicsDriver::createDescriptorSets()
 {
+    auto dev = renderer_->device().device();
+
     std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descSetLayout_);
     vk::DescriptorSetAllocateInfo ai(descPool_, layouts);
-    descSets_ = device_.allocateDescriptorSets(ai);
+    descSets_ = dev.allocateDescriptorSets(ai);
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
@@ -583,7 +360,7 @@ void GraphicsDriver::createDescriptorSets()
             {descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
             {descSets_[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
         }};
-        device_.updateDescriptorSets(writes, {});
+        dev.updateDescriptorSets(writes, {});
     }
 }
 
@@ -591,19 +368,21 @@ void GraphicsDriver::createCommandBuffers()
 {
     vk::CommandBufferAllocateInfo ai(cmdPool_, vk::CommandBufferLevel::ePrimary,
                                      static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
-    cmdBufs_ = device_.allocateCommandBuffers(ai);
+    cmdBufs_ = renderer_->device().device().allocateCommandBuffers(ai);
 }
 
 void GraphicsDriver::recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex)
 {
+    auto extent = renderer_->swapchain().extent();
+
     cmd.begin(vk::CommandBufferBeginInfo{});
 
     std::array<vk::ClearValue, 2> clears{};
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(renderPass_, framebuffers_[imageIndex],
-                                    vk::Rect2D({0, 0}, swapExtent_), clears);
+    vk::RenderPassBeginInfo rpBegin(renderPass_, renderer_->swapchain().framebuffers()[imageIndex],
+                                    vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
@@ -618,8 +397,10 @@ void GraphicsDriver::recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIn
 
 void GraphicsDriver::createSyncObjects()
 {
+    auto dev = renderer_->device().device();
+
     imageAvail_.resize(MAX_FRAMES_IN_FLIGHT);
-    renderDone_.resize(swapImages_.size());
+    renderDone_.resize(renderer_->swapchain().images().size());
     inFlight_.resize(MAX_FRAMES_IN_FLIGHT);
 
     vk::SemaphoreCreateInfo sci;
@@ -627,25 +408,27 @@ void GraphicsDriver::createSyncObjects()
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        imageAvail_[i] = device_.createSemaphore(sci);
-        inFlight_[i] = device_.createFence(fci);
+        imageAvail_[i] = dev.createSemaphore(sci);
+        inFlight_[i] = dev.createFence(fci);
     }
-    for (size_t i = 0; i < swapImages_.size(); ++i)
+    for (size_t i = 0; i < renderer_->swapchain().images().size(); ++i)
     {
-        renderDone_[i] = device_.createSemaphore(sci);
+        renderDone_[i] = dev.createSemaphore(sci);
     }
 }
 
 void GraphicsDriver::updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget)
 {
-    static auto startTime = glfwGetTime();
-    float t = static_cast<float>(glfwGetTime() - startTime);
+    static auto startTime = System::getTime();
+    float t = static_cast<float>(System::getTime() - startTime);
+
+    auto extent = renderer_->swapchain().extent();
 
     UniformBufferObject ubo{};
     ubo.model = Mat4::rotateY(t * 1.0f) * Mat4::rotateX(t * 0.5f);
     // ubo.model = Mat4::identity();
     ubo.view = Mat4::lookAt(cameraPos, cameraTarget, {0, 1, 0});
-    float aspect = static_cast<float>(swapExtent_.width) / static_cast<float>(swapExtent_.height);
+    float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
     ubo.proj = Mat4::perspective(45.0f * deg_to_rad, aspect, 0.1f, 1000.0f);
     ubo.cameraPos[0] = cameraPos.x();
     ubo.cameraPos[1] = cameraPos.y();
@@ -653,21 +436,6 @@ void GraphicsDriver::updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget)
     ubo.cameraPos[3] = 0.0f;
 
     memcpy(uniformMapped_[currentFrame_], &ubo, sizeof(ubo));
-}
-
-void GraphicsDriver::cleanupSwapchain()
-{
-    device_.destroyImageView(depthView_);
-    device_.destroyImage(depthImage_);
-    device_.freeMemory(depthMem_);
-    for (auto fb : framebuffers_)
-        device_.destroyFramebuffer(fb);
-    for (auto iv : swapViews_)
-        device_.destroyImageView(iv);
-    for (auto sem : renderDone_)
-        device_.destroySemaphore(sem);
-    renderDone_.clear();
-    device_.destroySwapchainKHR(swapchain_);
 }
 
 void GraphicsDriver::recreateSwapchain(const Window& display)
@@ -680,24 +448,29 @@ void GraphicsDriver::recreateSwapchain(const Window& display)
         glfwWaitEvents();
     }
     waitIdle();
-    cleanupSwapchain();
-    createSwapchain(display);
-    createImageViews();
-    createDepthResources();
-    createFramebuffers();
+
+    auto dev = renderer_->device().device();
+    for (auto sem : renderDone_)
+        dev.destroySemaphore(sem);
+    renderDone_.clear();
+
+    renderer_->swapchain().recreate(renderer_->device(), display, renderPass_);
 
     vk::SemaphoreCreateInfo sci;
-    renderDone_.resize(swapImages_.size());
-    for (size_t i = 0; i < swapImages_.size(); ++i)
-        renderDone_[i] = device_.createSemaphore(sci);
+    renderDone_.resize(renderer_->swapchain().images().size());
+    for (size_t i = 0; i < renderer_->swapchain().images().size(); ++i)
+        renderDone_[i] = dev.createSemaphore(sci);
 }
 
-void GraphicsDriver::drawFrame(const Window& display, Vec3 cameraPos, Vec3 cameraTarget)
+void GraphicsDriver::drawFrame(Window& display, Vec3 cameraPos, Vec3 cameraTarget)
 {
-    (void)device_.waitForFences(inFlight_[currentFrame_], vk::True, UINT64_MAX);
+    auto dev = renderer_->device().device();
+
+    (void)dev.waitForFences(inFlight_[currentFrame_], vk::True, UINT64_MAX);
 
     auto [acquireResult, imageIndex] =
-        device_.acquireNextImageKHR(swapchain_, UINT64_MAX, imageAvail_[currentFrame_]);
+        dev.acquireNextImageKHR(renderer_->swapchain().swapchain(), UINT64_MAX,
+                                imageAvail_[currentFrame_]);
     if (acquireResult == vk::Result::eErrorOutOfDateKHR)
     {
         recreateSwapchain(display);
@@ -706,7 +479,7 @@ void GraphicsDriver::drawFrame(const Window& display, Vec3 cameraPos, Vec3 camer
     if (acquireResult != vk::Result::eSuccess && acquireResult != vk::Result::eSuboptimalKHR)
         throw std::runtime_error("failed to acquire swap chain image");
 
-    device_.resetFences(inFlight_[currentFrame_]);
+    dev.resetFences(inFlight_[currentFrame_]);
 
     updateUniformBuffer(cameraPos, cameraTarget);
 
@@ -717,15 +490,16 @@ void GraphicsDriver::drawFrame(const Window& display, Vec3 cameraPos, Vec3 camer
     vk::SubmitInfo si(imageAvail_[currentFrame_], waitStage, cmdBufs_[currentFrame_],
                       renderDone_[imageIndex]);
 
-    graphicsQueue_.submit(si, inFlight_[currentFrame_]);
+    renderer_->device().graphicsQueue().submit(si, inFlight_[currentFrame_]);
 
-    vk::PresentInfoKHR pi(renderDone_[imageIndex], swapchain_, imageIndex);
+    auto swapchain = renderer_->swapchain().swapchain();
+    vk::PresentInfoKHR pi(renderDone_[imageIndex], swapchain, imageIndex);
 
-    vk::Result presentResult = presentQueue_.presentKHR(pi);
+    vk::Result presentResult = renderer_->device().presentQueue().presentKHR(pi);
     if (presentResult == vk::Result::eErrorOutOfDateKHR ||
-        presentResult == vk::Result::eSuboptimalKHR || framebufferResized_)
+        presentResult == vk::Result::eSuboptimalKHR || display.framebufferResized())
     {
-        framebufferResized_ = false;
+        display.framebufferResized(false);
         recreateSwapchain(display);
     }
     else if (presentResult != vk::Result::eSuccess)
@@ -738,12 +512,7 @@ void GraphicsDriver::drawFrame(const Window& display, Vec3 cameraPos, Vec3 camer
 
 void GraphicsDriver::waitIdle()
 {
-    device_.waitIdle();
-}
-
-void GraphicsDriver::framebufferResized()
-{
-    framebufferResized_ = true;
+    renderer_->device().device().waitIdle();
 }
 
 } // namespace fire_engine

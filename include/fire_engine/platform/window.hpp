@@ -13,8 +13,7 @@ namespace fire_engine
 class Window
 {
 public:
-    explicit Window(size_t width, size_t height, const std::string_view title,
-                    GLFWframebuffersizefun framebufferResizeCallback);
+    explicit Window(size_t width, size_t height, std::string_view title);
     ~Window();
 
     Window(const Window&) = delete;
@@ -34,8 +33,20 @@ public:
         return window_;
     }
 
+    [[nodiscard]]
+    bool framebufferResized() const noexcept
+    {
+        return framebufferResized_;
+    }
+
+    void framebufferResized(bool resized) noexcept
+    {
+        framebufferResized_ = resized;
+    }
+
 private:
     GLFWwindow* window_ = nullptr;
+    bool framebufferResized_ = false;
 };
 
 } // namespace fire_engine

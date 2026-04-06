@@ -7,6 +7,7 @@
 #include <fire_engine/platform/window.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/texture.hpp>
+#include <fire_engine/renderer/renderer.hpp>
 
 namespace fire_engine
 {
@@ -14,25 +15,17 @@ namespace fire_engine
 class GraphicsDriver
 {
 public:
-    explicit GraphicsDriver();
+    explicit GraphicsDriver(Renderer& renderer);
     ~GraphicsDriver();
 
-    void init(const Window& display);
-    void drawFrame(const Window& display, Vec3 cameraPos, Vec3 cameraTarget);
+    void init();
+    void drawFrame(Window& display, Vec3 cameraPos, Vec3 cameraTarget);
     void waitIdle();
-    void framebufferResized();
 
 private:
-    void createSurface(const Window& display);
-    void pickPhysicalDevice();
-    void createLogicalDevice();
-    void createSwapchain(const Window& display);
-    void createImageViews();
     void createRenderPass();
     void createDescriptorSetLayout();
     void createGraphicsPipeline();
-    void createDepthResources();
-    void createFramebuffers();
     void createCommandPool();
     void createGeometryBuffer();
     void createTexture();
@@ -42,50 +35,19 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
 
-    bool isDeviceSuitable(vk::PhysicalDevice d);
-    std::pair<std::optional<uint32_t>, std::optional<uint32_t>>
-    findQueueFamilies(vk::PhysicalDevice d);
-
-    vk::SurfaceFormatKHR chooseSwapFormat();
-    vk::PresentModeKHR chooseSwapPresentMode();
-    vk::Extent2D chooseSwapExtent(const Window& display, const vk::SurfaceCapabilitiesKHR& caps);
-
     vk::ShaderModule createShaderModule(const std::vector<char>& code);
-    uint32_t findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props);
-    vk::ImageView createImageView(vk::Image img, vk::Format fmt, vk::ImageAspectFlags aspect);
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags props, vk::Buffer& buf, vk::DeviceMemory& mem);
     void recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex);
     void updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget);
-    void cleanupSwapchain();
     void recreateSwapchain(const Window& display);
 
-    vk::Instance instance_;
-    vk::SurfaceKHR surface_;
-
-    vk::PhysicalDevice physDevice_;
-    vk::Device device_;
-    vk::Queue graphicsQueue_;
-    vk::Queue presentQueue_;
-    uint32_t graphicsFamily_ = 0;
-    uint32_t presentFamily_ = 0;
-
-    vk::SwapchainKHR swapchain_;
-    std::vector<vk::Image> swapImages_;
-    std::vector<vk::ImageView> swapViews_;
-    vk::Format swapFormat_{};
-    vk::Extent2D swapExtent_{};
+    Renderer* renderer_;
 
     vk::RenderPass renderPass_;
     vk::DescriptorSetLayout descSetLayout_;
     vk::PipelineLayout pipelineLayout_;
     vk::Pipeline pipeline_;
-
-    std::vector<vk::Framebuffer> framebuffers_;
-
-    vk::Image depthImage_;
-    vk::DeviceMemory depthMem_;
-    vk::ImageView depthView_;
 
     Geometry::IndexedRenderData renderData_;
     Material material_;
@@ -113,7 +75,6 @@ private:
     std::vector<vk::Semaphore> renderDone_;
     std::vector<vk::Fence> inFlight_;
     uint32_t currentFrame_ = 0;
-    bool framebufferResized_ = false;
 };
 
 } // namespace fire_engine

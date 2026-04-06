@@ -2,11 +2,13 @@
 
 #include <variant>
 
+#include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/camera.hpp>
+#include <fire_engine/scene/mesh.hpp>
 
 namespace fire_engine
 {
 
-using Components = std::variant<Camera>;
+using Components = std::variant<Animator, Camera, Mesh>;
 
 } // namespace fire_engine

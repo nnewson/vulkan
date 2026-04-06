@@ -1,6 +1,8 @@
 #include <fire_engine/graphics/geometry.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <set>
 #include <stdexcept>
 
 #include <gtest/gtest.h>
@@ -171,14 +173,18 @@ TEST(GeometryTriangulation, QuadProducesTwoTriangles)
     EXPECT_EQ(data.indices.size(), 6u);
 }
 
-TEST(GeometryTriangulation, QuadSharesFirstVertex)
+TEST(GeometryTriangulation, QuadSharesVerticesBetweenTriangles)
 {
     Geometry geo = Geometry::load_from_file("test_assets/quad.obj");
     auto data = geo.to_coloured_indexed_geometry({});
 
-    // Fan triangulation: tri1 = {0,1,2}, tri2 = {0,2,3}
-    // Index 0 should appear as the first index of both triangles
-    EXPECT_EQ(data.indices[0], data.indices[3]);
+    // Two triangles from a quad must share exactly 2 vertices
+    std::set<uint16_t> tri1{data.indices[0], data.indices[1], data.indices[2]};
+    std::set<uint16_t> tri2{data.indices[3], data.indices[4], data.indices[5]};
+    std::vector<uint16_t> shared;
+    std::set_intersection(tri1.begin(), tri1.end(), tri2.begin(), tri2.end(),
+                          std::back_inserter(shared));
+    EXPECT_EQ(shared.size(), 2u);
 }
 
 // ==========================================================================

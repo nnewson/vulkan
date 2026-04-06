@@ -1,72 +1,91 @@
+#include <stdexcept>
 #include <unordered_map>
 
+#include <tiny_obj_loader.h>
+
+#include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/mat4.hpp>
-
-#include <fire_engine/core/model_loader.hpp>
-#include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
 {
 
 Geometry Geometry::load_from_file(const std::string& path)
 {
+    tinyobj::ObjReaderConfig config;
+    config.triangulate = true;
+
+    tinyobj::ObjReader reader;
+    if (!reader.ParseFromFile(path, config))
+    {
+        throw std::runtime_error("Failed to load OBJ: " + reader.Error());
+    }
+
     Geometry geometry;
-    std::string current_material;
 
-    ModelLoader::load_from_file(
-        path,
-        [&](const std::string& keyword, std::istringstream& iss)
+    const auto& attrib = reader.GetAttrib();
+    const auto& shapes = reader.GetShapes();
+    const auto& materials = reader.GetMaterials();
+
+    // Copy positions (3 floats per vertex)
+    for (std::size_t i = 0; i < attrib.vertices.size(); i += 3)
+    {
+        geometry.positions.push_back(
+            {attrib.vertices[i], attrib.vertices[i + 1], attrib.vertices[i + 2]});
+    }
+
+    // Copy normals (3 floats per normal)
+    for (std::size_t i = 0; i < attrib.normals.size(); i += 3)
+    {
+        geometry.normals.push_back(
+            {attrib.normals[i], attrib.normals[i + 1], attrib.normals[i + 2]});
+    }
+
+    // Copy texcoords (2 floats per texcoord)
+    for (std::size_t i = 0; i < attrib.texcoords.size(); i += 2)
+    {
+        geometry.texcoords.push_back({attrib.texcoords[i], attrib.texcoords[i + 1]});
+    }
+
+    // Build triangles from shapes
+    for (const auto& shape : shapes)
+    {
+        std::size_t index_offset = 0;
+
+        for (std::size_t f = 0; f < shape.mesh.num_face_vertices.size(); ++f)
         {
-            if (keyword == "v")
-            {
-                Vec3 v{};
-                if (!(iss >> v))
-                {
-                    throw std::runtime_error("Invalid vertex line in OBJ");
-                }
-                geometry.positions.push_back(v);
-            }
-            else if (keyword == "vt")
-            {
-                float u = 0.0f, v = 0.0f;
-                iss >> u >> v;
-                geometry.texcoords.push_back({u, v});
-            }
-            else if (keyword == "vn")
-            {
-                Vec3 n{};
-                if (!(iss >> n))
-                {
-                    throw std::runtime_error("Invalid vertex normal line in OBJ");
-                }
-                geometry.normals.push_back(n);
-            }
-            else if (keyword == "usemtl")
-            {
-                iss >> current_material;
-            }
-            else if (keyword == "f")
-            {
-                std::vector<FaceVertex> face_verts = parse_face_vertices(iss);
+            Face tri;
 
-                if (face_verts.size() < 3)
+            int mat_id = shape.mesh.material_ids[f];
+            if (mat_id >= 0 && static_cast<std::size_t>(mat_id) < materials.size())
+            {
+                tri.material_name = materials[mat_id].name;
+            }
+
+            for (std::size_t v = 0; v < 3; ++v)
+            {
+                const auto& idx = shape.mesh.indices[index_offset + v];
+
+                FaceVertex fv;
+                fv.position_index = static_cast<std::size_t>(idx.vertex_index);
+
+                if (idx.texcoord_index >= 0)
                 {
-                    throw std::runtime_error("OBJ face must have at least 3 vertices");
+                    fv.texcoord_index = static_cast<std::size_t>(idx.texcoord_index);
                 }
 
-                // Fan triangulation
-                for (std::size_t i = 1; i + 1 < face_verts.size(); ++i)
+                if (idx.normal_index >= 0)
                 {
-                    Face tri;
-                    tri.material_name = current_material;
-                    tri.vertices[0] = face_verts[0];
-                    tri.vertices[1] = face_verts[i];
-                    tri.vertices[2] = face_verts[i + 1];
-                    geometry.triangles.push_back(tri);
+                    fv.normal_index = static_cast<std::size_t>(idx.normal_index);
                 }
+
+                tri.vertices[v] = fv;
             }
-        });
+
+            geometry.triangles.push_back(tri);
+            index_offset += 3;
+        }
+    }
 
     if (geometry.normals.empty())
     {
@@ -180,67 +199,6 @@ Geometry::to_coloured_indexed_geometry(const std::list<Material> materials) cons
 
             result.indices.push_back(new_index);
         }
-    }
-
-    return result;
-}
-
-std::vector<Geometry::FaceVertex> Geometry::parse_face_vertices(std::istringstream& iss)
-{
-    std::vector<FaceVertex> result;
-    std::string token;
-
-    while (iss >> token)
-    {
-        FaceVertex fv{};
-
-        // Supports: f v, f v/vt, f v//vn, f v/vt/vn
-        const auto slash1 = token.find('/');
-        const std::string pos_part =
-            (slash1 == std::string::npos) ? token : token.substr(0, slash1);
-
-        if (pos_part.empty())
-        {
-            throw std::runtime_error("Invalid face token in OBJ");
-        }
-
-        int obj_index = std::stoi(pos_part);
-        if (obj_index <= 0)
-        {
-            throw std::runtime_error("Only positive OBJ indices are supported in this loader");
-        }
-        fv.position_index = static_cast<std::size_t>(obj_index - 1);
-
-        // Parse texcoord and normal indices if present
-        if (slash1 != std::string::npos)
-        {
-            const auto slash2 = token.find('/', slash1 + 1);
-
-            // Texcoord index (second component: v/vt or v/vt/vn)
-            const std::string tc_part = (slash2 != std::string::npos)
-                                            ? token.substr(slash1 + 1, slash2 - slash1 - 1)
-                                            : token.substr(slash1 + 1);
-            if (!tc_part.empty())
-            {
-                int ti = std::stoi(tc_part);
-                if (ti > 0)
-                    fv.texcoord_index = static_cast<std::size_t>(ti - 1);
-            }
-
-            // Normal index (third component: v/vt/vn or v//vn)
-            if (slash2 != std::string::npos)
-            {
-                const std::string normal_part = token.substr(slash2 + 1);
-                if (!normal_part.empty())
-                {
-                    int ni = std::stoi(normal_part);
-                    if (ni > 0)
-                        fv.normal_index = static_cast<std::size_t>(ni - 1);
-                }
-            }
-        }
-
-        result.push_back(fv);
     }
 
     return result;

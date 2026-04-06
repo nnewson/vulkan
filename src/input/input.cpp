@@ -5,6 +5,8 @@ namespace fire_engine
 
 CameraState Input::update(const Window& window, float deltaTime)
 {
+    glfwPollEvents();
+
     keyboard_.poll(window);
 
     if (keyboard_.escape())

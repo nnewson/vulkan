@@ -1,7 +1,6 @@
 #pragma once
 
 #include <list>
-#include <sstream>
 #include <string>
 
 #include <vulkan/vulkan.hpp>
@@ -178,8 +177,6 @@ public:
     }
 
 private:
-    static Colour3 parse_colour3(std::istringstream& iss);
-
     std::string name_;
     Colour3 ambient_{0.2f, 0.2f, 0.2f};
     Colour3 diffuse_{1.0f, 1.0f, 1.0f};

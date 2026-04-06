@@ -198,7 +198,6 @@ TEST(MaterialErrors, NonExistentFileThrows)
 
 TEST(MaterialErrors, EmptyFileReturnsNoMaterials)
 {
-    // comments.obj has no newmtl keywords, so no materials
-    auto materials = Material::load_from_file("test_assets/comments.obj");
+    auto materials = Material::load_from_file("test_assets/empty.mtl");
     EXPECT_TRUE(materials.empty());
 }

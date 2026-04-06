@@ -1,7 +1,6 @@
 #pragma once
 
 #include <optional>
-#include <sstream>
 #include <string>
 
 #include <fire_engine/graphics/material.hpp>
@@ -47,7 +46,6 @@ private:
         std::string material_name;
     };
 
-    static std::vector<FaceVertex> parse_face_vertices(std::istringstream& iss);
     void computeNormals();
 
     std::vector<Vec3> positions;

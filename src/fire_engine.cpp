@@ -5,6 +5,7 @@
 
 #include <fire_engine/fire_engine.hpp>
 
+#include <fire_engine/core/system.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 
 namespace fire_engine
@@ -16,29 +17,23 @@ namespace fire_engine
 
 FireEngine::FireEngine()
 {
-    glfwInit();
+    System::init();
 }
 
 FireEngine::~FireEngine()
 {
-    glfwTerminate();
+    System::destroy();
 }
 
 void FireEngine::run(size_t width, size_t height, std::string_view app_name)
 {
-    driver_ = std::make_unique<GraphicsDriver>();
-
-    window_ = std::make_unique<Window>(width, height, app_name,
-                                       [](GLFWwindow* w, int, int)
-                                       {
-                                           auto* engine = static_cast<FireEngine*>(
-                                               glfwGetWindowUserPointer(w));
-                                           engine->framebufferResized();
-                                       });
-
+    window_ = std::make_unique<Window>(width, height, app_name);
     input_.enable(*window_);
 
-    driver_->init(*window_);
+    renderer_ = std::make_unique<Renderer>(*window_);
+    driver_ = std::make_unique<GraphicsDriver>(*renderer_);
+    driver_->init();
+
     loadScene();
     mainLoop();
 }
@@ -48,19 +43,19 @@ void FireEngine::loadScene()
     auto cameraNode = std::make_unique<Node>("Camera");
     auto camera = cameraNode->component().emplace<Camera>();
 
-    camera.position({2.0f, 2.0f, 2.0f});
-    camera.pitch(-0.615f);
-    camera.yaw(-2.356f);
+    camera.localPosition({2.0f, 2.0f, 2.0f});
+    camera.localPitch(-0.615f);
+    camera.localYaw(-2.356f);
 
     scene_.addNode(std::move(cameraNode));
 }
 
 void FireEngine::mainLoop()
 {
-    double lastTime = glfwGetTime();
+    double lastTime = System::getTime();
     while (!window_->shouldClose())
     {
-        double now = glfwGetTime();
+        double now = System::getTime();
         float dt = static_cast<float>(now - lastTime);
         lastTime = now;
 
@@ -69,16 +64,12 @@ void FireEngine::mainLoop()
         scene_.update(input_state);
 
         scene_.render();
+        // DIRTY HACK - this will soon be gone when we move rendering into the scene graph
         auto camera = get<Camera>((*scene_.nodes()[0]).component());
 
-        driver_->drawFrame(*window_, camera.position(), camera.target());
+        driver_->drawFrame(*window_, camera.worldPosition(), camera.worldTarget());
     }
     driver_->waitIdle();
-}
-
-void FireEngine::framebufferResized()
-{
-    driver_->framebufferResized();
 }
 
 } // namespace fire_engine

@@ -1,4 +1,6 @@
 # Triangle with material assignment
+mtllib with_material.mtl
+
 v 0.0 0.0 0.0
 v 1.0 0.0 0.0
 v 0.0 1.0 0.0
