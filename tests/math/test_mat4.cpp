@@ -20,9 +20,9 @@ static void expectIdentity(const Mat4& m)
         for (int row = 0; row < 4; ++row)
         {
             if (row == col)
-                EXPECT_FLOAT_EQ(m(row, col), 1.0f) << "row=" << row << " col=" << col;
+                EXPECT_FLOAT_EQ((m[row, col]), 1.0f) << "row=" << row << " col=" << col;
             else
-                EXPECT_FLOAT_EQ(m(row, col), 0.0f) << "row=" << row << " col=" << col;
+                EXPECT_FLOAT_EQ((m[row, col]), 0.0f) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -33,7 +33,7 @@ static void expectZero(const Mat4& m)
     {
         for (int row = 0; row < 4; ++row)
         {
-            EXPECT_FLOAT_EQ(m(row, col), 0.0f) << "row=" << row << " col=" << col;
+            EXPECT_FLOAT_EQ((m[row, col]), 0.0f) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -44,7 +44,7 @@ static void expectNear(const Mat4& a, const Mat4& b, float eps = kEps)
     {
         for (int row = 0; row < 4; ++row)
         {
-            EXPECT_NEAR(a(row, col), b(row, col), eps) << "row=" << row << " col=" << col;
+            EXPECT_NEAR((a[row, col]), (b[row, col]), eps) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -81,17 +81,17 @@ TEST(Mat4Construction, CopyAssign)
 TEST(Mat4Accessors, SetAndGet)
 {
     Mat4 m;
-    m.set(2, 3, 42.0f);
-    EXPECT_FLOAT_EQ(m(2, 3), 42.0f);
+    m[2, 3] = 42.0f;
+    EXPECT_FLOAT_EQ((m[2, 3]), 42.0f);
 }
 
 TEST(Mat4Accessors, SetDoesNotAffectOtherElements)
 {
     Mat4 m;
-    m.set(1, 2, 7.0f);
-    EXPECT_FLOAT_EQ(m(0, 0), 0.0f);
-    EXPECT_FLOAT_EQ(m(1, 2), 7.0f);
-    EXPECT_FLOAT_EQ(m(2, 1), 0.0f);
+    m[1, 2] = 7.0f;
+    EXPECT_FLOAT_EQ((m[0, 0]), 0.0f);
+    EXPECT_FLOAT_EQ((m[1, 2]), 7.0f);
+    EXPECT_FLOAT_EQ((m[2, 1]), 0.0f);
 }
 
 TEST(Mat4Accessors, DataReturnsColumnMajorPointer)
@@ -113,10 +113,10 @@ TEST(Mat4Accessors, DataReturnsColumnMajorPointer)
 TEST(Mat4Identity, DiagonalOnes)
 {
     Mat4 m = Mat4::identity();
-    EXPECT_FLOAT_EQ(m(0, 0), 1.0f);
-    EXPECT_FLOAT_EQ(m(1, 1), 1.0f);
-    EXPECT_FLOAT_EQ(m(2, 2), 1.0f);
-    EXPECT_FLOAT_EQ(m(3, 3), 1.0f);
+    EXPECT_FLOAT_EQ((m[0, 0]), 1.0f);
+    EXPECT_FLOAT_EQ((m[1, 1]), 1.0f);
+    EXPECT_FLOAT_EQ((m[2, 2]), 1.0f);
+    EXPECT_FLOAT_EQ((m[3, 3]), 1.0f);
 }
 
 TEST(Mat4Identity, OffDiagonalZeros)
@@ -127,7 +127,7 @@ TEST(Mat4Identity, OffDiagonalZeros)
         for (int row = 0; row < 4; ++row)
         {
             if (row != col)
-                EXPECT_FLOAT_EQ(m(row, col), 0.0f) << "row=" << row << " col=" << col;
+                EXPECT_FLOAT_EQ((m[row, col]), 0.0f) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -154,7 +154,7 @@ TEST(Mat4Equality, SingleElementDifference)
 {
     Mat4 a = Mat4::identity();
     Mat4 b = Mat4::identity();
-    b.set(2, 3, 0.001f);
+    b[2, 3] = 0.001f;
     EXPECT_FALSE(a == b);
 }
 
@@ -180,24 +180,24 @@ TEST(Mat4Multiply, IdentityTimesMatrix)
 {
     Mat4 I = Mat4::identity();
     Mat4 a = Mat4::identity();
-    a.set(0, 3, 5.0f);
-    a.set(1, 3, 10.0f);
-    a.set(2, 3, 15.0f);
+    a[0, 3] = 5.0f;
+    a[1, 3] = 10.0f;
+    a[2, 3] = 15.0f;
 
     Mat4 r = I * a;
-    EXPECT_FLOAT_EQ(r(0, 3), 5.0f);
-    EXPECT_FLOAT_EQ(r(1, 3), 10.0f);
-    EXPECT_FLOAT_EQ(r(2, 3), 15.0f);
+    EXPECT_FLOAT_EQ((r[0, 3]), 5.0f);
+    EXPECT_FLOAT_EQ((r[1, 3]), 10.0f);
+    EXPECT_FLOAT_EQ((r[2, 3]), 15.0f);
 }
 
 TEST(Mat4Multiply, MatrixTimesIdentity)
 {
     Mat4 I = Mat4::identity();
     Mat4 a = Mat4::identity();
-    a.set(0, 3, 5.0f);
+    a[0, 3] = 5.0f;
 
     Mat4 r = a * I;
-    EXPECT_FLOAT_EQ(r(0, 3), 5.0f);
+    EXPECT_FLOAT_EQ((r[0, 3]), 5.0f);
 }
 
 TEST(Mat4Multiply, ZeroMatrixTimesAnything)
@@ -212,30 +212,30 @@ TEST(Mat4Multiply, GeneralCase)
 {
     // Multiply two known matrices and verify a few elements
     Mat4 a = Mat4::identity();
-    a.set(0, 0, 2.0f);
-    a.set(1, 1, 3.0f);
+    a[0, 0] = 2.0f;
+    a[1, 1] = 3.0f;
     // a is diag(2, 3, 1, 1)
 
     Mat4 b = Mat4::identity();
-    b.set(0, 3, 4.0f); // translation x=4
-    b.set(1, 3, 5.0f); // translation y=5
+    b[0, 3] = 4.0f; // translation x=4
+    b[1, 3] = 5.0f; // translation y=5
 
     // a * b: scales then translates
     // result should have (0,3) = 2*4 = 8, (1,3) = 3*5 = 15
     Mat4 r = a * b;
-    EXPECT_FLOAT_EQ(r(0, 0), 2.0f);
-    EXPECT_FLOAT_EQ(r(1, 1), 3.0f);
-    EXPECT_FLOAT_EQ(r(0, 3), 8.0f);
-    EXPECT_FLOAT_EQ(r(1, 3), 15.0f);
+    EXPECT_FLOAT_EQ((r[0, 0]), 2.0f);
+    EXPECT_FLOAT_EQ((r[1, 1]), 3.0f);
+    EXPECT_FLOAT_EQ((r[0, 3]), 8.0f);
+    EXPECT_FLOAT_EQ((r[1, 3]), 15.0f);
 }
 
 TEST(Mat4Multiply, NotCommutative)
 {
     Mat4 a = Mat4::identity();
-    a.set(0, 1, 1.0f); // shear
+    a[0, 1] = 1.0f; // shear
 
     Mat4 b = Mat4::identity();
-    b.set(1, 0, 1.0f); // different shear
+    b[1, 0] = 1.0f; // different shear
 
     Mat4 ab = a * b;
     Mat4 ba = b * a;
@@ -245,9 +245,9 @@ TEST(Mat4Multiply, NotCommutative)
 TEST(Mat4Multiply, MultiplyEqualsMatchesMultiply)
 {
     Mat4 a = Mat4::identity();
-    a.set(0, 0, 2.0f);
+    a[0, 0] = 2.0f;
     Mat4 b = Mat4::identity();
-    b.set(1, 1, 3.0f);
+    b[1, 1] = 3.0f;
 
     Mat4 expected = a * b;
     a *= b;
@@ -259,9 +259,9 @@ TEST(Mat4Multiply, Associative)
     Mat4 a = Mat4::rotateX(0.5f);
     Mat4 b = Mat4::rotateY(0.7f);
     Mat4 c = Mat4::identity();
-    c.set(0, 3, 1.0f);
-    c.set(1, 3, 2.0f);
-    c.set(2, 3, 3.0f);
+    c[0, 3] = 1.0f;
+    c[1, 3] = 2.0f;
+    c[2, 3] = 3.0f;
 
     Mat4 ab_c = (a * b) * c;
     Mat4 a_bc = a * (b * c);
@@ -284,13 +284,13 @@ TEST(Mat4RotateX, NinetyDegrees)
     Mat4 r = Mat4::rotateX(angle);
 
     // X axis unchanged
-    EXPECT_NEAR(r(0, 0), 1.0f, kEps);
+    EXPECT_NEAR((r[0, 0]), 1.0f, kEps);
     // cos(90) ~ 0
-    EXPECT_NEAR(r(1, 1), 0.0f, kEps);
+    EXPECT_NEAR((r[1, 1]), 0.0f, kEps);
     // sin(90) ~ 1
-    EXPECT_NEAR(r(2, 1), 1.0f, kEps);
-    EXPECT_NEAR(r(1, 2), -1.0f, kEps);
-    EXPECT_NEAR(r(2, 2), 0.0f, kEps);
+    EXPECT_NEAR((r[2, 1]), 1.0f, kEps);
+    EXPECT_NEAR((r[1, 2]), -1.0f, kEps);
+    EXPECT_NEAR((r[2, 2]), 0.0f, kEps);
 }
 
 TEST(Mat4RotateX, FullRotationIsIdentity)
@@ -326,13 +326,13 @@ TEST(Mat4RotateY, NinetyDegrees)
     Mat4 r = Mat4::rotateY(angle);
 
     // Y axis unchanged
-    EXPECT_NEAR(r(1, 1), 1.0f, kEps);
+    EXPECT_NEAR((r[1, 1]), 1.0f, kEps);
     // cos(90) ~ 0
-    EXPECT_NEAR(r(0, 0), 0.0f, kEps);
-    EXPECT_NEAR(r(2, 2), 0.0f, kEps);
+    EXPECT_NEAR((r[0, 0]), 0.0f, kEps);
+    EXPECT_NEAR((r[2, 2]), 0.0f, kEps);
     // sin(90) ~ 1
-    EXPECT_NEAR(r(2, 0), -1.0f, kEps);
-    EXPECT_NEAR(r(0, 2), 1.0f, kEps);
+    EXPECT_NEAR((r[2, 0]), -1.0f, kEps);
+    EXPECT_NEAR((r[0, 2]), 1.0f, kEps);
 }
 
 TEST(Mat4RotateY, FullRotationIsIdentity)
@@ -362,10 +362,10 @@ TEST(Mat4LookAt, LookingDownNegativeZ)
 
     // Should be identity-like (camera at origin looking down -Z)
     // The view matrix maps -Z forward to +Z in view space
-    EXPECT_NEAR(v(0, 0), 1.0f, kEps);
-    EXPECT_NEAR(v(1, 1), 1.0f, kEps);
-    EXPECT_NEAR(v(2, 2), 1.0f, kEps);
-    EXPECT_NEAR(v(3, 3), 1.0f, kEps);
+    EXPECT_NEAR((v[0, 0]), 1.0f, kEps);
+    EXPECT_NEAR((v[1, 1]), 1.0f, kEps);
+    EXPECT_NEAR((v[2, 2]), 1.0f, kEps);
+    EXPECT_NEAR((v[3, 3]), 1.0f, kEps);
 }
 
 TEST(Mat4LookAt, TranslationComponent)
@@ -374,7 +374,7 @@ TEST(Mat4LookAt, TranslationComponent)
     Mat4 v = Mat4::lookAt({0, 0, 5}, {0, 0, 0}, {0, 1, 0});
 
     // Translation in view space: eye is at +5 on Z, so view should translate by -5 on Z
-    EXPECT_NEAR(v(2, 3), -5.0f, kEps);
+    EXPECT_NEAR((v[2, 3]), -5.0f, kEps);
 }
 
 TEST(Mat4LookAt, LookingAlongPositiveX)
@@ -383,9 +383,9 @@ TEST(Mat4LookAt, LookingAlongPositiveX)
 
     // Forward is +X, which maps to -Z in view space
     // So the view matrix's third row should relate to the X world axis
-    EXPECT_NEAR(v(2, 0), -1.0f, kEps);
+    EXPECT_NEAR((v[2, 0]), -1.0f, kEps);
     // Right is +Z (cross of +X forward and +Y up)
-    EXPECT_NEAR(v(0, 2), 1.0f, kEps);
+    EXPECT_NEAR((v[0, 2]), 1.0f, kEps);
 }
 
 TEST(Mat4LookAt, OffsetEye)
@@ -396,7 +396,7 @@ TEST(Mat4LookAt, OffsetEye)
     {
         for (int row = 0; row < 4; ++row)
         {
-            EXPECT_TRUE(std::isfinite(v(row, col))) << "row=" << row << " col=" << col;
+            EXPECT_TRUE(std::isfinite(v[row, col])) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -411,14 +411,14 @@ TEST(Mat4LookAt, PreservesOrthonormality)
         // Row length should be ~1
         float len2 = 0.0f;
         for (int c = 0; c < 3; ++c)
-            len2 += v(r, c) * v(r, c);
+            len2 += v[r, c] * v[r, c];
         EXPECT_NEAR(len2, 1.0f, kEps) << "row " << r << " not unit length";
     }
 
     // Dot product of row 0 and row 1 should be ~0
     float dot01 = 0.0f;
     for (int c = 0; c < 3; ++c)
-        dot01 += v(0, c) * v(1, c);
+        dot01 += v[0, c] * v[1, c];
     EXPECT_NEAR(dot01, 0.0f, kEps);
 }
 
@@ -432,12 +432,12 @@ TEST(Mat4Perspective, BasicStructure)
     Mat4 p = Mat4::perspective(fov, 1.0f, 0.1f, 100.0f);
 
     // (3,2) should be -1 for Vulkan-style perspective
-    EXPECT_FLOAT_EQ(p(3, 2), -1.0f);
+    EXPECT_FLOAT_EQ((p[3, 2]), -1.0f);
     // (3,3) should be 0
-    EXPECT_FLOAT_EQ(p(3, 3), 0.0f);
+    EXPECT_FLOAT_EQ((p[3, 3]), 0.0f);
     // Off-diagonal in first two rows/cols should be 0
-    EXPECT_FLOAT_EQ(p(0, 1), 0.0f);
-    EXPECT_FLOAT_EQ(p(1, 0), 0.0f);
+    EXPECT_FLOAT_EQ((p[0, 1]), 0.0f);
+    EXPECT_FLOAT_EQ((p[1, 0]), 0.0f);
 }
 
 TEST(Mat4Perspective, AspectRatioAffectsX)
@@ -447,9 +447,9 @@ TEST(Mat4Perspective, AspectRatioAffectsX)
     Mat4 wide = Mat4::perspective(fov, 2.0f, 0.1f, 100.0f);
 
     // Wider aspect => smaller (0,0) value
-    EXPECT_GT(narrow(0, 0), wide(0, 0));
+    EXPECT_GT((narrow[0, 0]), (wide[0, 0]));
     // Y component should be the same regardless of aspect
-    EXPECT_FLOAT_EQ(narrow(1, 1), wide(1, 1));
+    EXPECT_FLOAT_EQ((narrow[1, 1]), (wide[1, 1]));
 }
 
 TEST(Mat4Perspective, VulkanYFlip)
@@ -458,7 +458,7 @@ TEST(Mat4Perspective, VulkanYFlip)
     Mat4 p = Mat4::perspective(fov, 1.0f, 0.1f, 100.0f);
 
     // Vulkan flips Y: (1,1) should be negative
-    EXPECT_LT(p(1, 1), 0.0f);
+    EXPECT_LT((p[1, 1]), 0.0f);
 }
 
 TEST(Mat4Perspective, NearFarMapping)
@@ -470,8 +470,8 @@ TEST(Mat4Perspective, NearFarMapping)
     // For Vulkan: z_ndc = (far / (near - far)) * z_eye + (near * far) / (near - far)
     float expectedM22 = 100.0f / (0.1f - 100.0f);
     float expectedM23 = (0.1f * 100.0f) / (0.1f - 100.0f);
-    EXPECT_NEAR(p(2, 2), expectedM22, kEps);
-    EXPECT_NEAR(p(2, 3), expectedM23, kEps);
+    EXPECT_NEAR((p[2, 2]), expectedM22, kEps);
+    EXPECT_NEAR((p[2, 3]), expectedM23, kEps);
 }
 
 TEST(Mat4Perspective, AllElementsFinite)
@@ -482,7 +482,7 @@ TEST(Mat4Perspective, AllElementsFinite)
     {
         for (int row = 0; row < 4; ++row)
         {
-            EXPECT_TRUE(std::isfinite(p(row, col))) << "row=" << row << " col=" << col;
+            EXPECT_TRUE(std::isfinite(p[row, col])) << "row=" << row << " col=" << col;
         }
     }
 }
@@ -494,27 +494,27 @@ TEST(Mat4Perspective, AllElementsFinite)
 TEST(Mat4Constexpr, DefaultConstruction)
 {
     constexpr Mat4 m;
-    static_assert(m(0, 0) == 0.0f);
-    static_assert(m(3, 3) == 0.0f);
+    static_assert((m[0, 0]) == 0.0f);
+    static_assert((m[3, 3]) == 0.0f);
 }
 
 TEST(Mat4Constexpr, Identity)
 {
     constexpr Mat4 I = Mat4::identity();
-    static_assert(I(0, 0) == 1.0f);
-    static_assert(I(1, 1) == 1.0f);
-    static_assert(I(2, 2) == 1.0f);
-    static_assert(I(3, 3) == 1.0f);
-    static_assert(I(0, 1) == 0.0f);
+    static_assert(I[0, 0] == 1.0f);
+    static_assert(I[1, 1] == 1.0f);
+    static_assert(I[2, 2] == 1.0f);
+    static_assert(I[3, 3] == 1.0f);
+    static_assert(I[0, 1] == 0.0f);
 }
 
 TEST(Mat4Constexpr, Multiply)
 {
     constexpr Mat4 I = Mat4::identity();
     constexpr Mat4 r = I * I;
-    static_assert(r(0, 0) == 1.0f);
-    static_assert(r(1, 1) == 1.0f);
-    static_assert(r(0, 1) == 0.0f);
+    static_assert((r[0, 0]) == 1.0f);
+    static_assert((r[1, 1]) == 1.0f);
+    static_assert((r[0, 1]) == 0.0f);
 }
 
 TEST(Mat4Constexpr, Equality)
@@ -537,8 +537,8 @@ TEST(Mat4Noexcept, AllOperationsAreNoexcept)
 
     static_assert(noexcept(Mat4{}));
     static_assert(noexcept(Mat4::identity()));
-    static_assert(noexcept(a(0, 0)));
-    static_assert(noexcept(a.set(0, 0, 1.0f)));
+    static_assert(noexcept(a[0, 0]));
+    static_assert(noexcept(a[0, 0] = 1.0f));
     static_assert(noexcept(a.data()));
     static_assert(noexcept(a * b));
     static_assert(noexcept(a *= b));
@@ -565,7 +565,7 @@ TEST(Mat4EdgeCases, RotateXThenRotateYNotCommutative)
     {
         for (int row = 0; row < 4; ++row)
         {
-            if (std::abs(xy(row, col) - yx(row, col)) > kEps)
+            if (std::abs(xy[row, col] - yx[row, col]) > kEps)
                 equal = false;
         }
     }
@@ -595,7 +595,7 @@ TEST(Mat4EdgeCases, MultiplyChain)
     {
         for (int row = 0; row < 4; ++row)
         {
-            EXPECT_TRUE(std::isfinite(r(row, col))) << "row=" << row << " col=" << col;
+            EXPECT_TRUE(std::isfinite(r[row, col])) << "row=" << row << " col=" << col;
         }
     }
 }

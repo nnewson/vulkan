@@ -23,9 +23,6 @@ public:
     void waitIdle();
 
 private:
-    void createRenderPass();
-    void createDescriptorSetLayout();
-    void createGraphicsPipeline();
     void createCommandPool();
     void createGeometryBuffer();
     void createTexture();
@@ -35,7 +32,6 @@ private:
     void createCommandBuffers();
     void createSyncObjects();
 
-    vk::ShaderModule createShaderModule(const std::vector<char>& code);
     void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                       vk::MemoryPropertyFlags props, vk::Buffer& buf, vk::DeviceMemory& mem);
     void recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex);
@@ -43,11 +39,6 @@ private:
     void recreateSwapchain(const Window& display);
 
     Renderer* renderer_;
-
-    vk::RenderPass renderPass_;
-    vk::DescriptorSetLayout descSetLayout_;
-    vk::PipelineLayout pipelineLayout_;
-    vk::Pipeline pipeline_;
 
     Geometry::IndexedRenderData renderData_;
     Material material_;

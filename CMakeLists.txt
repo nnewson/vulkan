@@ -28,6 +28,7 @@ add_library(fireengine SHARED
     src/input/input.cpp
     src/platform/window.cpp
     src/renderer/device.cpp
+    src/renderer/pipeline.cpp
     src/renderer/renderer.cpp
     src/renderer/swapchain.cpp
     src/scene/camera.cpp

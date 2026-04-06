@@ -23,14 +23,14 @@ public:
     Mat4& operator=(Mat4&&) noexcept = default;
 
     [[nodiscard]]
-    constexpr float operator()(int row, int col) const noexcept
+    constexpr float operator[](int row, int col) const noexcept
     {
         return m_[col * 4 + row];
     }
 
-    constexpr void set(int row, int col, float value) noexcept
+    constexpr float& operator[](int row, int col) noexcept
     {
-        m_[col * 4 + row] = value;
+        return m_[col * 4 + row];
     }
 
     [[nodiscard]]

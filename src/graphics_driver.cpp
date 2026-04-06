@@ -1,6 +1,3 @@
-#include <string>
-
-#include <fire_engine/core/shader_loader.hpp>
 #include <fire_engine/core/system.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
@@ -73,19 +70,10 @@ GraphicsDriver::~GraphicsDriver()
     dev.destroyCommandPool(cmdPool_);
     for (auto sem : renderDone_)
         dev.destroySemaphore(sem);
-    dev.destroyPipeline(pipeline_);
-    dev.destroyPipelineLayout(pipelineLayout_);
-    dev.destroyRenderPass(renderPass_);
-    dev.destroyDescriptorSetLayout(descSetLayout_);
 }
 
 void GraphicsDriver::init()
 {
-    createRenderPass();
-    createDescriptorSetLayout();
-    createGraphicsPipeline();
-    renderer_->swapchain().createDepthResources(renderer_->device());
-    renderer_->swapchain().createFramebuffers(renderPass_);
     createCommandPool();
     createGeometryBuffer();
     createTexture();
@@ -94,116 +82,6 @@ void GraphicsDriver::init()
     createDescriptorSets();
     createCommandBuffers();
     createSyncObjects();
-}
-
-void GraphicsDriver::createRenderPass()
-{
-    vk::AttachmentDescription colorAtt(
-        {}, renderer_->swapchain().format(), vk::SampleCountFlagBits::e1,
-        vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
-        vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
-        vk::ImageLayout::eUndefined, vk::ImageLayout::ePresentSrcKHR);
-
-    vk::AttachmentDescription depthAtt(
-        {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
-    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
-                                   &depthRef);
-
-    vk::SubpassDependency dep(VK_SUBPASS_EXTERNAL, 0,
-                              vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                  vk::PipelineStageFlagBits::eEarlyFragmentTests,
-                              vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                  vk::PipelineStageFlagBits::eEarlyFragmentTests,
-                              {},
-                              vk::AccessFlagBits::eColorAttachmentWrite |
-                                  vk::AccessFlagBits::eDepthStencilAttachmentWrite);
-
-    std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
-    vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
-    renderPass_ = renderer_->device().device().createRenderPass(ci);
-}
-
-void GraphicsDriver::createDescriptorSetLayout()
-{
-    std::array<vk::DescriptorSetLayoutBinding, 3> bindings = {{
-        {0, vk::DescriptorType::eUniformBuffer, 1,
-         vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
-        {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
-        {2, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
-    }};
-
-    vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
-    descSetLayout_ = renderer_->device().device().createDescriptorSetLayout(ci);
-}
-
-vk::ShaderModule GraphicsDriver::createShaderModule(const std::vector<char>& code)
-{
-    vk::ShaderModuleCreateInfo ci({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()));
-    return renderer_->device().device().createShaderModule(ci);
-}
-
-void GraphicsDriver::createGraphicsPipeline()
-{
-    auto dev = renderer_->device().device();
-    auto extent = renderer_->swapchain().extent();
-
-    auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
-    auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
-    vk::ShaderModule vertMod = createShaderModule(vertCode);
-    vk::ShaderModule fragMod = createShaderModule(fragCode);
-
-    std::array<vk::PipelineShaderStageCreateInfo, 2> stages = {{
-        {{}, vk::ShaderStageFlagBits::eVertex, vertMod, "main"},
-        {{}, vk::ShaderStageFlagBits::eFragment, fragMod, "main"},
-    }};
-
-    auto bindDesc = Vertex::bindingDesc();
-    auto attrDesc = Vertex::attrDescs();
-    vk::PipelineVertexInputStateCreateInfo vertInput({}, bindDesc, attrDesc);
-
-    vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);
-
-    vk::Viewport viewport(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
-                          0, 1);
-    vk::Rect2D scissor({0, 0}, extent);
-    vk::PipelineViewportStateCreateInfo vpState({}, viewport, scissor);
-
-    vk::PipelineRasterizationStateCreateInfo raster(
-        {}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
-        vk::FrontFace::eCounterClockwise, false, 0, 0, 0, 1.0f);
-
-    vk::PipelineMultisampleStateCreateInfo ms({}, vk::SampleCountFlagBits::e1);
-
-    vk::PipelineDepthStencilStateCreateInfo depthStencil({}, true, true, vk::CompareOp::eLess);
-
-    vk::PipelineColorBlendAttachmentState colorBlendAtt(
-        false, {}, {}, {}, {}, {}, {},
-        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
-
-    vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
-
-    vk::PipelineLayoutCreateInfo plci({}, descSetLayout_);
-    pipelineLayout_ = dev.createPipelineLayout(plci);
-
-    vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
-                                       &raster, &ms, &depthStencil, &colorBlend, nullptr,
-                                       pipelineLayout_, renderPass_, 0);
-
-    auto result = dev.createGraphicsPipeline(nullptr, pci);
-    if (result.result != vk::Result::eSuccess)
-        throw std::runtime_error("failed to create graphics pipeline");
-    pipeline_ = result.value;
-
-    dev.destroyShaderModule(fragMod);
-    dev.destroyShaderModule(vertMod);
 }
 
 void GraphicsDriver::createCommandPool()
@@ -345,7 +223,8 @@ void GraphicsDriver::createDescriptorSets()
 {
     auto dev = renderer_->device().device();
 
-    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descSetLayout_);
+    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+                                                 renderer_->pipeline().descriptorSetLayout());
     vk::DescriptorSetAllocateInfo ai(descPool_, layouts);
     descSets_ = dev.allocateDescriptorSets(ai);
 
@@ -382,15 +261,16 @@ void GraphicsDriver::recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIn
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(renderPass_, renderer_->swapchain().framebuffers()[imageIndex],
+    vk::RenderPassBeginInfo rpBegin(renderer_->pipeline().renderPass(),
+                                    renderer_->swapchain().framebuffers()[imageIndex],
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_);
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, renderer_->pipeline().pipeline());
     cmd.bindVertexBuffers(0, vertexBuf_, {vk::DeviceSize{0}});
     cmd.bindIndexBuffer(indexBuf_, 0, vk::IndexType::eUint16);
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipelineLayout_, 0,
-                           descSets_[currentFrame_], {});
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, renderer_->pipeline().pipelineLayout(),
+                           0, descSets_[currentFrame_], {});
     cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices.size()), 1, 0, 0, 0);
     cmd.endRenderPass();
     cmd.end();
@@ -455,7 +335,8 @@ void GraphicsDriver::recreateSwapchain(const Window& display)
         dev.destroySemaphore(sem);
     renderDone_.clear();
 
-    renderer_->swapchain().recreate(renderer_->device(), display, renderPass_);
+    renderer_->swapchain().recreate(renderer_->device(), display,
+                                    renderer_->pipeline().renderPass());
 
     vk::SemaphoreCreateInfo sci;
     renderDone_.resize(renderer_->swapchain().images().size());
@@ -512,7 +393,7 @@ void GraphicsDriver::drawFrame(Window& display, Vec3 cameraPos, Vec3 cameraTarge
 
 void GraphicsDriver::waitIdle()
 {
-    renderer_->device().device().waitIdle();
+    renderer_->waitIdle();
 }
 
 } // namespace fire_engine
