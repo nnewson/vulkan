@@ -1,6 +1,6 @@
 # Very early stage Vulkan engine in C++
 
-After I came out of Uni, my frist real job was working as a software engineer for [Rare](https://www.rare.co.uk).
+After I came out of Uni, my first real job was working as a software engineer for [Rare](https://www.rare.co.uk).
 I started there working on their R&D team, developing what would be called the 'REngine' - a shared 3D engine that was used be used for a bunch of future Gamecube releases (but not Perfect Dark Zero they did their own).
 During those days I had a design for a 3D engine I'd create it Gamecube limitations wheren't a problem (tesselated surfaces, spline based animation and softbody skinning, and 'correct' collision detection).
 I've no doubt these are all solved problems nowadays with the Unreal engine et all, but since I've been reading up on the tech again, I thought it would fun to dip my toes in again with Vulkan.
