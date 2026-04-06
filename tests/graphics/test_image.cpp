@@ -140,7 +140,8 @@ TEST(ImageMove, MoveAssignSelfIsNoOp)
     Image a = Image::load_from_file("test_assets/test_2x2.png");
     int originalWidth = a.width();
 
-    a = std::move(a);
+    auto& ref = a;
+    a = std::move(ref);
 
     EXPECT_EQ(a.width(), originalWidth);
     EXPECT_FALSE(a.empty());

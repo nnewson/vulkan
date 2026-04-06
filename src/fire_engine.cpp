@@ -31,8 +31,6 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name)
     input_.enable(*window_);
 
     renderer_ = std::make_unique<Renderer>(*window_);
-    driver_ = std::make_unique<GraphicsDriver>(*renderer_);
-    driver_->init();
 
     loadScene();
     mainLoop();
@@ -67,9 +65,9 @@ void FireEngine::mainLoop()
         // DIRTY HACK - this will soon be gone when we move rendering into the scene graph
         auto camera = get<Camera>((*scene_.nodes()[0]).component());
 
-        driver_->drawFrame(*window_, camera.worldPosition(), camera.worldTarget());
+        renderer_->drawFrame(*window_, camera.worldPosition(), camera.worldTarget());
     }
-    driver_->waitIdle();
+    renderer_->waitIdle();
 }
 
 } // namespace fire_engine

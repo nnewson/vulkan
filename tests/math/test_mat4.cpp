@@ -127,7 +127,9 @@ TEST(Mat4Identity, OffDiagonalZeros)
         for (int row = 0; row < 4; ++row)
         {
             if (row != col)
+            {
                 EXPECT_FLOAT_EQ((m[row, col]), 0.0f) << "row=" << row << " col=" << col;
+            }
         }
     }
 }

@@ -24,10 +24,10 @@ add_library(fireengine SHARED
     src/graphics/image.cpp
     src/graphics/material.cpp
     src/graphics/texture.cpp
-    src/graphics_driver.cpp
     src/input/input.cpp
     src/platform/window.cpp
     src/renderer/device.cpp
+    src/renderer/frame.cpp
     src/renderer/pipeline.cpp
     src/renderer/renderer.cpp
     src/renderer/swapchain.cpp

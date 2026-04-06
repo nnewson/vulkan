@@ -50,6 +50,8 @@ cmake/             # Build-time scripts (copy_assets.cmake)
 
 ## Code Style
 
+Formatting is enforced by `.clang-format` (Allman braces, 4-space indent, 100-column limit, left-aligned pointers, no single-line functions, constructor initializers each on their own line). Always write code that matches these rules.
+
 - **C++23** standard throughout
 - **`constexpr`** wherever possible, especially on math types
 - **`[[nodiscard]]`** on all getters and pure functions
@@ -87,10 +89,16 @@ public:
     ClassName& operator=(ClassName&&) noexcept = default;
 
     // Getters: [[nodiscard]], noexcept, same name as member without underscore
-    [[nodiscard]] int width() const noexcept { return width_; }
+    [[nodiscard]] int width() const noexcept
+    {
+        return width_;
+    }
 
     // Setters: same name as getter, take value by appropriate type
-    void width(int w) noexcept { width_ = w; }
+    void width(int w) noexcept
+    {
+        width_ = w;
+    }
 
 private:
     // Members: trailing underscore, in-class default initialisers
