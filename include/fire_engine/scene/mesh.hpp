@@ -16,7 +16,9 @@ public:
     Mesh(Mesh&&) noexcept = default;
     Mesh& operator=(Mesh&&) noexcept = default;
 
-    void update(const CameraState& /*input_state*/, const Transform& /*transform*/) override {}
+    void update(const CameraState& /*input_state*/, const Transform& /*transform*/) override
+    {
+    }
 };
 
 } // namespace fire_engine

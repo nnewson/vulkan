@@ -4,8 +4,8 @@ namespace fire_engine
 {
 
 Renderer::Renderer(const Window& window)
-    : device_(window)
-    , swapchain_(device_, window)
+    : device_(window),
+      swapchain_(device_, window)
 {
 }
 

@@ -29,7 +29,8 @@ void Swapchain::createDepthResources(const Device& device)
 
     auto req = device_.getImageMemoryRequirements(depthImage_);
     vk::MemoryAllocateInfo ai(
-        req.size, device.findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+        req.size,
+        device.findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
     depthMem_ = device_.allocateMemory(ai);
     device_.bindImageMemory(depthImage_, depthMem_, 0);
     depthView_ = createImageView(depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
@@ -41,8 +42,7 @@ void Swapchain::createFramebuffers(vk::RenderPass renderPass)
     for (size_t i = 0; i < views_.size(); ++i)
     {
         std::array<vk::ImageView, 2> attachments = {views_[i], depthView_};
-        vk::FramebufferCreateInfo ci({}, renderPass, attachments, extent_.width,
-                                     extent_.height, 1);
+        vk::FramebufferCreateInfo ci({}, renderPass, attachments, extent_.width, extent_.height, 1);
         framebuffers_[i] = device_.createFramebuffer(ci);
     }
 }
@@ -134,8 +134,7 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
     return ext;
 }
 
-vk::ImageView Swapchain::createImageView(vk::Image img, vk::Format fmt,
-                                         vk::ImageAspectFlags aspect)
+vk::ImageView Swapchain::createImageView(vk::Image img, vk::Format fmt, vk::ImageAspectFlags aspect)
 {
     vk::ImageViewCreateInfo ci({}, img, vk::ImageViewType::e2D, fmt, {},
                                vk::ImageSubresourceRange(aspect, 0, 1, 0, 1));

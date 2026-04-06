@@ -170,8 +170,8 @@ void GraphicsDriver::createGraphicsPipeline()
 
     vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);
 
-    vk::Viewport viewport(0, 0, static_cast<float>(extent.width),
-                          static_cast<float>(extent.height), 0, 1);
+    vk::Viewport viewport(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
+                          0, 1);
     vk::Rect2D scissor({0, 0}, extent);
     vk::PipelineViewportStateCreateInfo vpState({}, viewport, scissor);
 
@@ -222,7 +222,8 @@ void GraphicsDriver::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usag
     buf = dev.createBuffer(ci);
 
     auto req = dev.getBufferMemoryRequirements(buf);
-    vk::MemoryAllocateInfo ai(req.size, renderer_->device().findMemoryType(req.memoryTypeBits, props));
+    vk::MemoryAllocateInfo ai(req.size,
+                              renderer_->device().findMemoryType(req.memoryTypeBits, props));
     mem = dev.allocateMemory(ai);
     dev.bindBufferMemory(buf, mem, 0);
 }
@@ -468,9 +469,8 @@ void GraphicsDriver::drawFrame(Window& display, Vec3 cameraPos, Vec3 cameraTarge
 
     (void)dev.waitForFences(inFlight_[currentFrame_], vk::True, UINT64_MAX);
 
-    auto [acquireResult, imageIndex] =
-        dev.acquireNextImageKHR(renderer_->swapchain().swapchain(), UINT64_MAX,
-                                imageAvail_[currentFrame_]);
+    auto [acquireResult, imageIndex] = dev.acquireNextImageKHR(
+        renderer_->swapchain().swapchain(), UINT64_MAX, imageAvail_[currentFrame_]);
     if (acquireResult == vk::Result::eErrorOutOfDateKHR)
     {
         recreateSwapchain(display);

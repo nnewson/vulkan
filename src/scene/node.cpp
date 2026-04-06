@@ -22,8 +22,8 @@ void Node::update(const CameraState& input_state, const Mat4& parentWorld)
 {
     transform_.update(parentWorld);
 
-    std::visit([&input_state, this](auto& component)
-               { component.update(input_state, transform_); }, component_);
+    std::visit([&input_state, this](auto& component) { component.update(input_state, transform_); },
+               component_);
 
     for (auto& child : children_)
     {

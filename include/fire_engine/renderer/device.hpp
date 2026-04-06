@@ -21,14 +21,38 @@ public:
     Device(Device&&) noexcept = default;
     Device& operator=(Device&&) noexcept = default;
 
-    [[nodiscard]] vk::Instance instance() const noexcept { return instance_; }
-    [[nodiscard]] vk::SurfaceKHR surface() const noexcept { return surface_; }
-    [[nodiscard]] vk::PhysicalDevice physicalDevice() const noexcept { return physDevice_; }
-    [[nodiscard]] vk::Device device() const noexcept { return device_; }
-    [[nodiscard]] vk::Queue graphicsQueue() const noexcept { return graphicsQueue_; }
-    [[nodiscard]] vk::Queue presentQueue() const noexcept { return presentQueue_; }
-    [[nodiscard]] uint32_t graphicsFamily() const noexcept { return graphicsFamily_; }
-    [[nodiscard]] uint32_t presentFamily() const noexcept { return presentFamily_; }
+    [[nodiscard]] vk::Instance instance() const noexcept
+    {
+        return instance_;
+    }
+    [[nodiscard]] vk::SurfaceKHR surface() const noexcept
+    {
+        return surface_;
+    }
+    [[nodiscard]] vk::PhysicalDevice physicalDevice() const noexcept
+    {
+        return physDevice_;
+    }
+    [[nodiscard]] vk::Device device() const noexcept
+    {
+        return device_;
+    }
+    [[nodiscard]] vk::Queue graphicsQueue() const noexcept
+    {
+        return graphicsQueue_;
+    }
+    [[nodiscard]] vk::Queue presentQueue() const noexcept
+    {
+        return presentQueue_;
+    }
+    [[nodiscard]] uint32_t graphicsFamily() const noexcept
+    {
+        return graphicsFamily_;
+    }
+    [[nodiscard]] uint32_t presentFamily() const noexcept
+    {
+        return presentFamily_;
+    }
 
     [[nodiscard]] uint32_t findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) const;
 

@@ -26,13 +26,34 @@ public:
     void cleanup();
     void recreate(const Device& device, const Window& window, vk::RenderPass renderPass);
 
-    [[nodiscard]] vk::SwapchainKHR swapchain() const noexcept { return swapchain_; }
-    [[nodiscard]] const std::vector<vk::Image>& images() const noexcept { return images_; }
-    [[nodiscard]] const std::vector<vk::ImageView>& views() const noexcept { return views_; }
-    [[nodiscard]] vk::Format format() const noexcept { return format_; }
-    [[nodiscard]] vk::Extent2D extent() const noexcept { return extent_; }
-    [[nodiscard]] const std::vector<vk::Framebuffer>& framebuffers() const noexcept { return framebuffers_; }
-    [[nodiscard]] vk::ImageView depthView() const noexcept { return depthView_; }
+    [[nodiscard]] vk::SwapchainKHR swapchain() const noexcept
+    {
+        return swapchain_;
+    }
+    [[nodiscard]] const std::vector<vk::Image>& images() const noexcept
+    {
+        return images_;
+    }
+    [[nodiscard]] const std::vector<vk::ImageView>& views() const noexcept
+    {
+        return views_;
+    }
+    [[nodiscard]] vk::Format format() const noexcept
+    {
+        return format_;
+    }
+    [[nodiscard]] vk::Extent2D extent() const noexcept
+    {
+        return extent_;
+    }
+    [[nodiscard]] const std::vector<vk::Framebuffer>& framebuffers() const noexcept
+    {
+        return framebuffers_;
+    }
+    [[nodiscard]] vk::ImageView depthView() const noexcept
+    {
+        return depthView_;
+    }
 
 private:
     void createSwapchain(const Device& device, const Window& window);
