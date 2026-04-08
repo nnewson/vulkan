@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads OBJ/MTL models with texture mapping and renders them with Blinn-Phong lighting. Built on macOS with MoltenVK.
+**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads OBJ/MTL models with texture mapping and renders them with Blinn-Phong lighting. Built on macOS with MoltenVK. Uses a scenegraph architecture where components (Camera, Animator, Mesh) handle update and render logic.
 
 ## Build
 
@@ -24,18 +24,19 @@ Managed via vcpkg: `vulkan-headers`, `gtest`, `stb`, `tinyobjloader`. Also requi
 
 ```
 include/fire_engine/
-  core/            # ShaderLoader
+  core/            # System (GLFW lifecycle), ShaderLoader
   math/            # Vec3, Mat4, constants (header-only)
   graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture
   platform/        # Window, Keyboard, Mouse (Keyboard/Mouse header-only)
-  scene/           # Camera (header-only)
-  graphics_driver.hpp
+  renderer/        # Renderer, Device, Swapchain, Pipeline, Frame, RenderContext, UBO
+  scene/           # Component, Node, SceneGraph, Transform, Camera, Animator, Mesh
   fire_engine.hpp
 src/
-  core/            # shader_loader.cpp
+  core/            # system.cpp, shader_loader.cpp
   graphics/        # Implementations for graphics classes
   platform/        # window.cpp, application.cpp (main entry point)
-  graphics_driver.cpp
+  renderer/        # device.cpp, frame.cpp, pipeline.cpp, renderer.cpp, swapchain.cpp
+  scene/           # animator.cpp, camera.cpp, mesh.cpp, node.cpp, scene_graph.cpp, transform.cpp
   fire_engine.cpp
 shaders/           # GLSL vertex/fragment shaders
 tests/
@@ -47,6 +48,36 @@ tests/
 assets/            # OBJ, MTL, PNG, JPG model assets
 cmake/             # Build-time scripts (copy_assets.cmake)
 ```
+
+## Architecture
+
+### Renderer Subsystem (`renderer/`)
+
+- **Device** — wraps Vulkan instance, surface, physical/logical device, queues, `findMemoryType`, `createBuffer`
+- **Swapchain** — swapchain, image views, depth resources, framebuffers; handles `cleanup()`/`recreate()`
+- **Pipeline** — render pass, descriptor set layout, pipeline layout, graphics pipeline
+- **Frame** — command pool, command buffers, sync objects (semaphores, fences). Pure frame orchestration; owns no per-mesh resources
+- **Renderer** — owns Device, Swapchain, Pipeline, Frame. `drawFrame()` acquires a swapchain image, begins the render pass, binds the pipeline, calls `SceneGraph::render(ctx)` to let components record draw commands, then ends the render pass and submits
+- **RenderContext** — per-frame data bag passed through the scenegraph during render: Device, Swapchain, Frame, Pipeline, active CommandBuffer, currentFrame index, camera position/target
+- **UBO** (`ubo.hpp`) — shared `UniformBufferObject`, `MaterialUBO` structs, `MAX_FRAMES_IN_FLIGHT` constant
+
+### SceneGraph (`scene/`)
+
+- **Component** — abstract base with `update(CameraState, Transform)` and `render(RenderContext, Mat4) -> Mat4`. The returned Mat4 is propagated to children as their parent world matrix
+- **Node** — holds a name, Transform, a single `Components` variant, parent pointer, and children. `update()` and `render()` propagate through the tree via `std::visit`
+- **SceneGraph** — owns root nodes. `update()` propagates input through the tree, then extracts camera data from the active camera node. `render()` propagates the RenderContext through the tree
+- **Transform** — position, rotation (Euler), scale → computes local and world matrices
+- **Camera** — processes input deltas to update position/yaw/pitch. `render()` is a no-op (returns world unchanged)
+- **Animator** — computes a time-based model matrix in `update()`, returns `world * modelMatrix_` from `render()` so children inherit the animation
+- **Mesh** — owns all its GPU resources: vertex/index buffers, texture, material UBOs, UBO buffers, descriptor pool/sets. `load(objPath, mtlPath, Device, Pipeline, Frame)` creates everything. `render()` writes the UBO and records draw commands (bind buffers, bind descriptors, drawIndexed) directly on the RenderContext's command buffer
+
+### Data Flow Per Frame
+
+1. `FireEngine::mainLoop()` polls input, calls `scene_.update(input_state)`, then `renderer_->drawFrame(*window_, scene_)`
+2. `SceneGraph::update()` propagates transforms and input through nodes; Camera writes its world position/target to SceneGraph
+3. `Renderer::drawFrame()` acquires image, begins render pass, builds RenderContext, calls `scene.render(ctx)`
+4. During render traversal: Animator applies its model matrix to children's world; Mesh writes its UBO and records its own draw commands
+5. Renderer ends render pass, submits, presents
 
 ## Code Style
 
@@ -64,7 +95,6 @@ Formatting is enforced by `.clang-format` (Allman braces, 4-space indent, 100-co
 - Math constants in `math/constants.hpp` (`pi`, `deg_to_rad`, `rad_to_deg`, `float_epsilon`)
 - OBJ/MTL loading via tinyobjloader (`Geometry::load_from_file`, `Material::load_from_file`)
 - Shader loading via `core/ShaderLoader::load_from_file(path)`
-- Header-only math, scene, and platform input types (Vec3, Mat4, Camera, Keyboard, Mouse); other classes split into header + source
 - Explicit rule-of-five on all classes (defaulted or deleted as appropriate)
 
 ### Class Template (Image as reference)
@@ -123,6 +153,7 @@ Google Test framework. All tests in a single executable `test_fire_engine`. Test
 
 - Vulkan with vulkan.hpp (C++ bindings)
 - Descriptor set layout: binding 0 (UBO: model/view/proj/cameraPos), binding 1 (MaterialUBO), binding 2 (texture sampler)
+- Each Mesh owns its own descriptor pool/sets and UBO buffers — supports multiple meshes
 - OBJ/MTL loading via tinyobjloader with automatic triangulation and normal computation
 - Texture loading via stb_image (RGBA), uploaded to GPU via staging buffer
 - GLFW for windowing with keyboard (WASD/QE) and mouse camera controls

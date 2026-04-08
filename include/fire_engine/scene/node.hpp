@@ -6,6 +6,7 @@
 
 #include <fire_engine/input/camera_state.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/renderer/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
 #include <fire_engine/scene/transform.hpp>
 
@@ -64,6 +65,7 @@ public:
     Node& addChild(std::unique_ptr<Node> child);
 
     void update(const CameraState& input_state, const Mat4& parentWorld);
+    void render(const RenderContext& ctx, const Mat4& parentWorld);
 
 private:
     std::string name_;

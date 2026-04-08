@@ -17,4 +17,9 @@ void Camera::update(const CameraState& input_state, const Transform& transform)
     worldPitch_ = clampPitch(localPitch_ + tr.x());
 }
 
+Mat4 Camera::render(const RenderContext& /*ctx*/, const Mat4& world)
+{
+    return world;
+}
+
 } // namespace fire_engine

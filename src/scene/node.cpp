@@ -31,4 +31,17 @@ void Node::update(const CameraState& input_state, const Mat4& parentWorld)
     }
 }
 
+void Node::render(const RenderContext& ctx, const Mat4& parentWorld)
+{
+    Mat4 world = parentWorld * transform_.local();
+    Mat4 childWorld = std::visit(
+        [&ctx, &world](auto& component) -> Mat4 { return component.render(ctx, world); },
+        component_);
+
+    for (auto& child : children_)
+    {
+        child->render(ctx, childWorld);
+    }
+}
+
 } // namespace fire_engine

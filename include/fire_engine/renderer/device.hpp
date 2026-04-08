@@ -56,6 +56,10 @@ public:
 
     [[nodiscard]] uint32_t findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) const;
 
+    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                      vk::MemoryPropertyFlags props, vk::Buffer& buf,
+                      vk::DeviceMemory& mem) const;
+
 private:
     void createInstance();
     void createSurface(const Window& window);

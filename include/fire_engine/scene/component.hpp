@@ -6,6 +6,8 @@
 namespace fire_engine
 {
 
+struct RenderContext;
+
 class Component
 {
 public:
@@ -18,6 +20,9 @@ public:
     Component& operator=(Component&&) noexcept = default;
 
     virtual void update(const CameraState& input_state, const Transform& transform) = 0;
+
+    [[nodiscard]]
+    virtual Mat4 render(const RenderContext& ctx, const Mat4& world) = 0;
 };
 
 } // namespace fire_engine

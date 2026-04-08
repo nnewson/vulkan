@@ -22,6 +22,9 @@ public:
     void update(const CameraState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
+    Mat4 render(const RenderContext& ctx, const Mat4& world) override;
+
+    [[nodiscard]]
     Vec3 localPosition() const noexcept
     {
         return localPosition_;

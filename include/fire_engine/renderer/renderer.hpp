@@ -1,6 +1,5 @@
 #pragma once
 
-#include <fire_engine/math/vec3.hpp>
 #include <fire_engine/renderer/device.hpp>
 #include <fire_engine/renderer/frame.hpp>
 #include <fire_engine/renderer/pipeline.hpp>
@@ -8,6 +7,8 @@
 
 namespace fire_engine
 {
+
+class SceneGraph;
 
 class Renderer
 {
@@ -20,7 +21,7 @@ public:
     Renderer(Renderer&&) noexcept = default;
     Renderer& operator=(Renderer&&) noexcept = default;
 
-    void drawFrame(Window& display, Vec3 cameraPos, Vec3 cameraTarget);
+    void drawFrame(Window& display, SceneGraph& scene);
 
     void waitIdle() const
     {
@@ -58,8 +59,6 @@ public:
     }
 
 private:
-    void recordCommandBuffer(vk::CommandBuffer cmd, uint32_t imageIndex);
-    void updateUniformBuffer(Vec3 cameraPos, Vec3 cameraTarget);
     void recreateSwapchain(const Window& display);
 
     Device device_;

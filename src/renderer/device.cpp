@@ -144,4 +144,17 @@ uint32_t Device::findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) 
     throw std::runtime_error("failed to find suitable memory type");
 }
 
+void Device::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                          vk::MemoryPropertyFlags props, vk::Buffer& buf,
+                          vk::DeviceMemory& mem) const
+{
+    vk::BufferCreateInfo ci({}, size, usage, vk::SharingMode::eExclusive);
+    buf = device_.createBuffer(ci);
+
+    auto req = device_.getBufferMemoryRequirements(buf);
+    vk::MemoryAllocateInfo ai(req.size, findMemoryType(req.memoryTypeBits, props));
+    mem = device_.allocateMemory(ai);
+    device_.bindBufferMemory(buf, mem, 0);
+}
+
 } // namespace fire_engine
