@@ -99,8 +99,13 @@ add_executable(test_fire_engine
     tests/graphics/test_geometry.cpp
     tests/graphics/test_image.cpp
     tests/graphics/test_material.cpp
+    tests/graphics/test_vertex.cpp
     tests/core/test_shader_loader.cpp
+    tests/input/test_camera_state.cpp
     tests/scene/test_camera.cpp
+    tests/scene/test_node.cpp
+    tests/scene/test_scene_graph.cpp
+    tests/scene/test_transform.cpp
 )
 target_link_libraries(test_fire_engine PRIVATE fireengine GTest::gtest_main)
 target_compile_options(test_fire_engine PRIVATE -Wall -Wextra -Wpedantic)

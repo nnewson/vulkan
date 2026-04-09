@@ -1,12 +1,9 @@
 #include <fire_engine/scene/transform.hpp>
 
-#include <cmath>
-
 #include <gtest/gtest.h>
 
 using fire_engine::Mat4;
 using fire_engine::Transform;
-using fire_engine::Vec3;
 
 // ==========================================================================
 // Default Construction

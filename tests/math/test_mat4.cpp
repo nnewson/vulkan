@@ -555,6 +555,177 @@ TEST(Mat4Noexcept, AllOperationsAreNoexcept)
 // Edge Cases
 // ==========================================================================
 
+// ==========================================================================
+// RotateZ
+// ==========================================================================
+
+TEST(Mat4RotateZ, ZeroAngleIsIdentity)
+{
+    Mat4 r = Mat4::rotateZ(0.0f);
+    expectNear(r, Mat4::identity());
+}
+
+TEST(Mat4RotateZ, NinetyDegrees)
+{
+    float angle = std::numbers::pi_v<float> / 2.0f;
+    Mat4 r = Mat4::rotateZ(angle);
+
+    // Z axis unchanged
+    EXPECT_NEAR((r[2, 2]), 1.0f, kEps);
+    // cos(90) ~ 0
+    EXPECT_NEAR((r[0, 0]), 0.0f, kEps);
+    EXPECT_NEAR((r[1, 1]), 0.0f, kEps);
+    // sin(90) ~ 1
+    EXPECT_NEAR((r[1, 0]), 1.0f, kEps);
+    EXPECT_NEAR((r[0, 1]), -1.0f, kEps);
+}
+
+TEST(Mat4RotateZ, FullRotationIsIdentity)
+{
+    float angle = 2.0f * std::numbers::pi_v<float>;
+    Mat4 r = Mat4::rotateZ(angle);
+    expectNear(r, Mat4::identity());
+}
+
+TEST(Mat4RotateZ, NegativeAngle)
+{
+    float angle = 0.6f;
+    Mat4 pos = Mat4::rotateZ(angle);
+    Mat4 neg = Mat4::rotateZ(-angle);
+    Mat4 product = pos * neg;
+    expectNear(product, Mat4::identity());
+}
+
+TEST(Mat4RotateZ, IsNoexcept)
+{
+    static_assert(noexcept(Mat4::rotateZ(0.0f)));
+}
+
+// ==========================================================================
+// Translate
+// ==========================================================================
+
+TEST(Mat4Translate, ZeroTranslationIsIdentity)
+{
+    Mat4 t = Mat4::translate({0.0f, 0.0f, 0.0f});
+    EXPECT_EQ(t, Mat4::identity());
+}
+
+TEST(Mat4Translate, SetsColumn3)
+{
+    Mat4 t = Mat4::translate({5.0f, 10.0f, 15.0f});
+    EXPECT_FLOAT_EQ((t[0, 3]), 5.0f);
+    EXPECT_FLOAT_EQ((t[1, 3]), 10.0f);
+    EXPECT_FLOAT_EQ((t[2, 3]), 15.0f);
+    EXPECT_FLOAT_EQ((t[3, 3]), 1.0f);
+}
+
+TEST(Mat4Translate, DiagonalRemainsIdentity)
+{
+    Mat4 t = Mat4::translate({1.0f, 2.0f, 3.0f});
+    EXPECT_FLOAT_EQ((t[0, 0]), 1.0f);
+    EXPECT_FLOAT_EQ((t[1, 1]), 1.0f);
+    EXPECT_FLOAT_EQ((t[2, 2]), 1.0f);
+}
+
+TEST(Mat4Translate, NegativeValues)
+{
+    Mat4 t = Mat4::translate({-1.0f, -2.0f, -3.0f});
+    EXPECT_FLOAT_EQ((t[0, 3]), -1.0f);
+    EXPECT_FLOAT_EQ((t[1, 3]), -2.0f);
+    EXPECT_FLOAT_EQ((t[2, 3]), -3.0f);
+}
+
+TEST(Mat4Translate, CompositionAddsTranslations)
+{
+    Mat4 a = Mat4::translate({1.0f, 0.0f, 0.0f});
+    Mat4 b = Mat4::translate({0.0f, 2.0f, 3.0f});
+    Mat4 ab = a * b;
+    EXPECT_FLOAT_EQ((ab[0, 3]), 1.0f);
+    EXPECT_FLOAT_EQ((ab[1, 3]), 2.0f);
+    EXPECT_FLOAT_EQ((ab[2, 3]), 3.0f);
+}
+
+TEST(Mat4Translate, IsConstexpr)
+{
+    constexpr Mat4 t = Mat4::translate({1.0f, 2.0f, 3.0f});
+    static_assert(t[0, 3] == 1.0f);
+    static_assert(t[1, 3] == 2.0f);
+    static_assert(t[2, 3] == 3.0f);
+}
+
+// ==========================================================================
+// Scale
+// ==========================================================================
+
+TEST(Mat4Scale, UniformScaleOne)
+{
+    Mat4 s = Mat4::scale({1.0f, 1.0f, 1.0f});
+    EXPECT_EQ(s, Mat4::identity());
+}
+
+TEST(Mat4Scale, SetsDiagonal)
+{
+    Mat4 s = Mat4::scale({2.0f, 3.0f, 4.0f});
+    EXPECT_FLOAT_EQ((s[0, 0]), 2.0f);
+    EXPECT_FLOAT_EQ((s[1, 1]), 3.0f);
+    EXPECT_FLOAT_EQ((s[2, 2]), 4.0f);
+    EXPECT_FLOAT_EQ((s[3, 3]), 1.0f);
+}
+
+TEST(Mat4Scale, OffDiagonalZeros)
+{
+    Mat4 s = Mat4::scale({2.0f, 3.0f, 4.0f});
+    EXPECT_FLOAT_EQ((s[0, 1]), 0.0f);
+    EXPECT_FLOAT_EQ((s[0, 2]), 0.0f);
+    EXPECT_FLOAT_EQ((s[1, 0]), 0.0f);
+    EXPECT_FLOAT_EQ((s[1, 2]), 0.0f);
+    EXPECT_FLOAT_EQ((s[2, 0]), 0.0f);
+    EXPECT_FLOAT_EQ((s[2, 1]), 0.0f);
+}
+
+TEST(Mat4Scale, CompositionMultipliesScales)
+{
+    Mat4 a = Mat4::scale({2.0f, 2.0f, 2.0f});
+    Mat4 b = Mat4::scale({3.0f, 3.0f, 3.0f});
+    Mat4 ab = a * b;
+    EXPECT_FLOAT_EQ((ab[0, 0]), 6.0f);
+    EXPECT_FLOAT_EQ((ab[1, 1]), 6.0f);
+    EXPECT_FLOAT_EQ((ab[2, 2]), 6.0f);
+}
+
+TEST(Mat4Scale, ScaleThenTranslate)
+{
+    // Scale by 2 then translate by (1,0,0): translation is NOT scaled
+    Mat4 s = Mat4::scale({2.0f, 2.0f, 2.0f});
+    Mat4 t = Mat4::translate({1.0f, 0.0f, 0.0f});
+    Mat4 st = s * t;
+    EXPECT_FLOAT_EQ((st[0, 0]), 2.0f);
+    EXPECT_FLOAT_EQ((st[0, 3]), 2.0f); // translation is scaled by parent
+}
+
+TEST(Mat4Scale, TranslateThenScale)
+{
+    // Translate then scale: translation is NOT affected
+    Mat4 t = Mat4::translate({1.0f, 0.0f, 0.0f});
+    Mat4 s = Mat4::scale({2.0f, 2.0f, 2.0f});
+    Mat4 ts = t * s;
+    EXPECT_FLOAT_EQ((ts[0, 0]), 2.0f);
+    EXPECT_FLOAT_EQ((ts[0, 3]), 1.0f); // translation unaffected by scale
+}
+
+TEST(Mat4Scale, IsConstexpr)
+{
+    constexpr Mat4 s = Mat4::scale({2.0f, 3.0f, 4.0f});
+    static_assert(s[0, 0] == 2.0f);
+    static_assert(s[1, 1] == 3.0f);
+    static_assert(s[2, 2] == 4.0f);
+}
+
+// ==========================================================================
+// Edge Cases
+// ==========================================================================
+
 TEST(Mat4EdgeCases, RotateXThenRotateYNotCommutative)
 {
     Mat4 rx = Mat4::rotateX(0.3f);
@@ -582,6 +753,9 @@ TEST(Mat4EdgeCases, InverseRotation)
     expectNear(product, Mat4::identity());
 
     product = Mat4::rotateY(angle) * Mat4::rotateY(-angle);
+    expectNear(product, Mat4::identity());
+
+    product = Mat4::rotateZ(angle) * Mat4::rotateZ(-angle);
     expectNear(product, Mat4::identity());
 }
 
