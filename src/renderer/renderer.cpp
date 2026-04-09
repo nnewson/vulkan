@@ -23,9 +23,8 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene)
 
     (void)dev.waitForFences(frame_.inFlightFence(currentFrame_), vk::True, UINT64_MAX);
 
-    auto [acquireResult, imageIndex] =
-        (*dev).acquireNextImageKHR(swapchain_.swapchain(), UINT64_MAX,
-                                   frame_.imageAvailable(currentFrame_));
+    auto [acquireResult, imageIndex] = (*dev).acquireNextImageKHR(
+        swapchain_.swapchain(), UINT64_MAX, frame_.imageAvailable(currentFrame_));
     if (acquireResult == vk::Result::eErrorOutOfDateKHR)
     {
         recreateSwapchain(display);
@@ -47,16 +46,21 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene)
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(pipeline_.renderPass(),
-                                    swapchain_.framebuffer(imageIndex),
+    vk::RenderPassBeginInfo rpBegin(pipeline_.renderPass(), swapchain_.framebuffer(imageIndex),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_.pipeline());
 
     // Let the scene graph record draw commands
-    RenderContext ctx{device_, swapchain_, frame_, pipeline_, cmd, currentFrame_,
-                     scene.cameraPosition(), scene.cameraTarget()};
+    RenderContext ctx{device_,
+                      swapchain_,
+                      frame_,
+                      pipeline_,
+                      cmd,
+                      currentFrame_,
+                      scene.cameraPosition(),
+                      scene.cameraTarget()};
     scene.render(ctx);
 
     cmd.endRenderPass();

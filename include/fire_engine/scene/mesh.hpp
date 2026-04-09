@@ -28,8 +28,7 @@ public:
     Mesh(Mesh&&) noexcept = default;
     Mesh& operator=(Mesh&&) noexcept = default;
 
-    void load(const Geometry& renderData, const Material& material,
-              const std::string& texturePath,
+    void load(const Geometry& renderData, const Material& material, const std::string& texturePath,
               const Device& device, const Pipeline& pipeline, Frame& frame);
 
     void update(const CameraState& input_state, const Transform& transform) override;

@@ -33,8 +33,8 @@ Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
 
     // Pitch (X)
     float sinp = 2.0f * (qw * qy - qz * qx);
-    float pitch = (std::abs(sinp) >= 1.0f) ? std::copysign(3.14159265f / 2.0f, sinp)
-                                            : std::asin(sinp);
+    float pitch =
+        (std::abs(sinp) >= 1.0f) ? std::copysign(3.14159265f / 2.0f, sinp) : std::asin(sinp);
 
     // Yaw (Y)
     float siny_cosp = 2.0f * (qw * qz + qx * qy);
@@ -46,8 +46,8 @@ Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
 
 } // namespace
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
-                           const Device& device, const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Device& device,
+                           const Pipeline& pipeline, Frame& frame)
 {
     auto gltfPath = std::filesystem::path(path);
     auto baseDir = gltfPath.parent_path();
@@ -87,8 +87,8 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
         // If this node has an animation, wrap it with an Animator
         if (nodeHasAnimation(asset, nodeIndex))
         {
-            auto animNode = std::make_unique<Node>(
-                std::string(asset.nodes[nodeIndex].name) + "_Animator");
+            auto animNode =
+                std::make_unique<Node>(std::string(asset.nodes[nodeIndex].name) + "_Animator");
             animNode->component().emplace<Animator>();
 
             // Apply the node's transform to the animator node
@@ -107,12 +107,11 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
             // Load mesh as child of animator
             if (gltfNode.meshIndex.has_value())
             {
-                auto meshNode = std::make_unique<Node>(
-                    std::string(gltfNode.name) + "_Mesh");
+                auto meshNode = std::make_unique<Node>(std::string(gltfNode.name) + "_Mesh");
                 meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
-                loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], meshRef,
-                         baseDir.string(), device, pipeline, frame);
+                loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], meshRef, baseDir.string(),
+                         device, pipeline, frame);
             }
 
             // Recurse into child nodes
@@ -128,9 +127,9 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
     }
 }
 
-void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                          Node& parentNode, const std::string& baseDir,
-                          const Device& device, const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
+                          const std::string& baseDir, const Device& device,
+                          const Pipeline& pipeline, Frame& frame)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
@@ -139,8 +138,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
     {
         parentNode.transform().position(
             {trs->translation.x(), trs->translation.y(), trs->translation.z()});
-        parentNode.transform().rotation(quaternionToEuler(
-            trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()));
+        parentNode.transform().rotation(quaternionToEuler(trs->rotation.x(), trs->rotation.y(),
+                                                          trs->rotation.z(), trs->rotation.w()));
         parentNode.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
     }
 
@@ -148,8 +147,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
     if (gltfNode.meshIndex.has_value())
     {
         parentNode.component().emplace<Mesh>();
-        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], parentNode, baseDir,
-                 device, pipeline, frame);
+        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], parentNode, baseDir, device,
+                 pipeline, frame);
     }
 
     // Recurse into children
@@ -160,20 +159,19 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
 
         if (nodeHasAnimation(asset, childIndex))
         {
-            auto animNode = std::make_unique<Node>(
-                std::string(asset.nodes[childIndex].name) + "_Animator");
+            auto animNode =
+                std::make_unique<Node>(std::string(asset.nodes[childIndex].name) + "_Animator");
             animNode->component().emplace<Animator>();
             auto& animRef = childRef.addChild(std::move(animNode));
 
             const auto& childGltfNode = asset.nodes[childIndex];
             if (childGltfNode.meshIndex.has_value())
             {
-                auto meshNode = std::make_unique<Node>(
-                    std::string(childGltfNode.name) + "_Mesh");
+                auto meshNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Mesh");
                 meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
-                loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], meshRef,
-                         baseDir, device, pipeline, frame);
+                loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], meshRef, baseDir,
+                         device, pipeline, frame);
             }
 
             for (auto grandchildIndex : childGltfNode.children)
@@ -188,9 +186,9 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
     }
 }
 
-void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                          Node& node, const std::string& baseDir,
-                          const Device& device, const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
+                          const std::string& baseDir, const Device& device,
+                          const Pipeline& pipeline, Frame& frame)
 {
     for (const auto& primitive : mesh.primitives)
     {
@@ -244,8 +242,8 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
         const auto& posAccessor = asset.accessors[posAttr->accessorIndex];
         std::vector<fastgltf::math::fvec3> positions(posAccessor.count);
         fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-            asset, posAccessor, [&](fastgltf::math::fvec3 pos, std::size_t idx)
-            { positions[idx] = pos; });
+            asset, posAccessor,
+            [&](fastgltf::math::fvec3 pos, std::size_t idx) { positions[idx] = pos; });
 
         std::vector<fastgltf::math::fvec3> normals;
         if (normAttr != primitive.attributes.end())
@@ -253,8 +251,8 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
             const auto& normAccessor = asset.accessors[normAttr->accessorIndex];
             normals.resize(normAccessor.count);
             fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                asset, normAccessor, [&](fastgltf::math::fvec3 n, std::size_t idx)
-                { normals[idx] = n; });
+                asset, normAccessor,
+                [&](fastgltf::math::fvec3 n, std::size_t idx) { normals[idx] = n; });
         }
 
         std::vector<fastgltf::math::fvec2> texcoords;
@@ -263,8 +261,8 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
             const auto& uvAccessor = asset.accessors[uvAttr->accessorIndex];
             texcoords.resize(uvAccessor.count);
             fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec2>(
-                asset, uvAccessor, [&](fastgltf::math::fvec2 uv, std::size_t idx)
-                { texcoords[idx] = uv; });
+                asset, uvAccessor,
+                [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords[idx] = uv; });
         }
 
         Colour3 vertexColour = material.diffuse();
@@ -275,9 +273,8 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
         for (std::size_t i = 0; i < positions.size(); ++i)
         {
             Vec3 pos{positions[i].x(), positions[i].y(), positions[i].z()};
-            Vec3 norm = (i < normals.size())
-                            ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
-                            : Vec3{0.0f, 1.0f, 0.0f};
+            Vec3 norm = (i < normals.size()) ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
+                                             : Vec3{0.0f, 1.0f, 0.0f};
             float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
             float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
 
@@ -292,8 +289,8 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
             const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
             idxs.reserve(indexAccessor.count);
             fastgltf::iterateAccessor<std::uint32_t>(
-                asset, indexAccessor, [&](std::uint32_t idx)
-                { idxs.push_back(static_cast<uint16_t>(idx)); });
+                asset, indexAccessor,
+                [&](std::uint32_t idx) { idxs.push_back(static_cast<uint16_t>(idx)); });
         }
         else
         {

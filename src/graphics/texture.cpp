@@ -7,17 +7,18 @@ namespace fire_engine
 {
 
 Texture Texture::load_from_file(const std::string& path, const vk::raii::Device& device,
-                                const vk::raii::PhysicalDevice& physDevice,
-                                vk::CommandPool cmdPool, const vk::raii::Queue& queue)
+                                const vk::raii::PhysicalDevice& physDevice, vk::CommandPool cmdPool,
+                                const vk::raii::Queue& queue)
 {
     Image img = Image::load_from_file(path);
-    return load_from_data(img.data(), img.width(), img.height(), device, physDevice, cmdPool, queue);
+    return load_from_data(img.data(), img.width(), img.height(), device, physDevice, cmdPool,
+                          queue);
 }
 
 Texture Texture::load_from_data(const uint8_t* pixels, int width, int height,
                                 const vk::raii::Device& device,
-                                const vk::raii::PhysicalDevice& physDevice,
-                                vk::CommandPool cmdPool, const vk::raii::Queue& queue)
+                                const vk::raii::PhysicalDevice& physDevice, vk::CommandPool cmdPool,
+                                const vk::raii::Queue& queue)
 {
     Texture tex;
     vk::DeviceSize imageSize =

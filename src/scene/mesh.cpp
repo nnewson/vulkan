@@ -12,8 +12,8 @@ namespace fire_engine
 {
 
 void Mesh::load(const Geometry& renderData, const Material& material,
-                const std::string& texturePath,
-                const Device& device, const Pipeline& pipeline, Frame& frame)
+                const std::string& texturePath, const Device& device, const Pipeline& pipeline,
+                Frame& frame)
 {
     vkDevice_ = &device.device();
 
@@ -21,10 +21,11 @@ void Mesh::load(const Geometry& renderData, const Material& material,
     renderData_ = renderData;
 
     // Create vertex buffer
-    vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices()[0]) * renderData_.vertices().size();
-    auto [vBuf, vMem] = device.createBuffer(
-        vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
-        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    vk::DeviceSize vertexBufSize =
+        sizeof(renderData_.vertices()[0]) * renderData_.vertices().size();
+    auto [vBuf, vMem] = device.createBuffer(vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
+                                            vk::MemoryPropertyFlagBits::eHostVisible |
+                                                vk::MemoryPropertyFlagBits::eHostCoherent);
     vertexBuf_ = std::move(vBuf);
     vertexMem_ = std::move(vMem);
     void* vertData = vertexMem_.mapMemory(0, vertexBufSize);
@@ -33,9 +34,9 @@ void Mesh::load(const Geometry& renderData, const Material& material,
 
     // Create index buffer
     vk::DeviceSize indexBufSize = sizeof(renderData_.indices()[0]) * renderData_.indices().size();
-    auto [iBuf, iMem] = device.createBuffer(
-        indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
-        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto [iBuf, iMem] = device.createBuffer(indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
+                                            vk::MemoryPropertyFlagBits::eHostVisible |
+                                                vk::MemoryPropertyFlagBits::eHostCoherent);
     indexBuf_ = std::move(iBuf);
     indexMem_ = std::move(iMem);
     void* indexData = indexMem_.mapMemory(0, indexBufSize);
@@ -54,9 +55,9 @@ void Mesh::load(const Geometry& renderData, const Material& material,
     materialMapped_.resize(MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        auto [mBuf, mMem] = device.createBuffer(
-            matSize, vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        auto [mBuf, mMem] = device.createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
         materialMapped_[i] = mMem.mapMemory(0, matSize);
         materialBufs_.push_back(std::move(mBuf));
         materialMems_.push_back(std::move(mMem));
@@ -102,9 +103,9 @@ void Mesh::createUniformBuffers(const Device& device)
     uniformMapped_.resize(MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        auto [uBuf, uMem] = device.createBuffer(
-            size, vk::BufferUsageFlagBits::eUniformBuffer,
-            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        auto [uBuf, uMem] = device.createBuffer(size, vk::BufferUsageFlagBits::eUniformBuffer,
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
         uniformMapped_[i] = uMem.mapMemory(0, size);
         uniformBufs_.push_back(std::move(uBuf));
         uniformMems_.push_back(std::move(uMem));
@@ -175,8 +176,8 @@ Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)
     cmd.bindVertexBuffers(0, vertBuf, {vk::DeviceSize{0}});
     cmd.bindIndexBuffer(*indexBuf_, 0, vk::IndexType::eUint16);
     vk::DescriptorSet ds = *descSets_[ctx.currentFrame];
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0,
-                           ds, {});
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0, ds,
+                           {});
     cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices().size()), 1, 0, 0, 0);
 
     return world;

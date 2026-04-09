@@ -48,8 +48,8 @@ void FireEngine::loadScene()
     scene_.activeCamera(&camRef);
 
     // Load glTF scene
-    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_,
-                          renderer_->device(), renderer_->pipeline(), renderer_->frame());
+    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, renderer_->device(),
+                          renderer_->pipeline(), renderer_->frame());
 }
 
 void FireEngine::mainLoop()

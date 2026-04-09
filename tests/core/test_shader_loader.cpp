@@ -31,7 +31,8 @@ TEST(ShaderLoaderLoadFromFile, SizeMatchesFileSize)
 
 TEST(ShaderLoaderLoadFromFile, NonExistentFileThrows)
 {
-    EXPECT_THROW(static_cast<void>(ShaderLoader::load_from_file("test_assets/nonexistent.spv")), std::runtime_error);
+    EXPECT_THROW(static_cast<void>(ShaderLoader::load_from_file("test_assets/nonexistent.spv")),
+                 std::runtime_error);
 }
 
 TEST(ShaderLoaderLoadFromFile, TwoLoadsReturnSameData)
