@@ -3,16 +3,38 @@
 namespace fire_engine
 {
 
-class System
+struct GlfwBackend
 {
-public:
-    System() = delete;
-
     static void init();
     static void destroy();
 
     [[nodiscard]]
     static double getTime();
 };
+
+template <typename Backend>
+class SystemT
+{
+public:
+    SystemT() = delete;
+
+    static void init()
+    {
+        Backend::init();
+    }
+
+    static void destroy()
+    {
+        Backend::destroy();
+    }
+
+    [[nodiscard]]
+    static double getTime()
+    {
+        return Backend::getTime();
+    }
+};
+
+using System = SystemT<GlfwBackend>;
 
 } // namespace fire_engine

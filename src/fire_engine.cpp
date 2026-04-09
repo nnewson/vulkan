@@ -60,8 +60,8 @@ void FireEngine::mainLoop()
         float dt = static_cast<float>(now - lastTime);
         lastTime = now;
 
-        glfwPollEvents();
         auto input_state = input_.update(*window_, dt);
+        input_state.time(now);
         scene_.update(input_state);
 
         renderer_->drawFrame(*window_, scene_, camera_->worldPosition(), camera_->worldTarget());

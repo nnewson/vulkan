@@ -31,9 +31,7 @@ void Device::createInstance()
     vk::ApplicationInfo appInfo("Vulkan Cube", VK_MAKE_VERSION(1, 0, 0), "No Engine",
                                 VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
 
-    uint32_t glfwExtCount = 0;
-    const char** glfwExts = glfwGetRequiredInstanceExtensions(&glfwExtCount);
-    std::vector<const char*> exts(glfwExts, glfwExts + glfwExtCount);
+    auto exts = Window::requiredVulkanExtensions();
     exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
     exts.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
 
@@ -49,10 +47,7 @@ void Device::createInstance()
 
 void Device::createSurface(const Window& window)
 {
-    VkSurfaceKHR rawSurface;
-    if (glfwCreateWindowSurface(*instance_, window.getWindow(), nullptr, &rawSurface) != VK_SUCCESS)
-        throw std::runtime_error("failed to create window surface");
-    surface_ = vk::raii::SurfaceKHR(instance_, rawSurface);
+    surface_ = window.createVulkanSurface(instance_);
 }
 
 void Device::pickPhysicalDevice()

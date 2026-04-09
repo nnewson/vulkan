@@ -43,10 +43,20 @@ public:
         deltaYaw_ = dy;
     }
 
+    [[nodiscard]] double time() const noexcept
+    {
+        return time_;
+    }
+    void time(double t) noexcept
+    {
+        time_ = t;
+    }
+
 private:
     Vec3 deltaPosition_{};
     float deltaPitch_{0.0f};
     float deltaYaw_{0.0f};
+    double time_{0.0};
 };
 
 } // namespace fire_engine

@@ -99,7 +99,9 @@ add_executable(test_fire_engine
     tests/graphics/test_image.cpp
     tests/graphics/test_vertex.cpp
     tests/core/test_shader_loader.cpp
+    tests/core/test_system.cpp
     tests/input/test_camera_state.cpp
+    tests/scene/test_animator.cpp
     tests/scene/test_camera.cpp
     tests/scene/test_node.cpp
     tests/scene/test_scene_graph.cpp

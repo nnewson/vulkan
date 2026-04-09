@@ -1,5 +1,7 @@
 #include <fire_engine/renderer/renderer.hpp>
 
+#include <tuple>
+
 #include <fire_engine/renderer/render_context.hpp>
 #include <fire_engine/renderer/ubo.hpp>
 #include <fire_engine/scene/scene_graph.hpp>
@@ -95,12 +97,11 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
 void Renderer::recreateSwapchain(const Window& display)
 {
-    int w = 0, h = 0;
-    glfwGetFramebufferSize(display.getWindow(), &w, &h);
+    auto [w, h] = display.framebufferSize();
     while (w == 0 || h == 0)
     {
-        glfwGetFramebufferSize(display.getWindow(), &w, &h);
-        glfwWaitEvents();
+        std::tie(w, h) = display.framebufferSize();
+        Window::waitEvents();
     }
     waitIdle();
 

@@ -5,17 +5,17 @@
 namespace fire_engine
 {
 
-void System::init()
+void GlfwBackend::init()
 {
     glfwInit();
 }
 
-void System::destroy()
+void GlfwBackend::destroy()
 {
     glfwTerminate();
 }
 
-double System::getTime()
+double GlfwBackend::getTime()
 {
     return glfwGetTime();
 }

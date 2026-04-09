@@ -1,11 +1,13 @@
 #pragma once
 
 #include <string_view>
+#include <utility>
+#include <vector>
 
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 namespace fire_engine
 {
@@ -43,6 +45,18 @@ public:
     {
         framebufferResized_ = resized;
     }
+
+    static void pollEvents();
+    static void waitEvents();
+
+    [[nodiscard]]
+    std::pair<int, int> framebufferSize() const;
+
+    [[nodiscard]]
+    static std::vector<const char*> requiredVulkanExtensions();
+
+    [[nodiscard]]
+    vk::raii::SurfaceKHR createVulkanSurface(const vk::raii::Instance& instance) const;
 
 private:
     GLFWwindow* window_ = nullptr;

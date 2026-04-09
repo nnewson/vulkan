@@ -118,8 +118,7 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
 {
     if (caps.currentExtent.width != std::numeric_limits<uint32_t>::max())
         return caps.currentExtent;
-    int w, h;
-    glfwGetFramebufferSize(window.getWindow(), &w, &h);
+    auto [w, h] = window.framebufferSize();
     vk::Extent2D ext(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
     ext.width = std::clamp(ext.width, caps.minImageExtent.width, caps.maxImageExtent.width);
     ext.height = std::clamp(ext.height, caps.minImageExtent.height, caps.maxImageExtent.height);

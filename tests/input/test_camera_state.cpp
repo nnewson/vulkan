@@ -28,6 +28,12 @@ TEST(CameraStateConstruction, DefaultDeltaPitchIsZero)
     EXPECT_FLOAT_EQ(s.deltaPitch(), 0.0f);
 }
 
+TEST(CameraStateConstruction, DefaultTimeIsZero)
+{
+    CameraState s;
+    EXPECT_DOUBLE_EQ(s.time(), 0.0);
+}
+
 // ==========================================================================
 // Accessors
 // ==========================================================================
@@ -53,6 +59,13 @@ TEST(CameraStateAccessors, SetDeltaPitch)
     CameraState s;
     s.deltaPitch(-0.3f);
     EXPECT_FLOAT_EQ(s.deltaPitch(), -0.3f);
+}
+
+TEST(CameraStateAccessors, SetTime)
+{
+    CameraState s;
+    s.time(1.5);
+    EXPECT_DOUBLE_EQ(s.time(), 1.5);
 }
 
 TEST(CameraStateAccessors, OverwritePreviousValues)
@@ -118,4 +131,6 @@ TEST(CameraStateNoexcept, AllOperationsAreNoexcept)
     static_assert(noexcept(s.deltaPosition({})));
     static_assert(noexcept(s.deltaYaw(0.0f)));
     static_assert(noexcept(s.deltaPitch(0.0f)));
+    static_assert(noexcept(s.time()));
+    static_assert(noexcept(s.time(0.0)));
 }
