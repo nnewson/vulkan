@@ -17,7 +17,8 @@ Renderer::Renderer(const Window& window)
     swapchain_.createFramebuffers(pipeline_.renderPass());
 }
 
-void Renderer::drawFrame(Window& display, SceneGraph& scene)
+void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition,
+                         Vec3 cameraTarget)
 {
     auto& dev = device_.device();
 
@@ -59,8 +60,8 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene)
                       pipeline_,
                       cmd,
                       currentFrame_,
-                      scene.cameraPosition(),
-                      scene.cameraTarget()};
+                      cameraPosition,
+                      cameraTarget};
     scene.render(ctx);
 
     cmd.endRenderPass();

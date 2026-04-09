@@ -11,6 +11,7 @@ namespace fire_engine
 class Device;
 class Frame;
 class Pipeline;
+class Animator;
 class Node;
 class SceneGraph;
 
@@ -33,6 +34,9 @@ private:
 
     [[nodiscard]]
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);
+
+    static void loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                              Animator& animator);
 };
 
 } // namespace fire_engine

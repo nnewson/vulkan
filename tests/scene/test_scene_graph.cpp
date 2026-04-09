@@ -2,7 +2,6 @@
 
 #include <gtest/gtest.h>
 
-using fire_engine::Camera;
 using fire_engine::Mat4;
 using fire_engine::Node;
 using fire_engine::SceneGraph;
@@ -21,28 +20,6 @@ TEST(SceneGraphConstruction, DefaultRootTransformIsIdentity)
 {
     SceneGraph sg;
     EXPECT_EQ(sg.rootTransform(), Mat4::identity());
-}
-
-TEST(SceneGraphConstruction, DefaultActiveCameraIsNull)
-{
-    SceneGraph sg;
-    EXPECT_EQ(sg.activeCamera(), nullptr);
-}
-
-TEST(SceneGraphConstruction, DefaultCameraPositionIsZero)
-{
-    SceneGraph sg;
-    EXPECT_FLOAT_EQ(sg.cameraPosition().x(), 0.0f);
-    EXPECT_FLOAT_EQ(sg.cameraPosition().y(), 0.0f);
-    EXPECT_FLOAT_EQ(sg.cameraPosition().z(), 0.0f);
-}
-
-TEST(SceneGraphConstruction, DefaultCameraTargetIsZero)
-{
-    SceneGraph sg;
-    EXPECT_FLOAT_EQ(sg.cameraTarget().x(), 0.0f);
-    EXPECT_FLOAT_EQ(sg.cameraTarget().y(), 0.0f);
-    EXPECT_FLOAT_EQ(sg.cameraTarget().z(), 0.0f);
 }
 
 // ==========================================================================
@@ -87,33 +64,6 @@ TEST(SceneGraphRootTransform, SetRootTransform)
     Mat4 t = Mat4::translate({10.0f, 20.0f, 30.0f});
     sg.rootTransform(t);
     EXPECT_EQ(sg.rootTransform(), t);
-}
-
-// ==========================================================================
-// Active Camera
-// ==========================================================================
-
-TEST(SceneGraphCamera, SetActiveCamera)
-{
-    SceneGraph sg;
-    auto camNode = std::make_unique<Node>("Camera");
-    camNode->component().emplace<Camera>();
-    Node& ref = sg.addNode(std::move(camNode));
-
-    sg.activeCamera(&ref);
-    EXPECT_EQ(sg.activeCamera(), &ref);
-}
-
-TEST(SceneGraphCamera, ClearActiveCamera)
-{
-    SceneGraph sg;
-    auto camNode = std::make_unique<Node>("Camera");
-    camNode->component().emplace<Camera>();
-    Node& ref = sg.addNode(std::move(camNode));
-
-    sg.activeCamera(&ref);
-    sg.activeCamera(nullptr);
-    EXPECT_EQ(sg.activeCamera(), nullptr);
 }
 
 // ==========================================================================

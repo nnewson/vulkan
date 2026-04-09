@@ -6,7 +6,6 @@
 
 #include <fire_engine/core/gltf_loader.hpp>
 #include <fire_engine/core/system.hpp>
-#include <fire_engine/scene/camera.hpp>
 
 namespace fire_engine
 {
@@ -44,8 +43,8 @@ void FireEngine::loadScene()
     camera.localPosition({2.0f, 2.0f, 2.0f});
     camera.localPitch(-0.615f);
     camera.localYaw(-2.356f);
-    auto& camRef = scene_.addNode(std::move(cameraNode));
-    scene_.activeCamera(&camRef);
+    scene_.addNode(std::move(cameraNode));
+    camera_ = &camera;
 
     // Load glTF scene
     GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, renderer_->device(),
@@ -65,7 +64,7 @@ void FireEngine::mainLoop()
         auto input_state = input_.update(*window_, dt);
         scene_.update(input_state);
 
-        renderer_->drawFrame(*window_, scene_);
+        renderer_->drawFrame(*window_, scene_, camera_->worldPosition(), camera_->worldTarget());
     }
     renderer_->waitIdle();
 }

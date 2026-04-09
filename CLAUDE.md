@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads OBJ/MTL models with texture mapping and renders them with Blinn-Phong lighting. Built on macOS with MoltenVK. Uses a scenegraph architecture where components (Camera, Animator, Mesh) handle update and render logic.
+**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads glTF 2.0 models with texture mapping and PBR materials, and supports keyframe animation (LINEAR interpolation via SLERP). Built on macOS with MoltenVK. Uses a scenegraph architecture where components (Camera, Animator, Mesh) handle update and render logic.
 
 ## Build
 
@@ -18,34 +18,40 @@ Shaders are compiled from GLSL to SPIR-V via `glslc` as part of the build. Asset
 
 ## Dependencies
 
-Managed via vcpkg: `vulkan-headers`, `gtest`, `stb`, `tinyobjloader`. Also requires system GLFW 3.3+ and the Vulkan SDK (for `glslc`).
+Managed via vcpkg: `vulkan-headers`, `gtest`, `stb`, `fastgltf`. Also requires system GLFW 3.3+ and the Vulkan SDK (for `glslc`).
 
 ## Project Structure
 
 ```
 include/fire_engine/
-  core/            # System (GLFW lifecycle), ShaderLoader
+  animation/       # LinearAnimation (keyframe sampling, SLERP)
+  core/            # System (GLFW lifecycle), ShaderLoader, GltfLoader
   math/            # Vec3, Mat4, constants (header-only)
   graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture
+  input/           # CameraState, Input
   platform/        # Window, Keyboard, Mouse (Keyboard/Mouse header-only)
   renderer/        # Renderer, Device, Swapchain, Pipeline, Frame, RenderContext, UBO
   scene/           # Component, Node, SceneGraph, Transform, Camera, Animator, Mesh
   fire_engine.hpp
 src/
-  core/            # system.cpp, shader_loader.cpp
-  graphics/        # Implementations for graphics classes
+  animation/       # linear_animation.cpp
+  core/            # system.cpp, shader_loader.cpp, gltf_loader.cpp
+  graphics/        # image.cpp, texture.cpp
+  input/           # input.cpp
   platform/        # window.cpp, application.cpp (main entry point)
   renderer/        # device.cpp, frame.cpp, pipeline.cpp, renderer.cpp, swapchain.cpp
   scene/           # animator.cpp, camera.cpp, mesh.cpp, node.cpp, scene_graph.cpp, transform.cpp
   fire_engine.cpp
 shaders/           # GLSL vertex/fragment shaders
 tests/
+  animation/       # test_linear_animation.cpp
   core/            # test_shader_loader.cpp
   math/            # test_vec3.cpp, test_mat4.cpp
-  graphics/        # test_colour3.cpp, test_image.cpp, test_geometry.cpp, test_material.cpp
-  scene/           # test_camera.cpp
+  graphics/        # test_colour3.cpp, test_image.cpp, test_vertex.cpp
+  input/           # test_camera_state.cpp
+  scene/           # test_camera.cpp, test_node.cpp, test_scene_graph.cpp, test_transform.cpp
   assets/          # Minimal OBJ, MTL, PNG, BIN files for testing
-assets/            # OBJ, MTL, PNG, JPG model assets
+assets/            # glTF models (AnimatedCube/) and fallback textures
 cmake/             # Build-time scripts (copy_assets.cmake)
 ```
 
@@ -61,21 +67,25 @@ cmake/             # Build-time scripts (copy_assets.cmake)
 - **RenderContext** — per-frame data bag passed through the scenegraph during render: Device, Swapchain, Frame, Pipeline, active CommandBuffer, currentFrame index, camera position/target
 - **UBO** (`ubo.hpp`) — shared `UniformBufferObject`, `MaterialUBO` structs, `MAX_FRAMES_IN_FLIGHT` constant
 
+### Animation (`animation/`)
+
+- **LinearAnimation** — stores rotation keyframes (time + quaternion) and samples them at a given time. Uses SLERP for interpolation between keyframes, loops automatically. Converts the interpolated quaternion directly to a rotation Mat4
+
 ### SceneGraph (`scene/`)
 
 - **Component** — abstract base with `update(CameraState, Transform)` and `render(RenderContext, Mat4) -> Mat4`. The returned Mat4 is propagated to children as their parent world matrix
 - **Node** — holds a name, Transform, a single `Components` variant, parent pointer, and children. `update()` and `render()` propagate through the tree via `std::visit`
-- **SceneGraph** — owns root nodes. `update()` propagates input through the tree, then extracts camera data from the active camera node. `render()` propagates the RenderContext through the tree
+- **SceneGraph** — owns root nodes. `update()` propagates input through the tree. `render()` propagates the RenderContext through the tree. Has no camera knowledge — FireEngine owns the active Camera directly
 - **Transform** — position, rotation (Euler), scale → computes local and world matrices
 - **Camera** — processes input deltas to update position/yaw/pitch. `render()` is a no-op (returns world unchanged)
-- **Animator** — computes a time-based model matrix in `update()`, returns `world * modelMatrix_` from `render()` so children inherit the animation
-- **Mesh** — owns all its GPU resources: vertex/index buffers, texture, material UBOs, UBO buffers, descriptor pool/sets. `load(objPath, mtlPath, Device, Pipeline, Frame)` creates everything. `render()` writes the UBO and records draw commands (bind buffers, bind descriptors, drawIndexed) directly on the RenderContext's command buffer
+- **Animator** — owns a `LinearAnimation`, samples it each frame in `update()`, returns `world * modelMatrix_` from `render()` so children inherit the animation
+- **Mesh** — owns all its GPU resources: vertex/index buffers, texture, material UBOs, UBO buffers, descriptor pool/sets. `load(Geometry, Material, texturePath, Device, Pipeline, Frame)` creates everything. `render()` writes the UBO and records draw commands (bind buffers, bind descriptors, drawIndexed) directly on the RenderContext's command buffer
 
 ### Data Flow Per Frame
 
-1. `FireEngine::mainLoop()` polls input, calls `scene_.update(input_state)`, then `renderer_->drawFrame(*window_, scene_)`
-2. `SceneGraph::update()` propagates transforms and input through nodes; Camera writes its world position/target to SceneGraph
-3. `Renderer::drawFrame()` acquires image, begins render pass, builds RenderContext, calls `scene.render(ctx)`
+1. `FireEngine::mainLoop()` polls input, calls `scene_.update(input_state)`, then `renderer_->drawFrame(*window_, scene_, cameraPosition, cameraTarget)`
+2. `SceneGraph::update()` propagates transforms and input through nodes; FireEngine reads camera position/target directly from its owned Camera pointer
+3. `Renderer::drawFrame()` acquires image, begins render pass, builds RenderContext (with camera data), calls `scene.render(ctx)`
 4. During render traversal: Animator applies its model matrix to children's world; Mesh writes its UBO and records its own draw commands
 5. Renderer ends render pass, submits, presents
 
@@ -93,7 +103,7 @@ Formatting is enforced by `.clang-format` (Allman braces, 4-space indent, 100-co
 - Static factory methods for file loading: `Class::load_from_file(path)`
 - Compound assignment as primitives (`+=` modifies directly), binary operators delegate to them
 - Math constants in `math/constants.hpp` (`pi`, `deg_to_rad`, `rad_to_deg`, `float_epsilon`)
-- OBJ/MTL loading via tinyobjloader (`Geometry::load_from_file`, `Material::load_from_file`)
+- glTF loading via fastgltf (`GltfLoader::loadScene`) — extracts geometry, materials, textures, and animation keyframes
 - Shader loading via `core/ShaderLoader::load_from_file(path)`
 - Explicit rule-of-five on all classes (defaulted or deleted as appropriate)
 
@@ -147,13 +157,13 @@ Key points:
 
 ## Testing
 
-Google Test framework. All tests in a single executable `test_fire_engine`. Test files mirror the source structure: `tests/math/`, `tests/graphics/`, `tests/scene/`. Test assets (minimal OBJ, MTL, PNG files) live in `tests/assets/` and are copied to `build/test_assets/` at configure time. Tests cover construction, accessors, equality, arithmetic, file loading, move/copy semantics, edge cases, constexpr validation, and noexcept guarantees.
+Google Test framework. All tests in a single executable `test_fire_engine`. Test files mirror the source structure: `tests/animation/`, `tests/math/`, `tests/graphics/`, `tests/scene/`, etc. Test assets (minimal OBJ, MTL, PNG files) live in `tests/assets/` and are copied to `build/test_assets/` at configure time. Tests cover construction, accessors, equality, arithmetic, file loading, move/copy semantics, animation sampling/interpolation, edge cases, constexpr validation, and noexcept guarantees.
 
 ## Rendering Pipeline
 
 - Vulkan with vulkan.hpp (C++ bindings)
 - Descriptor set layout: binding 0 (UBO: model/view/proj/cameraPos), binding 1 (MaterialUBO), binding 2 (texture sampler)
 - Each Mesh owns its own descriptor pool/sets and UBO buffers — supports multiple meshes
-- OBJ/MTL loading via tinyobjloader with automatic triangulation and normal computation
+- glTF 2.0 loading via fastgltf — geometry, PBR materials, textures, and keyframe animations
 - Texture loading via stb_image (RGBA), uploaded to GPU via staging buffer
 - GLFW for windowing with keyboard (WASD/QE) and mouse camera controls

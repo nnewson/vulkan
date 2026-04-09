@@ -13,6 +13,7 @@
 #include <fire_engine/renderer/device.hpp>
 #include <fire_engine/renderer/frame.hpp>
 #include <fire_engine/renderer/pipeline.hpp>
+#include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -103,6 +104,8 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Dev
             }
 
             auto& animRef = rootRef.addChild(std::move(animNode));
+            loadAnimation(asset, nodeIndex,
+                          std::get<Animator>(animRef.component()));
 
             // Load mesh as child of animator
             if (gltfNode.meshIndex.has_value())
@@ -163,6 +166,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
                 std::make_unique<Node>(std::string(asset.nodes[childIndex].name) + "_Animator");
             animNode->component().emplace<Animator>();
             auto& animRef = childRef.addChild(std::move(animNode));
+            loadAnimation(asset, childIndex,
+                          std::get<Animator>(animRef.component()));
 
             const auto& childGltfNode = asset.nodes[childIndex];
             if (childGltfNode.meshIndex.has_value())
@@ -320,6 +325,54 @@ bool GltfLoader::nodeHasAnimation(const fastgltf::Asset& asset, std::size_t node
         }
     }
     return false;
+}
+
+void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                               Animator& animator)
+{
+    for (const auto& anim : asset.animations)
+    {
+        for (const auto& channel : anim.channels)
+        {
+            if (!channel.nodeIndex.has_value() || channel.nodeIndex.value() != nodeIndex)
+            {
+                continue;
+            }
+            if (channel.path != fastgltf::AnimationPath::Rotation)
+            {
+                continue;
+            }
+
+            const auto& sampler = anim.samplers[channel.samplerIndex];
+            const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+            const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+
+            // Read keyframe times
+            std::vector<float> times(inputAccessor.count);
+            fastgltf::iterateAccessorWithIndex<float>(
+                asset, inputAccessor,
+                [&](float t, std::size_t idx) { times[idx] = t; });
+
+            // Read quaternion values
+            std::vector<fastgltf::math::fvec4> quats(outputAccessor.count);
+            fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
+                asset, outputAccessor,
+                [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
+
+            // Build keyframes
+            std::vector<LinearAnimation::Keyframe> keyframes;
+            std::size_t count = std::min(times.size(), quats.size());
+            keyframes.reserve(count);
+            for (std::size_t i = 0; i < count; ++i)
+            {
+                keyframes.push_back(
+                    {times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
+            }
+
+            animator.animation().keyframes(std::move(keyframes));
+            return;
+        }
+    }
 }
 
 } // namespace fire_engine

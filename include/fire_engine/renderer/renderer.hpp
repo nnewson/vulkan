@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fire_engine/math/vec3.hpp>
 #include <fire_engine/renderer/device.hpp>
 #include <fire_engine/renderer/frame.hpp>
 #include <fire_engine/renderer/pipeline.hpp>
@@ -21,7 +22,7 @@ public:
     Renderer(Renderer&&) noexcept = default;
     Renderer& operator=(Renderer&&) noexcept = default;
 
-    void drawFrame(Window& display, SceneGraph& scene);
+    void drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget);
 
     void waitIdle() const
     {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
@@ -21,7 +22,18 @@ public:
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
 
+    [[nodiscard]] LinearAnimation& animation() noexcept
+    {
+        return animation_;
+    }
+
+    [[nodiscard]] const LinearAnimation& animation() const noexcept
+    {
+        return animation_;
+    }
+
 private:
+    LinearAnimation animation_;
     Mat4 modelMatrix_{Mat4::identity()};
     double startTime_{0.0};
     bool initialized_{false};
