@@ -12,17 +12,16 @@ find_package(Vulkan REQUIRED)
 find_package(glfw3 3.3 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(Stb REQUIRED)
-find_package(tinyobjloader CONFIG REQUIRED)
+find_package(fastgltf CONFIG REQUIRED)
 
 # --- Library ------------------------------------------------------------
 
 add_library(fireengine SHARED
+    src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
     src/core/system.cpp
     src/fire_engine.cpp
-    src/graphics/geometry.cpp
     src/graphics/image.cpp
-    src/graphics/material.cpp
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp
@@ -42,7 +41,7 @@ add_library(fireengine SHARED
 target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include ${Stb_INCLUDE_DIR})
 target_compile_features(fireengine PUBLIC cxx_std_23)
 target_compile_options(fireengine PRIVATE -Wall -Wextra -Wpedantic)
-target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw tinyobjloader::tinyobjloader)
+target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw fastgltf::fastgltf)
 
 # --- Executable ---------------------------------------------------------
 
@@ -96,9 +95,7 @@ add_executable(test_fire_engine
     tests/math/test_mat4.cpp
     tests/math/test_vec3.cpp
     tests/graphics/test_colour3.cpp
-    tests/graphics/test_geometry.cpp
     tests/graphics/test_image.cpp
-    tests/graphics/test_material.cpp
     tests/graphics/test_vertex.cpp
     tests/core/test_shader_loader.cpp
     tests/input/test_camera_state.cpp

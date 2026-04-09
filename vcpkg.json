@@ -1,8 +1,8 @@
 {
   "dependencies": [
+    "fastgltf",
     "gtest",
     "stb",
-    "vulkan-headers",
-    "tinyobjloader"
+    "vulkan-headers"
   ]
 }

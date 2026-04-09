@@ -11,9 +11,17 @@ Texture Texture::load_from_file(const std::string& path, const vk::raii::Device&
                                 vk::CommandPool cmdPool, const vk::raii::Queue& queue)
 {
     Image img = Image::load_from_file(path);
+    return load_from_data(img.data(), img.width(), img.height(), device, physDevice, cmdPool, queue);
+}
 
+Texture Texture::load_from_data(const uint8_t* pixels, int width, int height,
+                                const vk::raii::Device& device,
+                                const vk::raii::PhysicalDevice& physDevice,
+                                vk::CommandPool cmdPool, const vk::raii::Queue& queue)
+{
     Texture tex;
-    vk::DeviceSize imageSize = img.size_bytes();
+    vk::DeviceSize imageSize =
+        static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
 
     // Create staging buffer (RAII — auto-destroyed at end of scope)
     vk::BufferCreateInfo bufCi({}, imageSize, vk::BufferUsageFlagBits::eTransferSrc,
@@ -29,14 +37,14 @@ Texture Texture::load_from_file(const std::string& path, const vk::raii::Device&
     stagingBuf.bindMemory(*stagingMem, 0);
 
     void* data = stagingMem.mapMemory(0, imageSize);
-    std::memcpy(data, img.data(), imageSize);
+    std::memcpy(data, pixels, imageSize);
     stagingMem.unmapMemory();
 
     // Create Vulkan image
     vk::ImageCreateInfo imgCi(
         {}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Srgb,
-        vk::Extent3D(static_cast<uint32_t>(img.width()), static_cast<uint32_t>(img.height()), 1), 1,
-        1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::Extent3D(static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1), 1, 1,
+        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
         vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     tex.image_ = vk::raii::Image(device, imgCi);
@@ -66,7 +74,7 @@ Texture Texture::load_from_file(const std::string& path, const vk::raii::Device&
     // Copy buffer to image
     vk::BufferImageCopy region(
         0, 0, 0, vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, 0, 1), {0, 0, 0},
-        {static_cast<uint32_t>(img.width()), static_cast<uint32_t>(img.height()), 1});
+        {static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1});
     cmd.copyBufferToImage(*stagingBuf, *tex.image_, vk::ImageLayout::eTransferDstOptimal, region);
 
     // Transition: transfer dst -> shader read

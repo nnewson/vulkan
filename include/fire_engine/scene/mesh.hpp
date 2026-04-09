@@ -28,7 +28,8 @@ public:
     Mesh(Mesh&&) noexcept = default;
     Mesh& operator=(Mesh&&) noexcept = default;
 
-    void load(const std::string& objPath, const std::string& mtlPath,
+    void load(const Geometry& renderData, const Material& material,
+              const std::string& texturePath,
               const Device& device, const Pipeline& pipeline, Frame& frame);
 
     void update(const CameraState& input_state, const Transform& transform) override;
@@ -43,7 +44,7 @@ private:
 
     const vk::raii::Device* vkDevice_{nullptr};
 
-    Geometry::IndexedRenderData renderData_;
+    Geometry renderData_;
     Material material_;
     Texture texture_;
 

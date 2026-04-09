@@ -4,10 +4,9 @@
 
 #include <fire_engine/fire_engine.hpp>
 
+#include <fire_engine/core/gltf_loader.hpp>
 #include <fire_engine/core/system.hpp>
-#include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/camera.hpp>
-#include <fire_engine/scene/mesh.hpp>
 
 namespace fire_engine
 {
@@ -48,27 +47,9 @@ void FireEngine::loadScene()
     auto& camRef = scene_.addNode(std::move(cameraNode));
     scene_.activeCamera(&camRef);
 
-    // Animator with animated capsule mesh as child
-    auto animNode = std::make_unique<Node>("Animator");
-    animNode->component().emplace<Animator>();
-    auto& animRef = scene_.addNode(std::move(animNode));
-
-    auto capsuleNode = std::make_unique<Node>("Capsule");
-    capsuleNode->component().emplace<Mesh>();
-    auto& capsuleRef = animRef.addChild(std::move(capsuleNode));
-    auto& capsule = std::get<Mesh>(capsuleRef.component());
-    capsule.load("capsule.obj", "capsule.mtl", renderer_->device(), renderer_->pipeline(),
-                 renderer_->frame());
-
-    // Static teapot mesh at scene root (no animator parent)
-    auto teapotNode = std::make_unique<Node>("Teapot");
-    teapotNode->transform().scale({0.03f, 0.03f, 0.03f});
-    teapotNode->transform().position({5.0f, 0.0f, 5.0f});
-    teapotNode->component().emplace<Mesh>();
-    auto& teapotRef = scene_.addNode(std::move(teapotNode));
-    auto& teapot = std::get<Mesh>(teapotRef.component());
-    teapot.load("teapot.obj", "default.mtl", renderer_->device(), renderer_->pipeline(),
-                renderer_->frame());
+    // Load glTF scene
+    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_,
+                          renderer_->device(), renderer_->pipeline(), renderer_->frame());
 }
 
 void FireEngine::mainLoop()

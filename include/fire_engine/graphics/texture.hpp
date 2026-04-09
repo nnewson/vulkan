@@ -16,6 +16,11 @@ public:
                                   const vk::raii::PhysicalDevice& physDevice,
                                   vk::CommandPool cmdPool, const vk::raii::Queue& queue);
 
+    static Texture load_from_data(const uint8_t* pixels, int width, int height,
+                                  const vk::raii::Device& device,
+                                  const vk::raii::PhysicalDevice& physDevice,
+                                  vk::CommandPool cmdPool, const vk::raii::Queue& queue);
+
     Texture() = default;
     ~Texture() = default;
 

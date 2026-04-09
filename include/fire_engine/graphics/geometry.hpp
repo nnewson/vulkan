@@ -1,11 +1,9 @@
 #pragma once
 
-#include <optional>
-#include <string>
+#include <cstdint>
+#include <vector>
 
-#include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/vertex.hpp>
-#include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
 {
@@ -13,8 +11,6 @@ namespace fire_engine
 class Geometry
 {
 public:
-    static Geometry load_from_file(const std::string& path);
-
     Geometry() = default;
     ~Geometry() = default;
 
@@ -23,35 +19,27 @@ public:
     Geometry(Geometry&&) noexcept = default;
     Geometry& operator=(Geometry&&) noexcept = default;
 
-    struct IndexedRenderData
+    [[nodiscard]] const std::vector<Vertex>& vertices() const noexcept
     {
-        std::vector<Vertex> vertices;
-        std::vector<uint16_t> indices;
-    };
+        return vertices_;
+    }
+    void vertices(std::vector<Vertex> v) noexcept
+    {
+        vertices_ = std::move(v);
+    }
 
-    Geometry::IndexedRenderData
-    to_coloured_indexed_geometry(const std::list<Material> materials) const;
+    [[nodiscard]] const std::vector<uint16_t>& indices() const noexcept
+    {
+        return indices_;
+    }
+    void indices(std::vector<uint16_t> v) noexcept
+    {
+        indices_ = std::move(v);
+    }
 
 private:
-    struct FaceVertex
-    {
-        std::size_t position_index{};
-        std::optional<std::size_t> texcoord_index;
-        std::optional<std::size_t> normal_index;
-    };
-
-    struct Face
-    {
-        std::array<FaceVertex, 3> vertices{};
-        std::string material_name;
-    };
-
-    void computeNormals();
-
-    std::vector<Vec3> positions;
-    std::vector<std::array<float, 2>> texcoords;
-    std::vector<Vec3> normals;
-    std::vector<Face> triangles;
+    std::vector<Vertex> vertices_;
+    std::vector<uint16_t> indices_;
 };
 
 } // namespace fire_engine

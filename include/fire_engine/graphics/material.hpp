@@ -1,6 +1,5 @@
 #pragma once
 
-#include <list>
 #include <string>
 
 #include <fire_engine/graphics/colour3.hpp>
@@ -11,8 +10,6 @@ namespace fire_engine
 class Material
 {
 public:
-    static std::list<Material> load_from_file(const std::string& path);
-
     Material() = default;
     ~Material() = default;
 
@@ -176,16 +173,16 @@ public:
 
 private:
     std::string name_;
-    Colour3 ambient_{0.2f, 0.2f, 0.2f};
-    Colour3 diffuse_{1.0f, 1.0f, 1.0f};
-    Colour3 specular_{0.0f, 0.0f, 0.0f};
-    Colour3 emissive_{0.0f, 0.0f, 0.0f};
+    Colour3 ambient_{};
+    Colour3 diffuse_{};
+    Colour3 specular_{};
+    Colour3 emissive_{};
     float shininess_{0.0f};
-    float ior_{1.0f};
+    float ior_{0.0f};
     float transparency_{0.0f};
     int illum_{0};
     std::string mapKd_;
-    float roughness_{1.0f};
+    float roughness_{0.0f};
     float metallic_{0.0f};
     float sheen_{0.0f};
     float clearcoat_{0.0f};

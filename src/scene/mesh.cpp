@@ -11,45 +11,39 @@
 namespace fire_engine
 {
 
-void Mesh::load(const std::string& objPath, const std::string& mtlPath,
+void Mesh::load(const Geometry& renderData, const Material& material,
+                const std::string& texturePath,
                 const Device& device, const Pipeline& pipeline, Frame& frame)
 {
     vkDevice_ = &device.device();
 
-    // Load geometry and material
-    std::list<Material> materials = Material::load_from_file(mtlPath);
-    Geometry geometry = Geometry::load_from_file(objPath);
-
-    if (!materials.empty())
-        material_ = materials.front();
-    renderData_ = geometry.to_coloured_indexed_geometry(materials);
+    material_ = material;
+    renderData_ = renderData;
 
     // Create vertex buffer
-    vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices[0]) * renderData_.vertices.size();
+    vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices()[0]) * renderData_.vertices().size();
     auto [vBuf, vMem] = device.createBuffer(
         vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
     vertexBuf_ = std::move(vBuf);
     vertexMem_ = std::move(vMem);
     void* vertData = vertexMem_.mapMemory(0, vertexBufSize);
-    memcpy(vertData, renderData_.vertices.data(), vertexBufSize);
+    memcpy(vertData, renderData_.vertices().data(), vertexBufSize);
     vertexMem_.unmapMemory();
 
     // Create index buffer
-    vk::DeviceSize indexBufSize = sizeof(renderData_.indices[0]) * renderData_.indices.size();
+    vk::DeviceSize indexBufSize = sizeof(renderData_.indices()[0]) * renderData_.indices().size();
     auto [iBuf, iMem] = device.createBuffer(
         indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
         vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
     indexBuf_ = std::move(iBuf);
     indexMem_ = std::move(iMem);
     void* indexData = indexMem_.mapMemory(0, indexBufSize);
-    memcpy(indexData, renderData_.indices.data(), indexBufSize);
+    memcpy(indexData, renderData_.indices().data(), indexBufSize);
     indexMem_.unmapMemory();
 
     // Load texture
-    std::string texPath = material_.mapKd();
-    if (texPath.empty())
-        texPath = "default.png";
+    std::string texPath = texturePath.empty() ? "default.png" : texturePath;
     texture_ = Texture::load_from_file(texPath, *vkDevice_, device.physicalDevice(),
                                        frame.commandPool(), device.graphicsQueue());
 
@@ -183,7 +177,7 @@ Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)
     vk::DescriptorSet ds = *descSets_[ctx.currentFrame];
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0,
                            ds, {});
-    cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices.size()), 1, 0, 0, 0);
+    cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices().size()), 1, 0, 0, 0);
 
     return world;
 }
