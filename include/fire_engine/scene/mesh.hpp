@@ -3,7 +3,7 @@
 #include <string>
 #include <vector>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
@@ -21,7 +21,7 @@ class Mesh : public Component
 {
 public:
     Mesh() = default;
-    ~Mesh() override;
+    ~Mesh() override = default;
 
     Mesh(const Mesh&) = delete;
     Mesh& operator=(const Mesh&) = delete;
@@ -41,27 +41,28 @@ private:
     void createDescriptorPool();
     void createDescriptorSets(const Pipeline& pipeline);
 
-    vk::Device vkDevice_;
+    const vk::raii::Device* vkDevice_{nullptr};
 
     Geometry::IndexedRenderData renderData_;
     Material material_;
     Texture texture_;
 
-    vk::Buffer vertexBuf_;
-    vk::DeviceMemory vertexMem_;
-    vk::Buffer indexBuf_;
-    vk::DeviceMemory indexMem_;
+    vk::raii::Buffer vertexBuf_{nullptr};
+    vk::raii::DeviceMemory vertexMem_{nullptr};
+    vk::raii::Buffer indexBuf_{nullptr};
+    vk::raii::DeviceMemory indexMem_{nullptr};
 
-    std::vector<vk::Buffer> uniformBufs_;
-    std::vector<vk::DeviceMemory> uniformMems_;
+    std::vector<vk::raii::Buffer> uniformBufs_;
+    std::vector<vk::raii::DeviceMemory> uniformMems_;
     std::vector<void*> uniformMapped_;
 
-    std::vector<vk::Buffer> materialBufs_;
-    std::vector<vk::DeviceMemory> materialMems_;
+    std::vector<vk::raii::Buffer> materialBufs_;
+    std::vector<vk::raii::DeviceMemory> materialMems_;
     std::vector<void*> materialMapped_;
 
-    vk::DescriptorPool descPool_;
-    std::vector<vk::DescriptorSet> descSets_;
+    // Descriptor sets declared after pool so they're destroyed first
+    vk::raii::DescriptorPool descPool_{nullptr};
+    std::vector<vk::raii::DescriptorSet> descSets_;
 };
 
 } // namespace fire_engine

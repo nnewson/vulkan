@@ -2,7 +2,7 @@
 
 #include <vector>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/renderer/device.hpp>
 #include <fire_engine/renderer/swapchain.hpp>
@@ -14,7 +14,7 @@ class Pipeline
 {
 public:
     explicit Pipeline(const Device& device, const Swapchain& swapchain);
-    ~Pipeline();
+    ~Pipeline() = default;
 
     Pipeline(const Pipeline&) = delete;
     Pipeline& operator=(const Pipeline&) = delete;
@@ -23,19 +23,19 @@ public:
 
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {
-        return renderPass_;
+        return *renderPass_;
     }
     [[nodiscard]] vk::DescriptorSetLayout descriptorSetLayout() const noexcept
     {
-        return descSetLayout_;
+        return *descSetLayout_;
     }
     [[nodiscard]] vk::PipelineLayout pipelineLayout() const noexcept
     {
-        return pipelineLayout_;
+        return *pipelineLayout_;
     }
     [[nodiscard]] vk::Pipeline pipeline() const noexcept
     {
-        return pipeline_;
+        return *pipeline_;
     }
 
 private:
@@ -43,13 +43,11 @@ private:
     void createDescriptorSetLayout();
     void createGraphicsPipeline(const Swapchain& swapchain);
 
-    [[nodiscard]] vk::ShaderModule createShaderModule(const std::vector<char>& code);
-
-    vk::Device device_; // stored for cleanup
-    vk::RenderPass renderPass_;
-    vk::DescriptorSetLayout descSetLayout_;
-    vk::PipelineLayout pipelineLayout_;
-    vk::Pipeline pipeline_;
+    const vk::raii::Device* device_{nullptr};
+    vk::raii::RenderPass renderPass_{nullptr};
+    vk::raii::DescriptorSetLayout descSetLayout_{nullptr};
+    vk::raii::PipelineLayout pipelineLayout_{nullptr};
+    vk::raii::Pipeline pipeline_{nullptr};
 };
 
 } // namespace fire_engine

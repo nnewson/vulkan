@@ -26,13 +26,6 @@ Device::Device(const Window& window)
     createLogicalDevice();
 }
 
-Device::~Device()
-{
-    device_.destroy();
-    instance_.destroySurfaceKHR(surface_);
-    instance_.destroy();
-}
-
 void Device::createInstance()
 {
     vk::ApplicationInfo appInfo("Vulkan Cube", VK_MAKE_VERSION(1, 0, 0), "No Engine",
@@ -51,15 +44,15 @@ void Device::createInstance()
     vk::InstanceCreateInfo ci(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo,
                               layers, exts);
 
-    instance_ = vk::createInstance(ci);
+    instance_ = vk::raii::Instance(context_, ci);
 }
 
 void Device::createSurface(const Window& window)
 {
-    VkSurfaceKHR surface;
-    if (glfwCreateWindowSurface(instance_, window.getWindow(), nullptr, &surface) != VK_SUCCESS)
+    VkSurfaceKHR rawSurface;
+    if (glfwCreateWindowSurface(*instance_, window.getWindow(), nullptr, &rawSurface) != VK_SUCCESS)
         throw std::runtime_error("failed to create window surface");
-    surface_ = surface;
+    surface_ = vk::raii::SurfaceKHR(instance_, rawSurface);
 }
 
 void Device::pickPhysicalDevice()
@@ -69,14 +62,14 @@ void Device::pickPhysicalDevice()
     {
         if (isDeviceSuitable(d))
         {
-            physDevice_ = d;
+            physDevice_ = std::move(d);
             return;
         }
     }
     throw std::runtime_error("no suitable GPU found");
 }
 
-bool Device::isDeviceSuitable(vk::PhysicalDevice d)
+bool Device::isDeviceSuitable(const vk::raii::PhysicalDevice& d)
 {
     auto [gf, pf] = findQueueFamilies(d);
     if (!gf.has_value() || !pf.has_value())
@@ -89,13 +82,13 @@ bool Device::isDeviceSuitable(vk::PhysicalDevice d)
     if (!required.empty())
         return false;
 
-    auto fmts = d.getSurfaceFormatsKHR(surface_);
-    auto modes = d.getSurfacePresentModesKHR(surface_);
+    auto fmts = d.getSurfaceFormatsKHR(*surface_);
+    auto modes = d.getSurfacePresentModesKHR(*surface_);
     return !fmts.empty() && !modes.empty();
 }
 
 std::pair<std::optional<uint32_t>, std::optional<uint32_t>>
-Device::findQueueFamilies(vk::PhysicalDevice d)
+Device::findQueueFamilies(const vk::raii::PhysicalDevice& d)
 {
     auto families = d.getQueueFamilyProperties();
     std::optional<uint32_t> gf, pf;
@@ -103,7 +96,7 @@ Device::findQueueFamilies(vk::PhysicalDevice d)
     {
         if (families[i].queueFlags & vk::QueueFlagBits::eGraphics)
             gf = i;
-        if (d.getSurfaceSupportKHR(i, surface_))
+        if (d.getSurfaceSupportKHR(i, *surface_))
             pf = i;
         if (gf && pf)
             break;
@@ -130,7 +123,7 @@ void Device::createLogicalDevice()
 
     vk::DeviceCreateInfo ci({}, qcis, {}, deviceExtensions, &features);
 
-    device_ = physDevice_.createDevice(ci);
+    device_ = vk::raii::Device(physDevice_, ci);
     graphicsQueue_ = device_.getQueue(graphicsFamily_, 0);
     presentQueue_ = device_.getQueue(presentFamily_, 0);
 }
@@ -144,17 +137,19 @@ uint32_t Device::findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) 
     throw std::runtime_error("failed to find suitable memory type");
 }
 
-void Device::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                          vk::MemoryPropertyFlags props, vk::Buffer& buf,
-                          vk::DeviceMemory& mem) const
+std::pair<vk::raii::Buffer, vk::raii::DeviceMemory>
+Device::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                     vk::MemoryPropertyFlags props) const
 {
     vk::BufferCreateInfo ci({}, size, usage, vk::SharingMode::eExclusive);
-    buf = device_.createBuffer(ci);
+    vk::raii::Buffer buf(device_, ci);
 
-    auto req = device_.getBufferMemoryRequirements(buf);
+    auto req = buf.getMemoryRequirements();
     vk::MemoryAllocateInfo ai(req.size, findMemoryType(req.memoryTypeBits, props));
-    mem = device_.allocateMemory(ai);
-    device_.bindBufferMemory(buf, mem, 0);
+    vk::raii::DeviceMemory mem(device_, ai);
+    buf.bindMemory(*mem, 0);
+
+    return {std::move(buf), std::move(mem)};
 }
 
 } // namespace fire_engine

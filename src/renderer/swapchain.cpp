@@ -6,15 +6,10 @@ namespace fire_engine
 {
 
 Swapchain::Swapchain(const Device& device, const Window& window)
-    : device_(device.device())
+    : device_(&device.device())
 {
     createSwapchain(device, window);
     createImageViews();
-}
-
-Swapchain::~Swapchain()
-{
-    cleanup();
 }
 
 void Swapchain::createDepthResources(const Device& device)
@@ -25,43 +20,39 @@ void Swapchain::createDepthResources(const Device& device)
                            vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                            vk::ImageUsageFlagBits::eDepthStencilAttachment,
                            vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
-    depthImage_ = device_.createImage(ci);
+    depthImage_ = vk::raii::Image(*device_, ci);
 
-    auto req = device_.getImageMemoryRequirements(depthImage_);
+    auto req = depthImage_.getMemoryRequirements();
     vk::MemoryAllocateInfo ai(
         req.size,
         device.findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
-    depthMem_ = device_.allocateMemory(ai);
-    device_.bindImageMemory(depthImage_, depthMem_, 0);
-    depthView_ = createImageView(depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
+    depthMem_ = vk::raii::DeviceMemory(*device_, ai);
+    depthImage_.bindMemory(*depthMem_, 0);
+    depthView_ = createImageView(*depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
 }
 
 void Swapchain::createFramebuffers(vk::RenderPass renderPass)
 {
-    framebuffers_.resize(views_.size());
+    framebuffers_.clear();
+    framebuffers_.reserve(views_.size());
     for (size_t i = 0; i < views_.size(); ++i)
     {
-        std::array<vk::ImageView, 2> attachments = {views_[i], depthView_};
+        std::array<vk::ImageView, 2> attachments = {*views_[i], *depthView_};
         vk::FramebufferCreateInfo ci({}, renderPass, attachments, extent_.width, extent_.height, 1);
-        framebuffers_[i] = device_.createFramebuffer(ci);
+        framebuffers_.emplace_back(*device_, ci);
     }
-}
-
-void Swapchain::cleanup()
-{
-    device_.destroyImageView(depthView_);
-    device_.destroyImage(depthImage_);
-    device_.freeMemory(depthMem_);
-    for (auto fb : framebuffers_)
-        device_.destroyFramebuffer(fb);
-    for (auto iv : views_)
-        device_.destroyImageView(iv);
-    device_.destroySwapchainKHR(swapchain_);
 }
 
 void Swapchain::recreate(const Device& device, const Window& window, vk::RenderPass renderPass)
 {
-    cleanup();
+    // Destroy in reverse dependency order
+    framebuffers_.clear();
+    views_.clear();
+    depthView_ = nullptr;
+    depthImage_ = nullptr;
+    depthMem_ = nullptr;
+    swapchain_ = nullptr;
+
     createSwapchain(device, window);
     createImageViews();
     createDepthResources(device);
@@ -70,7 +61,7 @@ void Swapchain::recreate(const Device& device, const Window& window, vk::RenderP
 
 void Swapchain::createSwapchain(const Device& device, const Window& window)
 {
-    auto caps = device.physicalDevice().getSurfaceCapabilitiesKHR(device.surface());
+    auto caps = device.physicalDevice().getSurfaceCapabilitiesKHR(*device.surface());
     auto fmt = chooseSwapFormat(device);
     auto mode = chooseSwapPresentMode(device);
     auto extent = chooseSwapExtent(window, caps);
@@ -83,28 +74,29 @@ void Swapchain::createSwapchain(const Device& device, const Window& window)
     bool concurrent = device.graphicsFamily() != device.presentFamily();
 
     vk::SwapchainCreateInfoKHR ci(
-        {}, device.surface(), imgCount, fmt.format, fmt.colorSpace, extent, 1,
+        {}, *device.surface(), imgCount, fmt.format, fmt.colorSpace, extent, 1,
         vk::ImageUsageFlagBits::eColorAttachment,
         concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
         concurrent ? 2u : 0u, concurrent ? families : nullptr, caps.currentTransform,
         vk::CompositeAlphaFlagBitsKHR::eOpaque, mode, vk::True);
 
-    swapchain_ = device_.createSwapchainKHR(ci);
-    images_ = device_.getSwapchainImagesKHR(swapchain_);
+    swapchain_ = vk::raii::SwapchainKHR(*device_, ci);
+    images_ = swapchain_.getImages();
     format_ = fmt.format;
     extent_ = extent;
 }
 
 void Swapchain::createImageViews()
 {
-    views_.resize(images_.size());
+    views_.clear();
+    views_.reserve(images_.size());
     for (size_t i = 0; i < images_.size(); ++i)
-        views_[i] = createImageView(images_[i], format_, vk::ImageAspectFlagBits::eColor);
+        views_.push_back(createImageView(images_[i], format_, vk::ImageAspectFlagBits::eColor));
 }
 
 vk::SurfaceFormatKHR Swapchain::chooseSwapFormat(const Device& device)
 {
-    auto fmts = device.physicalDevice().getSurfaceFormatsKHR(device.surface());
+    auto fmts = device.physicalDevice().getSurfaceFormatsKHR(*device.surface());
     for (auto& f : fmts)
         if (f.format == vk::Format::eB8G8R8A8Srgb &&
             f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
@@ -114,7 +106,7 @@ vk::SurfaceFormatKHR Swapchain::chooseSwapFormat(const Device& device)
 
 vk::PresentModeKHR Swapchain::chooseSwapPresentMode(const Device& device)
 {
-    auto modes = device.physicalDevice().getSurfacePresentModesKHR(device.surface());
+    auto modes = device.physicalDevice().getSurfacePresentModesKHR(*device.surface());
     for (auto& m : modes)
         if (m == vk::PresentModeKHR::eMailbox)
             return m;
@@ -134,11 +126,12 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
     return ext;
 }
 
-vk::ImageView Swapchain::createImageView(vk::Image img, vk::Format fmt, vk::ImageAspectFlags aspect)
+vk::raii::ImageView Swapchain::createImageView(vk::Image img, vk::Format fmt,
+                                               vk::ImageAspectFlags aspect)
 {
     vk::ImageViewCreateInfo ci({}, img, vk::ImageViewType::e2D, fmt, {},
                                vk::ImageSubresourceRange(aspect, 0, 1, 0, 1));
-    return device_.createImageView(ci);
+    return vk::raii::ImageView(*device_, ci);
 }
 
 } // namespace fire_engine

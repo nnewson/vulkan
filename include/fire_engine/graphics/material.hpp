@@ -3,8 +3,6 @@
 #include <list>
 #include <string>
 
-#include <vulkan/vulkan.hpp>
-
 #include <fire_engine/graphics/colour3.hpp>
 
 namespace fire_engine

@@ -19,13 +19,13 @@ Renderer::Renderer(const Window& window)
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene)
 {
-    auto dev = device_.device();
+    auto& dev = device_.device();
 
     (void)dev.waitForFences(frame_.inFlightFence(currentFrame_), vk::True, UINT64_MAX);
 
     auto [acquireResult, imageIndex] =
-        dev.acquireNextImageKHR(swapchain_.swapchain(), UINT64_MAX,
-                                frame_.imageAvailable(currentFrame_));
+        (*dev).acquireNextImageKHR(swapchain_.swapchain(), UINT64_MAX,
+                                   frame_.imageAvailable(currentFrame_));
     if (acquireResult == vk::Result::eErrorOutOfDateKHR)
     {
         recreateSwapchain(display);
@@ -48,7 +48,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene)
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
     vk::RenderPassBeginInfo rpBegin(pipeline_.renderPass(),
-                                    swapchain_.framebuffers()[imageIndex],
+                                    swapchain_.framebuffer(imageIndex),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);

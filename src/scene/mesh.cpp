@@ -11,30 +11,10 @@
 namespace fire_engine
 {
 
-Mesh::~Mesh()
-{
-    if (!vkDevice_)
-        return;
-
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
-    {
-        vkDevice_.destroyBuffer(uniformBufs_[i]);
-        vkDevice_.freeMemory(uniformMems_[i]);
-        vkDevice_.destroyBuffer(materialBufs_[i]);
-        vkDevice_.freeMemory(materialMems_[i]);
-    }
-    vkDevice_.destroyDescriptorPool(descPool_);
-    texture_.destroy(vkDevice_);
-    vkDevice_.destroyBuffer(indexBuf_);
-    vkDevice_.freeMemory(indexMem_);
-    vkDevice_.destroyBuffer(vertexBuf_);
-    vkDevice_.freeMemory(vertexMem_);
-}
-
 void Mesh::load(const std::string& objPath, const std::string& mtlPath,
                 const Device& device, const Pipeline& pipeline, Frame& frame)
 {
-    vkDevice_ = device.device();
+    vkDevice_ = &device.device();
 
     // Load geometry and material
     std::list<Material> materials = Material::load_from_file(mtlPath);
@@ -46,43 +26,46 @@ void Mesh::load(const std::string& objPath, const std::string& mtlPath,
 
     // Create vertex buffer
     vk::DeviceSize vertexBufSize = sizeof(renderData_.vertices[0]) * renderData_.vertices.size();
-    device.createBuffer(vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
-                        vk::MemoryPropertyFlagBits::eHostVisible |
-                            vk::MemoryPropertyFlagBits::eHostCoherent,
-                        vertexBuf_, vertexMem_);
-    void* vertData = vkDevice_.mapMemory(vertexMem_, 0, vertexBufSize);
+    auto [vBuf, vMem] = device.createBuffer(
+        vertexBufSize, vk::BufferUsageFlagBits::eVertexBuffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    vertexBuf_ = std::move(vBuf);
+    vertexMem_ = std::move(vMem);
+    void* vertData = vertexMem_.mapMemory(0, vertexBufSize);
     memcpy(vertData, renderData_.vertices.data(), vertexBufSize);
-    vkDevice_.unmapMemory(vertexMem_);
+    vertexMem_.unmapMemory();
 
     // Create index buffer
     vk::DeviceSize indexBufSize = sizeof(renderData_.indices[0]) * renderData_.indices.size();
-    device.createBuffer(indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
-                        vk::MemoryPropertyFlagBits::eHostVisible |
-                            vk::MemoryPropertyFlagBits::eHostCoherent,
-                        indexBuf_, indexMem_);
-    void* indexData = vkDevice_.mapMemory(indexMem_, 0, indexBufSize);
+    auto [iBuf, iMem] = device.createBuffer(
+        indexBufSize, vk::BufferUsageFlagBits::eIndexBuffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    indexBuf_ = std::move(iBuf);
+    indexMem_ = std::move(iMem);
+    void* indexData = indexMem_.mapMemory(0, indexBufSize);
     memcpy(indexData, renderData_.indices.data(), indexBufSize);
-    vkDevice_.unmapMemory(indexMem_);
+    indexMem_.unmapMemory();
 
     // Load texture
     std::string texPath = material_.mapKd();
     if (texPath.empty())
         texPath = "default.png";
-    texture_ = Texture::load_from_file(texPath, vkDevice_, device.physicalDevice(),
+    texture_ = Texture::load_from_file(texPath, *vkDevice_, device.physicalDevice(),
                                        frame.commandPool(), device.graphicsQueue());
 
     // Create material uniform buffers
     vk::DeviceSize matSize = sizeof(MaterialUBO);
-    materialBufs_.resize(MAX_FRAMES_IN_FLIGHT);
-    materialMems_.resize(MAX_FRAMES_IN_FLIGHT);
+    materialBufs_.reserve(MAX_FRAMES_IN_FLIGHT);
+    materialMems_.reserve(MAX_FRAMES_IN_FLIGHT);
     materialMapped_.resize(MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        device.createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
-                            vk::MemoryPropertyFlagBits::eHostVisible |
-                                vk::MemoryPropertyFlagBits::eHostCoherent,
-                            materialBufs_[i], materialMems_[i]);
-        materialMapped_[i] = vkDevice_.mapMemory(materialMems_[i], 0, matSize);
+        auto [mBuf, mMem] = device.createBuffer(
+            matSize, vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        materialMapped_[i] = mMem.mapMemory(0, matSize);
+        materialBufs_.push_back(std::move(mBuf));
+        materialMems_.push_back(std::move(mMem));
 
         MaterialUBO matUbo{};
         matUbo.ambient[0] = material_.ambient().r();
@@ -120,16 +103,17 @@ void Mesh::load(const std::string& objPath, const std::string& mtlPath,
 void Mesh::createUniformBuffers(const Device& device)
 {
     vk::DeviceSize size = sizeof(UniformBufferObject);
-    uniformBufs_.resize(MAX_FRAMES_IN_FLIGHT);
-    uniformMems_.resize(MAX_FRAMES_IN_FLIGHT);
+    uniformBufs_.reserve(MAX_FRAMES_IN_FLIGHT);
+    uniformMems_.reserve(MAX_FRAMES_IN_FLIGHT);
     uniformMapped_.resize(MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        device.createBuffer(size, vk::BufferUsageFlagBits::eUniformBuffer,
-                            vk::MemoryPropertyFlagBits::eHostVisible |
-                                vk::MemoryPropertyFlagBits::eHostCoherent,
-                            uniformBufs_[i], uniformMems_[i]);
-        uniformMapped_[i] = vkDevice_.mapMemory(uniformMems_[i], 0, size);
+        auto [uBuf, uMem] = device.createBuffer(
+            size, vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+        uniformMapped_[i] = uMem.mapMemory(0, size);
+        uniformBufs_.push_back(std::move(uBuf));
+        uniformMems_.push_back(std::move(uMem));
     }
 }
 
@@ -139,30 +123,35 @@ void Mesh::createDescriptorPool()
         {vk::DescriptorType::eUniformBuffer, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2)},
         {vk::DescriptorType::eCombinedImageSampler, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)},
     }};
-    vk::DescriptorPoolCreateInfo ci({}, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSizes);
-    descPool_ = vkDevice_.createDescriptorPool(ci);
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                    static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSizes);
+    descPool_ = vk::raii::DescriptorPool(*vkDevice_, ci);
 }
 
 void Mesh::createDescriptorSets(const Pipeline& pipeline)
 {
     std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
                                                  pipeline.descriptorSetLayout());
-    vk::DescriptorSetAllocateInfo ai(descPool_, layouts);
-    descSets_ = vkDevice_.allocateDescriptorSets(ai);
+    vk::DescriptorSetAllocateInfo ai(*descPool_, layouts);
+    auto sets = vkDevice_->allocateDescriptorSets(ai);
+    descSets_.clear();
+    descSets_.reserve(sets.size());
+    for (auto& s : sets)
+        descSets_.push_back(std::move(s));
 
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        vk::DescriptorBufferInfo uboBufInfo(uniformBufs_[i], 0, sizeof(UniformBufferObject));
-        vk::DescriptorBufferInfo matBufInfo(materialBufs_[i], 0, sizeof(MaterialUBO));
+        vk::DescriptorBufferInfo uboBufInfo(*uniformBufs_[i], 0, sizeof(UniformBufferObject));
+        vk::DescriptorBufferInfo matBufInfo(*materialBufs_[i], 0, sizeof(MaterialUBO));
         vk::DescriptorImageInfo texInfo(texture_.sampler(), texture_.view(),
                                         vk::ImageLayout::eShaderReadOnlyOptimal);
 
         std::array<vk::WriteDescriptorSet, 3> writes = {{
-            {descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
-            {descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
-            {descSets_[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
+            {*descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
+            {*descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
+            {*descSets_[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
         }};
-        vkDevice_.updateDescriptorSets(writes, {});
+        vkDevice_->updateDescriptorSets(writes, {});
     }
 }
 
@@ -188,10 +177,12 @@ Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)
 
     // Record draw commands
     auto cmd = ctx.commandBuffer;
-    cmd.bindVertexBuffers(0, vertexBuf_, {vk::DeviceSize{0}});
-    cmd.bindIndexBuffer(indexBuf_, 0, vk::IndexType::eUint16);
+    vk::Buffer vertBuf = *vertexBuf_;
+    cmd.bindVertexBuffers(0, vertBuf, {vk::DeviceSize{0}});
+    cmd.bindIndexBuffer(*indexBuf_, 0, vk::IndexType::eUint16);
+    vk::DescriptorSet ds = *descSets_[ctx.currentFrame];
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0,
-                           descSets_[ctx.currentFrame], {});
+                           ds, {});
     cmd.drawIndexed(static_cast<uint32_t>(renderData_.indices.size()), 1, 0, 0, 0);
 
     return world;

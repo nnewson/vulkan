@@ -3,7 +3,7 @@
 #include <optional>
 #include <utility>
 
-#include <vulkan/vulkan.hpp>
+#include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/platform/window.hpp>
 
@@ -14,34 +14,34 @@ class Device
 {
 public:
     explicit Device(const Window& window);
-    ~Device();
+    ~Device() = default;
 
     Device(const Device&) = delete;
     Device& operator=(const Device&) = delete;
     Device(Device&&) noexcept = default;
     Device& operator=(Device&&) noexcept = default;
 
-    [[nodiscard]] vk::Instance instance() const noexcept
+    [[nodiscard]] const vk::raii::Instance& instance() const noexcept
     {
         return instance_;
     }
-    [[nodiscard]] vk::SurfaceKHR surface() const noexcept
+    [[nodiscard]] const vk::raii::SurfaceKHR& surface() const noexcept
     {
         return surface_;
     }
-    [[nodiscard]] vk::PhysicalDevice physicalDevice() const noexcept
+    [[nodiscard]] const vk::raii::PhysicalDevice& physicalDevice() const noexcept
     {
         return physDevice_;
     }
-    [[nodiscard]] vk::Device device() const noexcept
+    [[nodiscard]] const vk::raii::Device& device() const noexcept
     {
         return device_;
     }
-    [[nodiscard]] vk::Queue graphicsQueue() const noexcept
+    [[nodiscard]] const vk::raii::Queue& graphicsQueue() const noexcept
     {
         return graphicsQueue_;
     }
-    [[nodiscard]] vk::Queue presentQueue() const noexcept
+    [[nodiscard]] const vk::raii::Queue& presentQueue() const noexcept
     {
         return presentQueue_;
     }
@@ -56,9 +56,9 @@ public:
 
     [[nodiscard]] uint32_t findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) const;
 
-    void createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
-                      vk::MemoryPropertyFlags props, vk::Buffer& buf,
-                      vk::DeviceMemory& mem) const;
+    std::pair<vk::raii::Buffer, vk::raii::DeviceMemory>
+    createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
+                 vk::MemoryPropertyFlags props) const;
 
 private:
     void createInstance();
@@ -66,16 +66,17 @@ private:
     void pickPhysicalDevice();
     void createLogicalDevice();
 
-    [[nodiscard]] bool isDeviceSuitable(vk::PhysicalDevice d);
+    [[nodiscard]] bool isDeviceSuitable(const vk::raii::PhysicalDevice& d);
     [[nodiscard]] std::pair<std::optional<uint32_t>, std::optional<uint32_t>>
-    findQueueFamilies(vk::PhysicalDevice d);
+    findQueueFamilies(const vk::raii::PhysicalDevice& d);
 
-    vk::Instance instance_;
-    vk::SurfaceKHR surface_;
-    vk::PhysicalDevice physDevice_;
-    vk::Device device_;
-    vk::Queue graphicsQueue_;
-    vk::Queue presentQueue_;
+    vk::raii::Context context_;
+    vk::raii::Instance instance_{nullptr};
+    vk::raii::SurfaceKHR surface_{nullptr};
+    vk::raii::PhysicalDevice physDevice_{nullptr};
+    vk::raii::Device device_{nullptr};
+    vk::raii::Queue graphicsQueue_{nullptr};
+    vk::raii::Queue presentQueue_{nullptr};
     uint32_t graphicsFamily_{0};
     uint32_t presentFamily_{0};
 };

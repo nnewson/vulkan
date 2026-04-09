@@ -6,19 +6,11 @@ namespace fire_engine
 {
 
 Pipeline::Pipeline(const Device& device, const Swapchain& swapchain)
-    : device_(device.device())
+    : device_(&device.device())
 {
     createRenderPass(swapchain);
     createDescriptorSetLayout();
     createGraphicsPipeline(swapchain);
-}
-
-Pipeline::~Pipeline()
-{
-    device_.destroyPipeline(pipeline_);
-    device_.destroyPipelineLayout(pipelineLayout_);
-    device_.destroyRenderPass(renderPass_);
-    device_.destroyDescriptorSetLayout(descSetLayout_);
 }
 
 void Pipeline::createRenderPass(const Swapchain& swapchain)
@@ -52,7 +44,7 @@ void Pipeline::createRenderPass(const Swapchain& swapchain)
 
     std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
     vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
-    renderPass_ = device_.createRenderPass(ci);
+    renderPass_ = vk::raii::RenderPass(*device_, ci);
 }
 
 void Pipeline::createDescriptorSetLayout()
@@ -65,13 +57,7 @@ void Pipeline::createDescriptorSetLayout()
     }};
 
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
-    descSetLayout_ = device_.createDescriptorSetLayout(ci);
-}
-
-vk::ShaderModule Pipeline::createShaderModule(const std::vector<char>& code)
-{
-    vk::ShaderModuleCreateInfo ci({}, code.size(), reinterpret_cast<const uint32_t*>(code.data()));
-    return device_.createShaderModule(ci);
+    descSetLayout_ = vk::raii::DescriptorSetLayout(*device_, ci);
 }
 
 void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
@@ -80,12 +66,16 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
 
     auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
     auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
-    vk::ShaderModule vertMod = createShaderModule(vertCode);
-    vk::ShaderModule fragMod = createShaderModule(fragCode);
+    vk::ShaderModuleCreateInfo vertCi({}, vertCode.size(),
+                                      reinterpret_cast<const uint32_t*>(vertCode.data()));
+    vk::ShaderModuleCreateInfo fragCi({}, fragCode.size(),
+                                      reinterpret_cast<const uint32_t*>(fragCode.data()));
+    vk::raii::ShaderModule vertMod(*device_, vertCi);
+    vk::raii::ShaderModule fragMod(*device_, fragCi);
 
     std::array<vk::PipelineShaderStageCreateInfo, 2> stages = {{
-        {{}, vk::ShaderStageFlagBits::eVertex, vertMod, "main"},
-        {{}, vk::ShaderStageFlagBits::eFragment, fragMod, "main"},
+        {{}, vk::ShaderStageFlagBits::eVertex, *vertMod, "main"},
+        {{}, vk::ShaderStageFlagBits::eFragment, *fragMod, "main"},
     }};
 
     auto bindDesc = Vertex::bindingDesc();
@@ -114,20 +104,15 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
 
     vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
 
-    vk::PipelineLayoutCreateInfo plci({}, descSetLayout_);
-    pipelineLayout_ = device_.createPipelineLayout(plci);
+    vk::PipelineLayoutCreateInfo plci({}, *descSetLayout_);
+    pipelineLayout_ = vk::raii::PipelineLayout(*device_, plci);
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
                                        &raster, &ms, &depthStencil, &colorBlend, nullptr,
-                                       pipelineLayout_, renderPass_, 0);
+                                       *pipelineLayout_, *renderPass_, 0);
 
-    auto result = device_.createGraphicsPipeline(nullptr, pci);
-    if (result.result != vk::Result::eSuccess)
-        throw std::runtime_error("failed to create graphics pipeline");
-    pipeline_ = result.value;
-
-    device_.destroyShaderModule(fragMod);
-    device_.destroyShaderModule(vertMod);
+    pipeline_ = vk::raii::Pipeline(*device_, nullptr, pci);
+    // Shader modules auto-destroyed at end of scope
 }
 
 } // namespace fire_engine

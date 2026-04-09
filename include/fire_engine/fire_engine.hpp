@@ -3,8 +3,6 @@
 #include <cstddef>
 #include <memory>
 
-#include <vulkan/vulkan.hpp>
-
 #include <fire_engine/input/input.hpp>
 #include <fire_engine/platform/window.hpp>
 #include <fire_engine/renderer/renderer.hpp>
