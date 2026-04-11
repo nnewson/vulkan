@@ -8,12 +8,9 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
+#include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
-#include <fire_engine/renderer/backend/vulkan/vulkan_device.hpp>
-#include <fire_engine/renderer/backend/vulkan/vulkan_frame.hpp>
-#include <fire_engine/renderer/backend/vulkan/vulkan_pipeline.hpp>
-#include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -59,10 +56,8 @@ void applyTrs(const fastgltf::Node& gltfNode, Node& node)
 
 } // namespace
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
-                           const backend::vulkan::VulkanDevice& device,
-                           const backend::vulkan::VulkanPipeline& pipeline,
-                           backend::vulkan::VulkanFrame& frame)
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Device& device,
+                           const Pipeline& pipeline, Frame& frame)
 {
     auto gltfPath = std::filesystem::path(path);
     auto baseDir = gltfPath.parent_path();
@@ -111,8 +106,7 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
             applyTrs(gltfNode, rootRef);
 
             auto& animRef = rootRef.addChild(std::move(animNode));
-            loadAnimation(asset, nodeIndex,
-                          std::get<Animator>(animRef.component()));
+            loadAnimation(asset, nodeIndex, std::get<Animator>(animRef.component()));
 
             // Load mesh as child of animator
             if (gltfNode.meshIndex.has_value())
@@ -138,10 +132,8 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir,
-                          const backend::vulkan::VulkanDevice& device,
-                          const backend::vulkan::VulkanPipeline& pipeline,
-                          backend::vulkan::VulkanFrame& frame)
+                          const std::string& baseDir, const Device& device,
+                          const Pipeline& pipeline, Frame& frame)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
@@ -174,8 +166,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
             // on the same component. Fix by skipping animated channels when applying.
             applyTrs(childGltfNode, childRef);
 
-            auto animNode =
-                std::make_unique<Node>(std::string(childGltfNode.name) + "_Animator");
+            auto animNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Animator");
             animNode->component().emplace<Animator>();
             auto& animRef = childRef.addChild(std::move(animNode));
             loadAnimation(asset, childIndex, std::get<Animator>(animRef.component()));
@@ -202,10 +193,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 }
 
 void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                          const std::string& baseDir,
-                          const backend::vulkan::VulkanDevice& device,
-                          const backend::vulkan::VulkanPipeline& pipeline,
-                          backend::vulkan::VulkanFrame& frame)
+                          const std::string& baseDir, const Device& device,
+                          const Pipeline& pipeline, Frame& frame)
 {
     for (const auto& primitive : mesh.primitives)
     {
@@ -376,9 +365,8 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
         {
             const auto& sampler = anim.samplers[channel.samplerIndex];
             const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
-            fastgltf::iterateAccessor<float>(
-                asset, inputAccessor,
-                [&](float t) { sharedDuration = std::max(sharedDuration, t); });
+            fastgltf::iterateAccessor<float>(asset, inputAccessor, [&](float t)
+                                             { sharedDuration = std::max(sharedDuration, t); });
         }
 
         for (const auto& channel : anim.channels)
