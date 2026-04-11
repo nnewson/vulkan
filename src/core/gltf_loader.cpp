@@ -88,7 +88,12 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
     // Pre-size asset vectors to keep pointers stable (ensure at least 1 slot for defaults)
     assets.resizeTextures(std::max<std::size_t>(asset.textures.size(), 1));
     assets.resizeMaterials(std::max<std::size_t>(asset.materials.size(), 1));
-    assets.resizeGeometries(asset.meshes.size());
+
+    // One geometry slot per primitive across all meshes
+    std::size_t totalPrimitives = 0;
+    for (const auto& m : asset.meshes)
+        totalPrimitives += m.primitives.size();
+    assets.resizeGeometries(totalPrimitives);
 
     std::size_t sceneIndex = asset.defaultScene.has_value() ? asset.defaultScene.value() : 0;
     if (sceneIndex >= asset.scenes.size())
@@ -206,8 +211,16 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
                             const std::string& baseDir, const Renderer& renderer, Assets& assets,
                             std::size_t meshIndex)
 {
-    for (const auto& primitive : mesh.primitives)
+    // Compute flat geometry start index from preceding meshes' primitive counts
+    std::size_t geoStartIdx = 0;
+    for (std::size_t m = 0; m < meshIndex; ++m)
+        geoStartIdx += asset.meshes[m].primitives.size();
+
+    Object object;
+
+    for (std::size_t primIdx = 0; primIdx < mesh.primitives.size(); ++primIdx)
     {
+        const auto& primitive = mesh.primitives[primIdx];
         auto [materialData, texturePath] = loadMaterial(asset, primitive, baseDir);
 
         // Load or reuse texture in Assets
@@ -232,14 +245,14 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         }
         if (!texPtr)
         {
-            // Load default texture into slot 0 if no texture assigned
             auto& defaultTex = assets.texture(0);
             if (defaultTex.view() == vk::ImageView{})
             {
                 auto& device = renderer.device();
-                defaultTex =
-                    Texture::load_from_file("default.png", device.device(), device.physicalDevice(),
-                                            renderer.frame().commandPool(), device.graphicsQueue());
+                defaultTex = Texture::load_from_file("default.png", device.device(),
+                                                     device.physicalDevice(),
+                                                     renderer.frame().commandPool(),
+                                                     device.graphicsQueue());
             }
             texPtr = &defaultTex;
         }
@@ -259,7 +272,6 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         }
         else
         {
-            // No material — use slot 0 with default values
             auto& mat = assets.material(0);
             if (!mat.hasTexture())
             {
@@ -268,11 +280,11 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             matPtr = &mat;
         }
 
-        // Load or reuse geometry in Assets
-        auto& geometry = assets.geometry(meshIndex);
+        // Load or reuse geometry in Assets (one slot per primitive)
+        std::size_t geoIdx = geoStartIdx + primIdx;
+        auto& geometry = assets.geometry(geoIdx);
         if (!geometry.loaded())
         {
-            // Read vertex attributes
             const auto* posAttr = primitive.findAttribute("POSITION");
             const auto* normAttr = primitive.findAttribute("NORMAL");
             const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
@@ -347,14 +359,11 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             geometry.load(renderer);
         }
 
-        // Create per-instance Object referencing the shared Geometry
-        Object object;
-        object.load(geometry, renderer);
-        return object;
+        object.addGeometry(geometry);
     }
 
-    // Fallback (should not reach here if mesh has primitives)
-    return Object{};
+    object.load(renderer);
+    return object;
 }
 
 std::pair<Material, std::string>

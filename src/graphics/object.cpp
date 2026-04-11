@@ -15,13 +15,23 @@
 namespace fire_engine
 {
 
-void Object::load(const Geometry& geometry, const Renderer& renderer)
+void Object::addGeometry(const Geometry& geometry)
 {
-    geometry_ = &geometry;
+    auto& binding = bindings_.emplace_back();
+    binding.geometry = &geometry;
+}
 
+void Object::load(const Renderer& renderer)
+{
     auto& device = renderer.device();
-    createMaterialBuffers(device);
+
     createUniformBuffers(device);
+
+    for (auto& binding : bindings_)
+    {
+        createMaterialBuffers(device, binding);
+    }
+
     createDescriptorPool(device);
     createDescriptorSets(device, renderer.pipeline());
 }
@@ -35,30 +45,30 @@ void Object::createUniformBuffers(const Device& device)
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         auto [uBuf, uMem] = device.createBuffer(size, vk::BufferUsageFlagBits::eUniformBuffer,
-                                                vk::MemoryPropertyFlagBits::eHostVisible |
-                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+                                                 vk::MemoryPropertyFlagBits::eHostVisible |
+                                                     vk::MemoryPropertyFlagBits::eHostCoherent);
         uniformMapped_[i] = uMem.mapMemory(0, size);
         uniformBufs_.push_back(std::move(uBuf));
         uniformMems_.push_back(std::move(uMem));
     }
 }
 
-void Object::createMaterialBuffers(const Device& device)
+void Object::createMaterialBuffers(const Device& device, GeometryBindings& binding)
 {
-    const auto& mat = geometry_->material();
+    const auto& mat = binding.geometry->material();
 
     vk::DeviceSize matSize = sizeof(MaterialUBO);
-    materialBufs_.reserve(MAX_FRAMES_IN_FLIGHT);
-    materialMems_.reserve(MAX_FRAMES_IN_FLIGHT);
-    materialMapped_.resize(MAX_FRAMES_IN_FLIGHT);
+    binding.materialBufs.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.materialMems.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.materialMapped.resize(MAX_FRAMES_IN_FLIGHT);
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         auto [mBuf, mMem] = device.createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
-                                                vk::MemoryPropertyFlagBits::eHostVisible |
-                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
-        materialMapped_[i] = mMem.mapMemory(0, matSize);
-        materialBufs_.push_back(std::move(mBuf));
-        materialMems_.push_back(std::move(mMem));
+                                                 vk::MemoryPropertyFlagBits::eHostVisible |
+                                                     vk::MemoryPropertyFlagBits::eHostCoherent);
+        binding.materialMapped[i] = mMem.mapMemory(0, matSize);
+        binding.materialBufs.push_back(std::move(mBuf));
+        binding.materialMems.push_back(std::move(mMem));
 
         MaterialUBO matUbo{};
         matUbo.ambient[0] = mat.ambient().r();
@@ -84,47 +94,56 @@ void Object::createMaterialBuffers(const Device& device)
         matUbo.clearcoatRoughness = mat.clearcoatRoughness();
         matUbo.anisotropy = mat.anisotropy();
         matUbo.anisotropyRotation = mat.anisotropyRotation();
-        memcpy(materialMapped_[i], &matUbo, sizeof(matUbo));
+        memcpy(binding.materialMapped[i], &matUbo, sizeof(matUbo));
     }
 }
 
 void Object::createDescriptorPool(const Device& device)
 {
+    auto numGeometries = static_cast<uint32_t>(bindings_.size());
+    uint32_t totalSets = numGeometries * MAX_FRAMES_IN_FLIGHT;
+
     std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
-        {vk::DescriptorType::eUniformBuffer, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT * 2)},
-        {vk::DescriptorType::eCombinedImageSampler, static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT)},
+        {vk::DescriptorType::eUniformBuffer, totalSets * 2},
+        {vk::DescriptorType::eCombinedImageSampler, totalSets},
     }};
-    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                    static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT), poolSizes);
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
+                                    poolSizes);
     descPool_ = vk::raii::DescriptorPool(device.device(), ci);
 }
 
 void Object::createDescriptorSets(const Device& device, const Pipeline& pipeline)
 {
-    const auto& mat = geometry_->material();
-
-    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
-                                                 pipeline.descriptorSetLayout());
-    vk::DescriptorSetAllocateInfo ai(*descPool_, layouts);
-    auto sets = device.device().allocateDescriptorSets(ai);
-    descSets_.clear();
-    descSets_.reserve(sets.size());
-    for (auto& s : sets)
-        descSets_.push_back(std::move(s));
-
-    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    for (auto& binding : bindings_)
     {
-        vk::DescriptorBufferInfo uboBufInfo(*uniformBufs_[i], 0, sizeof(UniformBufferObject));
-        vk::DescriptorBufferInfo matBufInfo(*materialBufs_[i], 0, sizeof(MaterialUBO));
-        vk::DescriptorImageInfo texInfo(mat.texture().sampler(), mat.texture().view(),
-                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+        const auto& mat = binding.geometry->material();
 
-        std::array<vk::WriteDescriptorSet, 3> writes = {{
-            {*descSets_[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
-            {*descSets_[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
-            {*descSets_[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
-        }};
-        device.device().updateDescriptorSets(writes, {});
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
+                                                     pipeline.descriptorSetLayout());
+        vk::DescriptorSetAllocateInfo ai(*descPool_, layouts);
+        auto sets = device.device().allocateDescriptorSets(ai);
+        binding.descSets.clear();
+        binding.descSets.reserve(sets.size());
+        for (auto& s : sets)
+            binding.descSets.push_back(std::move(s));
+
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+        {
+            vk::DescriptorBufferInfo uboBufInfo(*uniformBufs_[i], 0, sizeof(UniformBufferObject));
+            vk::DescriptorBufferInfo matBufInfo(*binding.materialBufs[i], 0, sizeof(MaterialUBO));
+            vk::DescriptorImageInfo texInfo(mat.texture().sampler(), mat.texture().view(),
+                                            vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            std::array<vk::WriteDescriptorSet, 3> writes = {{
+                {*binding.descSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                 &uboBufInfo},
+                {*binding.descSets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                 &matBufInfo},
+                {*binding.descSets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler,
+                 &texInfo},
+            }};
+            device.device().updateDescriptorSets(writes, {});
+        }
     }
 }
 
@@ -132,7 +151,7 @@ Mat4 Object::render(const RenderContext& ctx, const Mat4& world)
 {
     auto extent = ctx.swapchain.extent();
 
-    // Write UBO
+    // Write shared UBO once
     UniformBufferObject ubo{};
     ubo.model = world;
     ubo.view = Mat4::lookAt(ctx.cameraPosition, ctx.cameraTarget, {0, 1, 0});
@@ -144,14 +163,17 @@ Mat4 Object::render(const RenderContext& ctx, const Mat4& world)
     ubo.cameraPos[3] = 0.0f;
     memcpy(uniformMapped_[ctx.currentFrame], &ubo, sizeof(ubo));
 
-    // Record draw commands using shared Geometry buffers
+    // Record draw commands for each geometry
     auto cmd = ctx.commandBuffer;
-    cmd.bindVertexBuffers(0, geometry_->vertexBuffer(), {vk::DeviceSize{0}});
-    cmd.bindIndexBuffer(geometry_->indexBuffer(), 0, vk::IndexType::eUint16);
-    vk::DescriptorSet ds = *descSets_[ctx.currentFrame];
-    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0, ds,
-                           {});
-    cmd.drawIndexed(geometry_->indexCount(), 1, 0, 0, 0);
+    for (const auto& binding : bindings_)
+    {
+        cmd.bindVertexBuffers(0, binding.geometry->vertexBuffer(), {vk::DeviceSize{0}});
+        cmd.bindIndexBuffer(binding.geometry->indexBuffer(), 0, vk::IndexType::eUint16);
+        vk::DescriptorSet ds = *binding.descSets[ctx.currentFrame];
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, ctx.pipeline.pipelineLayout(), 0,
+                               ds, {});
+        cmd.drawIndexed(binding.geometry->indexCount(), 1, 0, 0, 0);
+    }
 
     return world;
 }
