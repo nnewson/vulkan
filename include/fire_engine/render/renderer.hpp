@@ -1,10 +1,10 @@
 #pragma once
 
 #include <fire_engine/math/vec3.hpp>
-#include <fire_engine/renderer/device.hpp>
-#include <fire_engine/renderer/frame.hpp>
-#include <fire_engine/renderer/pipeline.hpp>
-#include <fire_engine/renderer/swapchain.hpp>
+#include <fire_engine/render/device.hpp>
+#include <fire_engine/render/frame.hpp>
+#include <fire_engine/render/pipeline.hpp>
+#include <fire_engine/render/swapchain.hpp>
 
 namespace fire_engine
 {

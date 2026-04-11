@@ -1,6 +1,6 @@
 #include <algorithm>
 
-#include <fire_engine/renderer/swapchain.hpp>
+#include <fire_engine/render/swapchain.hpp>
 
 namespace fire_engine
 {

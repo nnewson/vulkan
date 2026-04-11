@@ -6,7 +6,7 @@
 
 #include <fire_engine/input/camera_state.hpp>
 #include <fire_engine/math/mat4.hpp>
-#include <fire_engine/renderer/render_context.hpp>
+#include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/node.hpp>
 
 namespace fire_engine

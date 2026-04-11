@@ -38,8 +38,9 @@ TEST(NodeFormatter, SingleNode)
 {
     Node node("TestNode");
     auto result = std::format("{}", node);
-    EXPECT_EQ(result,
-              "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)");
+    EXPECT_EQ(
+        result,
+        "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)");
 }
 
 TEST(NodeFormatter, NodeWithChildren)

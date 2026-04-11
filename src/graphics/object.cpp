@@ -1,16 +1,16 @@
-#include "fire_engine/renderer/renderer.hpp"
+#include "fire_engine/render/renderer.hpp"
 #include <fire_engine/graphics/object.hpp>
 
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/math/constants.hpp>
-#include <fire_engine/renderer/device.hpp>
-#include <fire_engine/renderer/frame.hpp>
-#include <fire_engine/renderer/pipeline.hpp>
-#include <fire_engine/renderer/render_context.hpp>
-#include <fire_engine/renderer/swapchain.hpp>
-#include <fire_engine/renderer/ubo.hpp>
+#include <fire_engine/render/device.hpp>
+#include <fire_engine/render/frame.hpp>
+#include <fire_engine/render/pipeline.hpp>
+#include <fire_engine/render/render_context.hpp>
+#include <fire_engine/render/swapchain.hpp>
+#include <fire_engine/render/ubo.hpp>
 
 namespace fire_engine
 {
@@ -45,8 +45,8 @@ void Object::createUniformBuffers(const Device& device)
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         auto [uBuf, uMem] = device.createBuffer(size, vk::BufferUsageFlagBits::eUniformBuffer,
-                                                 vk::MemoryPropertyFlagBits::eHostVisible |
-                                                     vk::MemoryPropertyFlagBits::eHostCoherent);
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
         uniformMapped_[i] = uMem.mapMemory(0, size);
         uniformBufs_.push_back(std::move(uBuf));
         uniformMems_.push_back(std::move(uMem));
@@ -64,8 +64,8 @@ void Object::createMaterialBuffers(const Device& device, GeometryBindings& bindi
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         auto [mBuf, mMem] = device.createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
-                                                 vk::MemoryPropertyFlagBits::eHostVisible |
-                                                     vk::MemoryPropertyFlagBits::eHostCoherent);
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
         binding.materialMapped[i] = mMem.mapMemory(0, matSize);
         binding.materialBufs.push_back(std::move(mBuf));
         binding.materialMems.push_back(std::move(mMem));

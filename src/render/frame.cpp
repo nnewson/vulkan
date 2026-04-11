@@ -1,5 +1,5 @@
-#include <fire_engine/renderer/frame.hpp>
-#include <fire_engine/renderer/ubo.hpp>
+#include <fire_engine/render/frame.hpp>
+#include <fire_engine/render/ubo.hpp>
 
 namespace fire_engine
 {

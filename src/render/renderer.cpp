@@ -1,9 +1,9 @@
-#include <fire_engine/renderer/renderer.hpp>
+#include <fire_engine/render/renderer.hpp>
 
 #include <tuple>
 
-#include <fire_engine/renderer/render_context.hpp>
-#include <fire_engine/renderer/ubo.hpp>
+#include <fire_engine/render/render_context.hpp>
+#include <fire_engine/render/ubo.hpp>
 #include <fire_engine/scene/scene_graph.hpp>
 
 namespace fire_engine
@@ -19,8 +19,7 @@ Renderer::Renderer(const Window& window)
     swapchain_.createFramebuffers(pipeline_.renderPass());
 }
 
-void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition,
-                         Vec3 cameraTarget)
+void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
 {
     auto& dev = device_.device();
 
@@ -56,14 +55,8 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_.pipeline());
 
     // Let the scene graph record draw commands
-    RenderContext ctx{device_,
-                      swapchain_,
-                      frame_,
-                      pipeline_,
-                      cmd,
-                      currentFrame_,
-                      cameraPosition,
-                      cameraTarget};
+    RenderContext ctx{device_, swapchain_,    frame_,         pipeline_,
+                      cmd,     currentFrame_, cameraPosition, cameraTarget};
     scene.render(ctx);
 
     cmd.endRenderPass();

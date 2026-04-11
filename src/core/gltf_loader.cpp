@@ -1,4 +1,4 @@
-#include "fire_engine/renderer/renderer.hpp"
+#include "fire_engine/render/renderer.hpp"
 #include <fire_engine/core/gltf_loader.hpp>
 
 #include <cmath>
@@ -23,22 +23,20 @@
 namespace fire_engine
 {
 
-namespace
-{
+// ---------------------------------------------------------------------------
+// Node helpers (formerly anonymous namespace)
+// ---------------------------------------------------------------------------
 
-Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
+Vec3 GltfLoader::quaternionToEuler(float qx, float qy, float qz, float qw)
 {
-    // Roll (Z)
     float sinr_cosp = 2.0f * (qw * qx + qy * qz);
     float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
     float roll = std::atan2(sinr_cosp, cosr_cosp);
 
-    // Pitch (X)
     float sinp = 2.0f * (qw * qy - qz * qx);
     float pitch =
         (std::abs(sinp) >= 1.0f) ? std::copysign(3.14159265f / 2.0f, sinp) : std::asin(sinp);
 
-    // Yaw (Y)
     float siny_cosp = 2.0f * (qw * qz + qx * qy);
     float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
     float yaw = std::atan2(siny_cosp, cosy_cosp);
@@ -46,7 +44,7 @@ Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
     return {pitch, yaw, roll};
 }
 
-void applyTRS(const fastgltf::Node& gltfNode, Node& node)
+void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
 {
     if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
     {
@@ -58,7 +56,8 @@ void applyTRS(const fastgltf::Node& gltfNode, Node& node)
     }
 }
 
-std::string descendantMeshName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
+std::string GltfLoader::descendantMeshName(const fastgltf::Asset& asset,
+                                           const fastgltf::Node& gltfNode)
 {
     if (gltfNode.meshIndex.has_value())
     {
@@ -75,7 +74,7 @@ std::string descendantMeshName(const fastgltf::Asset& asset, const fastgltf::Nod
     return {};
 }
 
-std::string nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
+std::string GltfLoader::nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
 {
     if (!gltfNode.name.empty())
         return std::string(gltfNode.name);
@@ -85,14 +84,12 @@ std::string nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNod
     return "Node";
 }
 
-} // namespace
+// ---------------------------------------------------------------------------
+// Asset parsing and setup
+// ---------------------------------------------------------------------------
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
-                           Assets& assets)
+fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem::path& gltfPath)
 {
-    auto gltfPath = std::filesystem::path(path);
-    auto baseDir = gltfPath.parent_path();
-
     fastgltf::Parser parser;
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
@@ -100,27 +97,41 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
         throw std::runtime_error("Failed to read glTF file: " +
                                  std::string(fastgltf::getErrorMessage(dataResult.error())));
     }
-    auto& data = dataResult.get();
 
     auto options = fastgltf::Options::LoadExternalBuffers;
-    auto result = parser.loadGltf(data, baseDir, options);
+    auto result = parser.loadGltf(dataResult.get(), gltfPath.parent_path(), options);
     if (result.error() != fastgltf::Error::None)
     {
         throw std::runtime_error("Failed to load glTF: " +
                                  std::string(fastgltf::getErrorMessage(result.error())));
     }
 
-    auto& asset = result.get();
+    return result;
+}
 
-    // Pre-size asset vectors to keep pointers stable (ensure at least 1 slot for defaults)
+void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
+{
     assets.resizeTextures(std::max<std::size_t>(asset.textures.size(), 1));
     assets.resizeMaterials(std::max<std::size_t>(asset.materials.size(), 1));
 
-    // One geometry slot per primitive across all meshes
     std::size_t totalPrimitives = 0;
     for (const auto& m : asset.meshes)
         totalPrimitives += m.primitives.size();
     assets.resizeGeometries(totalPrimitives);
+}
+
+// ---------------------------------------------------------------------------
+// Scene and node loading
+// ---------------------------------------------------------------------------
+
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
+                           Assets& assets)
+{
+    auto gltfPath = std::filesystem::path(path);
+    auto result = parseAsset(gltfPath);
+    auto& asset = result.get();
+
+    presizeAssets(asset, assets);
 
     std::size_t sceneIndex = asset.defaultScene.has_value() ? asset.defaultScene.value() : 0;
     if (sceneIndex >= asset.scenes.size())
@@ -131,43 +142,46 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
     const auto& gltfScene = asset.scenes[sceneIndex];
     for (auto nodeIndex : gltfScene.nodeIndices)
     {
-        // Create root node using the glTF node name
         auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
         auto& rootRef = scene.addNode(std::move(rootNode));
 
-        // If this node has an animation, emplace Animator directly on the root node
         if (nodeHasAnimation(asset, nodeIndex))
         {
-            const auto& gltfNode = asset.nodes[nodeIndex];
-            applyTRS(gltfNode, rootRef);
-
-            rootRef.component().emplace<Animator>();
-            loadAnimation(asset, nodeIndex, std::get<Animator>(rootRef.component()));
-
-            // Load mesh as child of this node
-            if (gltfNode.meshIndex.has_value())
-            {
-                const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
-                std::string meshName = gltfMesh.name.empty() ? std::string(gltfNode.name) + "_Mesh"
-                                                             : std::string(gltfMesh.name);
-                auto meshNode = std::make_unique<Node>(std::move(meshName));
-                auto& meshRef = rootRef.addChild(std::move(meshNode));
-                auto object =
-                    loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir.string(),
-                             renderer, assets, gltfNode.meshIndex.value());
-                meshRef.component().emplace<Mesh>(std::move(object));
-            }
-
-            // Recurse into child nodes
-            for (auto childIndex : gltfNode.children)
-            {
-                loadNode(asset, childIndex, rootRef, baseDir.string(), renderer, assets);
-            }
+            configureAnimatedNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(),
+                                  renderer, assets);
         }
         else
         {
-            loadNode(asset, nodeIndex, rootRef, baseDir.string(), renderer, assets);
+            loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), renderer, assets);
         }
+    }
+}
+
+void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                                       Node& node, const std::string& baseDir,
+                                       const Renderer& renderer, Assets& assets)
+{
+    const auto& gltfNode = asset.nodes[nodeIndex];
+    applyTRS(gltfNode, node);
+
+    node.component().emplace<Animator>();
+    loadAnimation(asset, nodeIndex, std::get<Animator>(node.component()));
+
+    if (gltfNode.meshIndex.has_value())
+    {
+        const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
+        std::string meshName = gltfMesh.name.empty() ? std::string(gltfNode.name) + "_Mesh"
+                                                     : std::string(gltfMesh.name);
+        auto meshNode = std::make_unique<Node>(std::move(meshName));
+        auto& meshRef = node.addChild(std::move(meshNode));
+        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, renderer,
+                               assets, gltfNode.meshIndex.value());
+        meshRef.component().emplace<Mesh>(std::move(object));
+    }
+
+    for (auto childIndex : gltfNode.children)
+    {
+        loadNode(asset, childIndex, node, baseDir, renderer, assets);
     }
 }
 
@@ -175,11 +189,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
                           const std::string& baseDir, const Renderer& renderer, Assets& assets)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
-
-    // Apply this node's static TRS to its own Node
     applyTRS(gltfNode, node);
 
-    // Load mesh if present
     if (gltfNode.meshIndex.has_value())
     {
         auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, renderer,
@@ -187,7 +198,6 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         node.component().emplace<Mesh>(std::move(object));
     }
 
-    // Recurse into children
     for (auto childIndex : gltfNode.children)
     {
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
@@ -195,36 +205,12 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
         if (nodeHasAnimation(asset, childIndex))
         {
-            const auto& childGltfNode = asset.nodes[childIndex];
-
-            // Apply the child's static TRS to its own node before inserting the animator.
             // TODO: glTF spec says animated channels *replace* the corresponding static
             // TRS component. We currently apply the full static TRS here and then let
             // the Animator compose its sampled matrix on top, which double-applies if an
             // asset has both a non-identity static translation/rotation and an animation
             // on the same component. Fix by skipping animated channels when applying.
-            applyTRS(childGltfNode, childRef);
-
-            childRef.component().emplace<Animator>();
-            loadAnimation(asset, childIndex, std::get<Animator>(childRef.component()));
-
-            if (childGltfNode.meshIndex.has_value())
-            {
-                const auto& gltfMesh = asset.meshes[childGltfNode.meshIndex.value()];
-                std::string meshName = gltfMesh.name.empty()
-                                           ? std::string(childGltfNode.name) + "_Mesh"
-                                           : std::string(gltfMesh.name);
-                auto meshNode = std::make_unique<Node>(std::move(meshName));
-                auto& meshRef = childRef.addChild(std::move(meshNode));
-                auto object = loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()],
-                                       baseDir, renderer, assets, childGltfNode.meshIndex.value());
-                meshRef.component().emplace<Mesh>(std::move(object));
-            }
-
-            for (auto grandchildIndex : childGltfNode.children)
-            {
-                loadNode(asset, grandchildIndex, childRef, baseDir, renderer, assets);
-            }
+            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets);
         }
         else
         {
@@ -233,11 +219,152 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
     }
 }
 
+// ---------------------------------------------------------------------------
+// Mesh loading helpers
+// ---------------------------------------------------------------------------
+
+const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
+                                          const fastgltf::Primitive& primitive,
+                                          const std::string& texturePath, const Renderer& renderer,
+                                          Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.pbrData.baseColorTexture.has_value())
+        {
+            auto texIndex = gltfMat.pbrData.baseColorTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (tex.view() == vk::ImageView{})
+            {
+                std::string texPath = texturePath.empty() ? "default.png" : texturePath;
+                auto& device = renderer.device();
+                tex =
+                    Texture::load_from_file(texPath, device.device(), device.physicalDevice(),
+                                            renderer.frame().commandPool(), device.graphicsQueue());
+            }
+            return &tex;
+        }
+    }
+
+    auto& defaultTex = assets.texture(0);
+    if (defaultTex.view() == vk::ImageView{})
+    {
+        auto& device = renderer.device();
+        defaultTex =
+            Texture::load_from_file("default.png", device.device(), device.physicalDevice(),
+                                    renderer.frame().commandPool(), device.graphicsQueue());
+    }
+    return &defaultTex;
+}
+
+Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
+                                      const fastgltf::Primitive& primitive, Material& materialData,
+                                      const Texture* texPtr, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        auto matIndex = primitive.materialIndex.value();
+        auto& mat = assets.material(matIndex);
+        if (!mat.hasTexture())
+        {
+            mat = materialData;
+            mat.texture(texPtr);
+        }
+        return &mat;
+    }
+
+    auto& mat = assets.material(0);
+    if (!mat.hasTexture())
+    {
+        mat.texture(texPtr);
+    }
+    return &mat;
+}
+
+void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                              const Material* matPtr, const Renderer& renderer, Assets& assets,
+                              std::size_t geoIdx)
+{
+    auto& geometry = assets.geometry(geoIdx);
+    if (geometry.loaded())
+        return;
+
+    const auto* posAttr = primitive.findAttribute("POSITION");
+    const auto* normAttr = primitive.findAttribute("NORMAL");
+    const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
+
+    if (posAttr == primitive.attributes.end())
+    {
+        throw std::runtime_error("glTF primitive missing POSITION attribute");
+    }
+
+    const auto& posAccessor = asset.accessors[posAttr->accessorIndex];
+    std::vector<fastgltf::math::fvec3> positions(posAccessor.count);
+    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+        asset, posAccessor,
+        [&](fastgltf::math::fvec3 pos, std::size_t idx) { positions[idx] = pos; });
+
+    std::vector<fastgltf::math::fvec3> normals;
+    if (normAttr != primitive.attributes.end())
+    {
+        const auto& normAccessor = asset.accessors[normAttr->accessorIndex];
+        normals.resize(normAccessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+            asset, normAccessor,
+            [&](fastgltf::math::fvec3 n, std::size_t idx) { normals[idx] = n; });
+    }
+
+    std::vector<fastgltf::math::fvec2> texcoords;
+    if (uvAttr != primitive.attributes.end())
+    {
+        const auto& uvAccessor = asset.accessors[uvAttr->accessorIndex];
+        texcoords.resize(uvAccessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec2>(
+            asset, uvAccessor,
+            [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords[idx] = uv; });
+    }
+
+    Colour3 vertexColour = matPtr->diffuse();
+
+    std::vector<Vertex> verts;
+    verts.reserve(positions.size());
+    for (std::size_t i = 0; i < positions.size(); ++i)
+    {
+        Vec3 pos{positions[i].x(), positions[i].y(), positions[i].z()};
+        Vec3 norm = (i < normals.size()) ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
+                                         : Vec3{0.0f, 1.0f, 0.0f};
+        float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
+        float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
+
+        verts.push_back(Vertex{pos, vertexColour, norm, u, v});
+    }
+    geometry.vertices(std::move(verts));
+
+    std::vector<uint16_t> idxs;
+    if (primitive.indicesAccessor.has_value())
+    {
+        const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
+        idxs.reserve(indexAccessor.count);
+        fastgltf::iterateAccessor<std::uint32_t>(asset, indexAccessor, [&](std::uint32_t idx)
+                                                 { idxs.push_back(static_cast<uint16_t>(idx)); });
+    }
+    else
+    {
+        for (std::size_t i = 0; i < positions.size(); ++i)
+        {
+            idxs.push_back(static_cast<uint16_t>(i));
+        }
+    }
+    geometry.indices(std::move(idxs));
+    geometry.material(matPtr);
+    geometry.load(renderer);
+}
+
 Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
                             const std::string& baseDir, const Renderer& renderer, Assets& assets,
                             std::size_t meshIndex)
 {
-    // Compute flat geometry start index from preceding meshes' primitive counts
     std::size_t geoStartIdx = 0;
     for (std::size_t m = 0; m < meshIndex; ++m)
         geoStartIdx += asset.meshes[m].primitives.size();
@@ -249,141 +376,12 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         const auto& primitive = mesh.primitives[primIdx];
         auto [materialData, texturePath] = loadMaterial(asset, primitive, baseDir);
 
-        // Load or reuse texture in Assets
-        const Texture* texPtr = nullptr;
-        if (primitive.materialIndex.has_value())
-        {
-            const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
-            if (gltfMat.pbrData.baseColorTexture.has_value())
-            {
-                auto texIndex = gltfMat.pbrData.baseColorTexture.value().textureIndex;
-                auto& tex = assets.texture(texIndex);
-                if (tex.view() == vk::ImageView{})
-                {
-                    std::string texPath = texturePath.empty() ? "default.png" : texturePath;
-                    auto& device = renderer.device();
-                    tex = Texture::load_from_file(texPath, device.device(), device.physicalDevice(),
-                                                  renderer.frame().commandPool(),
-                                                  device.graphicsQueue());
-                }
-                texPtr = &tex;
-            }
-        }
-        if (!texPtr)
-        {
-            auto& defaultTex = assets.texture(0);
-            if (defaultTex.view() == vk::ImageView{})
-            {
-                auto& device = renderer.device();
-                defaultTex =
-                    Texture::load_from_file("default.png", device.device(), device.physicalDevice(),
-                                            renderer.frame().commandPool(), device.graphicsQueue());
-            }
-            texPtr = &defaultTex;
-        }
+        const Texture* texPtr = resolveTexture(asset, primitive, texturePath, renderer, assets);
+        Material* matPtr = resolveMaterial(asset, primitive, materialData, texPtr, assets);
 
-        // Load or reuse material in Assets
-        Material* matPtr = nullptr;
-        if (primitive.materialIndex.has_value())
-        {
-            auto matIndex = primitive.materialIndex.value();
-            auto& mat = assets.material(matIndex);
-            if (!mat.hasTexture())
-            {
-                mat = materialData;
-                mat.texture(texPtr);
-            }
-            matPtr = &mat;
-        }
-        else
-        {
-            auto& mat = assets.material(0);
-            if (!mat.hasTexture())
-            {
-                mat.texture(texPtr);
-            }
-            matPtr = &mat;
-        }
-
-        // Load or reuse geometry in Assets (one slot per primitive)
         std::size_t geoIdx = geoStartIdx + primIdx;
-        auto& geometry = assets.geometry(geoIdx);
-        if (!geometry.loaded())
-        {
-            const auto* posAttr = primitive.findAttribute("POSITION");
-            const auto* normAttr = primitive.findAttribute("NORMAL");
-            const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
-
-            if (posAttr == primitive.attributes.end())
-            {
-                throw std::runtime_error("glTF primitive missing POSITION attribute");
-            }
-
-            const auto& posAccessor = asset.accessors[posAttr->accessorIndex];
-            std::vector<fastgltf::math::fvec3> positions(posAccessor.count);
-            fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                asset, posAccessor,
-                [&](fastgltf::math::fvec3 pos, std::size_t idx) { positions[idx] = pos; });
-
-            std::vector<fastgltf::math::fvec3> normals;
-            if (normAttr != primitive.attributes.end())
-            {
-                const auto& normAccessor = asset.accessors[normAttr->accessorIndex];
-                normals.resize(normAccessor.count);
-                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                    asset, normAccessor,
-                    [&](fastgltf::math::fvec3 n, std::size_t idx) { normals[idx] = n; });
-            }
-
-            std::vector<fastgltf::math::fvec2> texcoords;
-            if (uvAttr != primitive.attributes.end())
-            {
-                const auto& uvAccessor = asset.accessors[uvAttr->accessorIndex];
-                texcoords.resize(uvAccessor.count);
-                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec2>(
-                    asset, uvAccessor,
-                    [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords[idx] = uv; });
-            }
-
-            Colour3 vertexColour = matPtr->diffuse();
-
-            std::vector<Vertex> verts;
-            verts.reserve(positions.size());
-            for (std::size_t i = 0; i < positions.size(); ++i)
-            {
-                Vec3 pos{positions[i].x(), positions[i].y(), positions[i].z()};
-                Vec3 norm = (i < normals.size())
-                                ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
-                                : Vec3{0.0f, 1.0f, 0.0f};
-                float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
-                float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
-
-                verts.push_back(Vertex{pos, vertexColour, norm, u, v});
-            }
-            geometry.vertices(std::move(verts));
-
-            std::vector<uint16_t> idxs;
-            if (primitive.indicesAccessor.has_value())
-            {
-                const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
-                idxs.reserve(indexAccessor.count);
-                fastgltf::iterateAccessor<std::uint32_t>(
-                    asset, indexAccessor,
-                    [&](std::uint32_t idx) { idxs.push_back(static_cast<uint16_t>(idx)); });
-            }
-            else
-            {
-                for (std::size_t i = 0; i < positions.size(); ++i)
-                {
-                    idxs.push_back(static_cast<uint16_t>(i));
-                }
-            }
-            geometry.indices(std::move(idxs));
-            geometry.material(matPtr);
-            geometry.load(renderer);
-        }
-
-        object.addGeometry(geometry);
+        loadGeometry(asset, primitive, matPtr, renderer, assets, geoIdx);
+        object.addGeometry(assets.geometry(geoIdx));
     }
 
     object.load(renderer);
@@ -432,6 +430,10 @@ std::pair<Material, std::string> GltfLoader::loadMaterial(const fastgltf::Asset&
     return {std::move(material), std::move(texturePath)};
 }
 
+// ---------------------------------------------------------------------------
+// Animation helpers
+// ---------------------------------------------------------------------------
+
 bool GltfLoader::nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex)
 {
     for (const auto& anim : asset.animations)
@@ -447,23 +449,12 @@ bool GltfLoader::nodeHasAnimation(const fastgltf::Asset& asset, std::size_t node
     return false;
 }
 
-void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                               Animator& animator)
+float GltfLoader::computeSharedDuration(const fastgltf::Asset& asset, std::size_t nodeIndex)
 {
-    auto& la = animator.animation();
-
-    // Per the glTF spec (and the BoxAnimated "Common Problems" note), channels of
-    // the same animation must stay in sync even if they have different end times —
-    // the shorter channel clamps to its last key while the animation keeps running
-    // until the longest channel completes. To do that, every LinearAnimation that
-    // participates in a given glTF animation must loop on the *same* duration: the
-    // max input time across ALL of that animation's channels, not just the ones
-    // targeting this node.
     float sharedDuration = 0.0f;
 
     for (const auto& anim : asset.animations)
     {
-        // Does this animation touch our node at all?
         bool touchesNode = false;
         for (const auto& channel : anim.channels)
         {
@@ -474,12 +465,8 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
             }
         }
         if (!touchesNode)
-        {
             continue;
-        }
 
-        // Fold every channel's input range (including channels targeting other
-        // nodes) into the shared duration so all participants loop in lockstep.
         for (const auto& channel : anim.channels)
         {
             const auto& sampler = anim.samplers[channel.samplerIndex];
@@ -487,58 +474,85 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
             fastgltf::iterateAccessor<float>(asset, inputAccessor, [&](float t)
                                              { sharedDuration = std::max(sharedDuration, t); });
         }
+    }
 
+    return sharedDuration;
+}
+
+std::vector<LinearAnimation::RotationKeyframe>
+GltfLoader::loadRotationKeyframes(const fastgltf::Asset& asset,
+                                  const fastgltf::AnimationSampler& sampler)
+{
+    const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+    const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+
+    std::vector<float> times(inputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<float>(asset, inputAccessor,
+                                              [&](float t, std::size_t idx) { times[idx] = t; });
+
+    std::vector<fastgltf::math::fvec4> quats(outputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
+        asset, outputAccessor, [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
+
+    std::vector<LinearAnimation::RotationKeyframe> kf;
+    std::size_t count = std::min(times.size(), quats.size());
+    kf.reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        kf.push_back({times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
+    }
+    return kf;
+}
+
+std::vector<LinearAnimation::TranslationKeyframe>
+GltfLoader::loadTranslationKeyframes(const fastgltf::Asset& asset,
+                                     const fastgltf::AnimationSampler& sampler)
+{
+    const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+    const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+
+    std::vector<float> times(inputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<float>(asset, inputAccessor,
+                                              [&](float t, std::size_t idx) { times[idx] = t; });
+
+    std::vector<fastgltf::math::fvec3> positions(outputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+        asset, outputAccessor,
+        [&](fastgltf::math::fvec3 p, std::size_t idx) { positions[idx] = p; });
+
+    std::vector<LinearAnimation::TranslationKeyframe> kf;
+    std::size_t count = std::min(times.size(), positions.size());
+    kf.reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        kf.push_back({times[i], Vec3{positions[i].x(), positions[i].y(), positions[i].z()}});
+    }
+    return kf;
+}
+
+void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                               Animator& animator)
+{
+    auto& la = animator.animation();
+    float sharedDuration = computeSharedDuration(asset, nodeIndex);
+
+    for (const auto& anim : asset.animations)
+    {
         for (const auto& channel : anim.channels)
         {
             if (!channel.nodeIndex.has_value() || channel.nodeIndex.value() != nodeIndex)
-            {
                 continue;
-            }
 
             const auto& sampler = anim.samplers[channel.samplerIndex];
-            const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
-            const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
-
-            // Read keyframe times (shared by all channel types)
-            std::vector<float> times(inputAccessor.count);
-            fastgltf::iterateAccessorWithIndex<float>(
-                asset, inputAccessor, [&](float t, std::size_t idx) { times[idx] = t; });
 
             if (channel.path == fastgltf::AnimationPath::Rotation)
             {
-                std::vector<fastgltf::math::fvec4> quats(outputAccessor.count);
-                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
-                    asset, outputAccessor,
-                    [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
-
-                std::vector<LinearAnimation::RotationKeyframe> kf;
-                std::size_t count = std::min(times.size(), quats.size());
-                kf.reserve(count);
-                for (std::size_t i = 0; i < count; ++i)
-                {
-                    kf.push_back(
-                        {times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
-                }
-                la.rotationKeyframes(std::move(kf));
+                la.rotationKeyframes(loadRotationKeyframes(asset, sampler));
             }
             else if (channel.path == fastgltf::AnimationPath::Translation)
             {
-                std::vector<fastgltf::math::fvec3> positions(outputAccessor.count);
-                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                    asset, outputAccessor,
-                    [&](fastgltf::math::fvec3 p, std::size_t idx) { positions[idx] = p; });
-
-                std::vector<LinearAnimation::TranslationKeyframe> kf;
-                std::size_t count = std::min(times.size(), positions.size());
-                kf.reserve(count);
-                for (std::size_t i = 0; i < count; ++i)
-                {
-                    kf.push_back(
-                        {times[i], Vec3{positions[i].x(), positions[i].y(), positions[i].z()}});
-                }
-                la.translationKeyframes(std::move(kf));
+                la.translationKeyframes(loadTranslationKeyframes(asset, sampler));
             }
-            // Scale channels and morph weights are not supported; silently skip.
         }
     }
 

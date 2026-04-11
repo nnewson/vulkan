@@ -80,8 +80,9 @@ struct std::formatter<fire_engine::Transform>
         auto p = t.position();
         auto r = t.rotation();
         auto s = t.scale();
-        return std::format_to(ctx.out(), "pos({:.2f}, {:.2f}, {:.2f}) rot({:.2f}, {:.2f}, {:.2f}) "
-                                         "scale({:.2f}, {:.2f}, {:.2f})",
+        return std::format_to(ctx.out(),
+                              "pos({:.2f}, {:.2f}, {:.2f}) rot({:.2f}, {:.2f}, {:.2f}) "
+                              "scale({:.2f}, {:.2f}, {:.2f})",
                               p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), s.x(), s.y(), s.z());
     }
 };

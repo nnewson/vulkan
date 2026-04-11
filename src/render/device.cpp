@@ -1,7 +1,7 @@
 #include <set>
 #include <string>
 
-#include <fire_engine/renderer/device.hpp>
+#include <fire_engine/render/device.hpp>
 
 namespace fire_engine
 {

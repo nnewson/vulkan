@@ -7,7 +7,7 @@
 
 #include <fire_engine/input/camera_state.hpp>
 #include <fire_engine/math/mat4.hpp>
-#include <fire_engine/renderer/render_context.hpp>
+#include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
 #include <fire_engine/scene/transform.hpp>
 
@@ -86,9 +86,8 @@ inline auto formatNode(const fire_engine::Node& node, std::format_context& ctx, 
 {
     auto indent = std::string(static_cast<std::size_t>(depth * 2), ' ');
 
-    ctx.advance_to(
-        std::format_to(ctx.out(), "{}{} [{}] {}", indent, node.name(),
-                       fire_engine::componentName(node.component()), node.transform()));
+    ctx.advance_to(std::format_to(ctx.out(), "{}{} [{}] {}", indent, node.name(),
+                                  fire_engine::componentName(node.component()), node.transform()));
 
     for (const auto& child : node.children())
     {

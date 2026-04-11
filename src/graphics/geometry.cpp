@@ -1,7 +1,7 @@
-#include "fire_engine/renderer/renderer.hpp"
+#include "fire_engine/render/renderer.hpp"
 #include <fire_engine/graphics/geometry.hpp>
 
-#include <fire_engine/renderer/device.hpp>
+#include <fire_engine/render/device.hpp>
 
 namespace fire_engine
 {

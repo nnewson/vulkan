@@ -5,7 +5,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/platform/window.hpp>
-#include <fire_engine/renderer/device.hpp>
+#include <fire_engine/render/device.hpp>
 
 namespace fire_engine
 {

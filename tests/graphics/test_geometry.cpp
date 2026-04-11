@@ -1,0 +1,142 @@
+#include <gtest/gtest.h>
+
+#include <fire_engine/graphics/geometry.hpp>
+#include <fire_engine/graphics/material.hpp>
+
+using namespace fire_engine;
+
+// ---------------------------------------------------------------------------
+// Construction and defaults
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, DefaultConstructionNotLoaded)
+{
+    Geometry geo;
+    EXPECT_FALSE(geo.loaded());
+}
+
+TEST(Geometry, DefaultConstructionEmptyVertices)
+{
+    Geometry geo;
+    EXPECT_TRUE(geo.vertices().empty());
+}
+
+TEST(Geometry, DefaultConstructionEmptyIndices)
+{
+    Geometry geo;
+    EXPECT_TRUE(geo.indices().empty());
+    EXPECT_EQ(geo.indexCount(), 0);
+}
+
+// ---------------------------------------------------------------------------
+// Vertices
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, SetAndGetVertices)
+{
+    Geometry geo;
+    std::vector<Vertex> verts = {
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
+        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, 1, 0},
+        {{0, 1, 0}, {1, 1, 1}, {0, 1, 0}, 0, 1},
+    };
+    geo.vertices(verts);
+    EXPECT_EQ(geo.vertices().size(), 3);
+}
+
+TEST(Geometry, VerticesMoveSemantics)
+{
+    Geometry geo;
+    std::vector<Vertex> verts = {
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
+    };
+    geo.vertices(std::move(verts));
+    EXPECT_EQ(geo.vertices().size(), 1);
+}
+
+// ---------------------------------------------------------------------------
+// Indices
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, SetAndGetIndices)
+{
+    Geometry geo;
+    std::vector<uint16_t> idxs = {0, 1, 2, 2, 3, 0};
+    geo.indices(idxs);
+    EXPECT_EQ(geo.indices().size(), 6);
+    EXPECT_EQ(geo.indexCount(), 6);
+}
+
+TEST(Geometry, IndicesMoveSemantics)
+{
+    Geometry geo;
+    std::vector<uint16_t> idxs = {0, 1, 2};
+    geo.indices(std::move(idxs));
+    EXPECT_EQ(geo.indexCount(), 3);
+}
+
+// ---------------------------------------------------------------------------
+// Material pointer
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, DefaultMaterialIsNull)
+{
+    Geometry geo;
+    // material() dereferences the pointer, so we just check we can set one
+    Material mat;
+    geo.material(&mat);
+    EXPECT_EQ(geo.material().name(), mat.name());
+}
+
+TEST(Geometry, MaterialPointerAssignment)
+{
+    Geometry geo;
+    Material mat;
+    mat.name("test_mat");
+    geo.material(&mat);
+    EXPECT_EQ(geo.material().name(), "test_mat");
+}
+
+// ---------------------------------------------------------------------------
+// Move semantics (Geometry is non-copyable)
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, IsNonCopyable)
+{
+    EXPECT_FALSE(std::is_copy_constructible_v<Geometry>);
+    EXPECT_FALSE(std::is_copy_assignable_v<Geometry>);
+}
+
+TEST(Geometry, IsNothrowMovable)
+{
+    EXPECT_TRUE(std::is_nothrow_move_constructible_v<Geometry>);
+    EXPECT_TRUE(std::is_nothrow_move_assignable_v<Geometry>);
+}
+
+TEST(Geometry, MoveConstructionTransfersVerticesAndIndices)
+{
+    Geometry original;
+    std::vector<Vertex> verts = {
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
+        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, 1, 0},
+    };
+    std::vector<uint16_t> idxs = {0, 1};
+    original.vertices(verts);
+    original.indices(idxs);
+
+    Geometry moved(std::move(original));
+    EXPECT_EQ(moved.vertices().size(), 2);
+    EXPECT_EQ(moved.indexCount(), 2);
+    EXPECT_FALSE(moved.loaded());
+}
+
+TEST(Geometry, MoveAssignmentTransfersState)
+{
+    Geometry original;
+    std::vector<Vertex> verts = {{{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0}};
+    original.vertices(verts);
+
+    Geometry target;
+    target = std::move(original);
+    EXPECT_EQ(target.vertices().size(), 1);
+}

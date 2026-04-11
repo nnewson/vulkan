@@ -30,7 +30,7 @@ include/fire_engine/
   graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture
   input/           # CameraState, Input
   platform/        # Window, Keyboard, Mouse (Keyboard/Mouse header-only)
-  renderer/        # Renderer, Device, Swapchain, Pipeline, Frame, RenderContext, UBO
+  render/          # Renderer, Device, Swapchain, Pipeline, Frame, RenderContext, UBO
   scene/           # Component, Node, SceneGraph, Transform, Camera, Animator, Mesh
   fire_engine.hpp
 src/
@@ -39,7 +39,7 @@ src/
   graphics/        # image.cpp, texture.cpp
   input/           # input.cpp
   platform/        # window.cpp, application.cpp (main entry point)
-  renderer/        # device.cpp, frame.cpp, pipeline.cpp, renderer.cpp, swapchain.cpp
+  render/          # device.cpp, frame.cpp, pipeline.cpp, renderer.cpp, swapchain.cpp
   scene/           # animator.cpp, camera.cpp, mesh.cpp, node.cpp, scene_graph.cpp, transform.cpp
   fire_engine.cpp
 shaders/           # GLSL vertex/fragment shaders
@@ -57,7 +57,7 @@ cmake/             # Build-time scripts (copy_assets.cmake)
 
 ## Architecture
 
-### Renderer Subsystem (`renderer/`)
+### Renderer Subsystem (`render/`)
 
 - **Device** — wraps Vulkan instance, surface, physical/logical device, queues, `findMemoryType`, `createBuffer`
 - **Swapchain** — swapchain, image views, depth resources, framebuffers; handles `cleanup()`/`recreate()`

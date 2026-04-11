@@ -28,11 +28,11 @@ add_library(fireengine SHARED
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp
-    src/renderer/device.cpp
-    src/renderer/frame.cpp
-    src/renderer/pipeline.cpp
-    src/renderer/renderer.cpp
-    src/renderer/swapchain.cpp
+    src/render/device.cpp
+    src/render/frame.cpp
+    src/render/pipeline.cpp
+    src/render/renderer.cpp
+    src/render/swapchain.cpp
     src/scene/animator.cpp
     src/scene/camera.cpp
     src/scene/empty.cpp
@@ -102,6 +102,9 @@ add_executable(test_fire_engine
     tests/graphics/test_colour3.cpp
     tests/graphics/test_image.cpp
     tests/graphics/test_vertex.cpp
+    tests/graphics/test_assets.cpp
+    tests/graphics/test_material.cpp
+    tests/graphics/test_geometry.cpp
     tests/core/test_shader_loader.cpp
     tests/core/test_system.cpp
     tests/input/test_camera_state.cpp

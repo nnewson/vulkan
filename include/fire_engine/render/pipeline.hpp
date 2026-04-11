@@ -4,8 +4,8 @@
 
 #include <vulkan/vulkan_raii.hpp>
 
-#include <fire_engine/renderer/device.hpp>
-#include <fire_engine/renderer/swapchain.hpp>
+#include <fire_engine/render/device.hpp>
+#include <fire_engine/render/swapchain.hpp>
 
 namespace fire_engine
 {

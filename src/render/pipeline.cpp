@@ -1,6 +1,6 @@
 #include <fire_engine/core/shader_loader.hpp>
 #include <fire_engine/graphics/geometry.hpp>
-#include <fire_engine/renderer/pipeline.hpp>
+#include <fire_engine/render/pipeline.hpp>
 
 namespace fire_engine
 {
