@@ -94,6 +94,7 @@ enable_testing()
 
 add_executable(test_fire_engine
     tests/math/test_mat4.cpp
+    tests/math/test_quaternion.cpp
     tests/math/test_vec3.cpp
     tests/graphics/test_colour3.cpp
     tests/graphics/test_image.cpp

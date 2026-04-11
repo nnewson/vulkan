@@ -10,9 +10,9 @@
 
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
-#include <fire_engine/renderer/device.hpp>
-#include <fire_engine/renderer/frame.hpp>
-#include <fire_engine/renderer/pipeline.hpp>
+#include <fire_engine/renderer/backend/vulkan/vulkan_device.hpp>
+#include <fire_engine/renderer/backend/vulkan/vulkan_frame.hpp>
+#include <fire_engine/renderer/backend/vulkan/vulkan_pipeline.hpp>
 #include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
@@ -45,10 +45,24 @@ Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
     return {pitch, yaw, roll};
 }
 
+void applyTrs(const fastgltf::Node& gltfNode, Node& node)
+{
+    if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
+    {
+        node.transform().position(
+            {trs->translation.x(), trs->translation.y(), trs->translation.z()});
+        node.transform().rotation(quaternionToEuler(trs->rotation.x(), trs->rotation.y(),
+                                                    trs->rotation.z(), trs->rotation.w()));
+        node.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
+    }
+}
+
 } // namespace
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Device& device,
-                           const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene,
+                           const backend::vulkan::VulkanDevice& device,
+                           const backend::vulkan::VulkanPipeline& pipeline,
+                           backend::vulkan::VulkanFrame& frame)
 {
     auto gltfPath = std::filesystem::path(path);
     auto baseDir = gltfPath.parent_path();
@@ -92,16 +106,9 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Dev
                 std::make_unique<Node>(std::string(asset.nodes[nodeIndex].name) + "_Animator");
             animNode->component().emplace<Animator>();
 
-            // Apply the node's transform to the animator node
+            // Apply the node's static TRS to the root node
             const auto& gltfNode = asset.nodes[nodeIndex];
-            if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
-            {
-                rootRef.transform().position(
-                    {trs->translation.x(), trs->translation.y(), trs->translation.z()});
-                rootRef.transform().rotation(quaternionToEuler(
-                    trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()));
-                rootRef.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
-            }
+            applyTrs(gltfNode, rootRef);
 
             auto& animRef = rootRef.addChild(std::move(animNode));
             loadAnimation(asset, nodeIndex,
@@ -130,46 +137,49 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Dev
     }
 }
 
-void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-                          const std::string& baseDir, const Device& device,
-                          const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
+                          const std::string& baseDir,
+                          const backend::vulkan::VulkanDevice& device,
+                          const backend::vulkan::VulkanPipeline& pipeline,
+                          backend::vulkan::VulkanFrame& frame)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
-    // Apply transform
-    if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
-    {
-        parentNode.transform().position(
-            {trs->translation.x(), trs->translation.y(), trs->translation.z()});
-        parentNode.transform().rotation(quaternionToEuler(trs->rotation.x(), trs->rotation.y(),
-                                                          trs->rotation.z(), trs->rotation.w()));
-        parentNode.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
-    }
+    // Apply this node's static TRS to its own Node
+    applyTrs(gltfNode, node);
 
     // Load mesh if present
     if (gltfNode.meshIndex.has_value())
     {
-        parentNode.component().emplace<Mesh>();
-        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], parentNode, baseDir, device,
-                 pipeline, frame);
+        node.component().emplace<Mesh>();
+        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], node, baseDir, device, pipeline,
+                 frame);
     }
 
     // Recurse into children
     for (auto childIndex : gltfNode.children)
     {
         auto childNode = std::make_unique<Node>(std::string(asset.nodes[childIndex].name));
-        auto& childRef = parentNode.addChild(std::move(childNode));
+        auto& childRef = node.addChild(std::move(childNode));
 
         if (nodeHasAnimation(asset, childIndex))
         {
+            const auto& childGltfNode = asset.nodes[childIndex];
+
+            // Apply the child's static TRS to its own node before inserting the animator.
+            // TODO: glTF spec says animated channels *replace* the corresponding static
+            // TRS component. We currently apply the full static TRS here and then let
+            // the Animator compose its sampled matrix on top, which double-applies if an
+            // asset has both a non-identity static translation/rotation and an animation
+            // on the same component. Fix by skipping animated channels when applying.
+            applyTrs(childGltfNode, childRef);
+
             auto animNode =
-                std::make_unique<Node>(std::string(asset.nodes[childIndex].name) + "_Animator");
+                std::make_unique<Node>(std::string(childGltfNode.name) + "_Animator");
             animNode->component().emplace<Animator>();
             auto& animRef = childRef.addChild(std::move(animNode));
-            loadAnimation(asset, childIndex,
-                          std::get<Animator>(animRef.component()));
+            loadAnimation(asset, childIndex, std::get<Animator>(animRef.component()));
 
-            const auto& childGltfNode = asset.nodes[childIndex];
             if (childGltfNode.meshIndex.has_value())
             {
                 auto meshNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Mesh");
@@ -192,8 +202,10 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 }
 
 void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                          const std::string& baseDir, const Device& device,
-                          const Pipeline& pipeline, Frame& frame)
+                          const std::string& baseDir,
+                          const backend::vulkan::VulkanDevice& device,
+                          const backend::vulkan::VulkanPipeline& pipeline,
+                          backend::vulkan::VulkanFrame& frame)
 {
     for (const auto& primitive : mesh.primitives)
     {
@@ -330,15 +342,48 @@ bool GltfLoader::nodeHasAnimation(const fastgltf::Asset& asset, std::size_t node
 void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                Animator& animator)
 {
+    auto& la = animator.animation();
+
+    // Per the glTF spec (and the BoxAnimated "Common Problems" note), channels of
+    // the same animation must stay in sync even if they have different end times —
+    // the shorter channel clamps to its last key while the animation keeps running
+    // until the longest channel completes. To do that, every LinearAnimation that
+    // participates in a given glTF animation must loop on the *same* duration: the
+    // max input time across ALL of that animation's channels, not just the ones
+    // targeting this node.
+    float sharedDuration = 0.0f;
+
     for (const auto& anim : asset.animations)
     {
+        // Does this animation touch our node at all?
+        bool touchesNode = false;
+        for (const auto& channel : anim.channels)
+        {
+            if (channel.nodeIndex.has_value() && channel.nodeIndex.value() == nodeIndex)
+            {
+                touchesNode = true;
+                break;
+            }
+        }
+        if (!touchesNode)
+        {
+            continue;
+        }
+
+        // Fold every channel's input range (including channels targeting other
+        // nodes) into the shared duration so all participants loop in lockstep.
+        for (const auto& channel : anim.channels)
+        {
+            const auto& sampler = anim.samplers[channel.samplerIndex];
+            const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+            fastgltf::iterateAccessor<float>(
+                asset, inputAccessor,
+                [&](float t) { sharedDuration = std::max(sharedDuration, t); });
+        }
+
         for (const auto& channel : anim.channels)
         {
             if (!channel.nodeIndex.has_value() || channel.nodeIndex.value() != nodeIndex)
-            {
-                continue;
-            }
-            if (channel.path != fastgltf::AnimationPath::Rotation)
             {
                 continue;
             }
@@ -347,32 +392,50 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
             const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
             const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
 
-            // Read keyframe times
+            // Read keyframe times (shared by all channel types)
             std::vector<float> times(inputAccessor.count);
             fastgltf::iterateAccessorWithIndex<float>(
-                asset, inputAccessor,
-                [&](float t, std::size_t idx) { times[idx] = t; });
+                asset, inputAccessor, [&](float t, std::size_t idx) { times[idx] = t; });
 
-            // Read quaternion values
-            std::vector<fastgltf::math::fvec4> quats(outputAccessor.count);
-            fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
-                asset, outputAccessor,
-                [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
-
-            // Build keyframes
-            std::vector<LinearAnimation::Keyframe> keyframes;
-            std::size_t count = std::min(times.size(), quats.size());
-            keyframes.reserve(count);
-            for (std::size_t i = 0; i < count; ++i)
+            if (channel.path == fastgltf::AnimationPath::Rotation)
             {
-                keyframes.push_back(
-                    {times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
-            }
+                std::vector<fastgltf::math::fvec4> quats(outputAccessor.count);
+                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
+                    asset, outputAccessor,
+                    [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
 
-            animator.animation().keyframes(std::move(keyframes));
-            return;
+                std::vector<LinearAnimation::RotationKeyframe> kf;
+                std::size_t count = std::min(times.size(), quats.size());
+                kf.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    kf.push_back(
+                        {times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
+                }
+                la.rotationKeyframes(std::move(kf));
+            }
+            else if (channel.path == fastgltf::AnimationPath::Translation)
+            {
+                std::vector<fastgltf::math::fvec3> positions(outputAccessor.count);
+                fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+                    asset, outputAccessor,
+                    [&](fastgltf::math::fvec3 p, std::size_t idx) { positions[idx] = p; });
+
+                std::vector<LinearAnimation::TranslationKeyframe> kf;
+                std::size_t count = std::min(times.size(), positions.size());
+                kf.reserve(count);
+                for (std::size_t i = 0; i < count; ++i)
+                {
+                    kf.push_back(
+                        {times[i], Vec3{positions[i].x(), positions[i].y(), positions[i].z()}});
+                }
+                la.translationKeyframes(std::move(kf));
+            }
+            // Scale channels and morph weights are not supported; silently skip.
         }
     }
+
+    la.duration(sharedDuration);
 }
 
 } // namespace fire_engine
