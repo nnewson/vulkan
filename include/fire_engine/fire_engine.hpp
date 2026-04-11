@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <memory>
 
+#include <fire_engine/graphics/assets.hpp>
 #include <fire_engine/input/input.hpp>
 #include <fire_engine/platform/window.hpp>
 #include <fire_engine/renderer/renderer.hpp>
@@ -28,6 +29,7 @@ private:
     std::unique_ptr<Renderer> renderer_;
     Input input_;
     SceneGraph scene_;
+    Assets assets_;
     Camera* camera_{nullptr};
 
     void loadScene();

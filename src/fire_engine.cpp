@@ -47,8 +47,8 @@ void FireEngine::loadScene()
     camera_ = &camera;
 
     // Load glTF scene
-    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_);
-    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_);
+    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_, assets_);
+    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_, assets_);
 }
 
 void FireEngine::mainLoop()

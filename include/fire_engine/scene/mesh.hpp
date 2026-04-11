@@ -1,6 +1,6 @@
 #pragma once
 
-#include <fire_engine/graphics/geometry.hpp>
+#include <fire_engine/graphics/object.hpp>
 #include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
@@ -10,7 +10,7 @@ class Mesh : public Component
 {
 public:
     Mesh() = default;
-    explicit Mesh(Geometry geometry);
+    explicit Mesh(Object object);
     ~Mesh() override = default;
 
     Mesh(const Mesh&) = delete;
@@ -24,7 +24,7 @@ public:
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
 
 private:
-    Geometry geometry_;
+    Object object_;
 };
 
 } // namespace fire_engine

@@ -24,7 +24,7 @@ add_library(fireengine SHARED
     src/fire_engine.cpp
     src/graphics/geometry.cpp
     src/graphics/image.cpp
-    src/graphics/material.cpp
+    src/graphics/object.cpp
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp

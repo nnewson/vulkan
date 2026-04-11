@@ -10,6 +10,7 @@ namespace fire_engine
 {
 
 class Animator;
+class Assets;
 class Material;
 class Node;
 class Renderer;
@@ -20,14 +21,16 @@ class GltfLoader
 public:
     GltfLoader() = delete;
 
-    static void loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer);
+    static void loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
+                          Assets& assets);
 
 private:
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-                         const std::string& baseDir, const Renderer& renderer);
+                         const std::string& baseDir, const Renderer& renderer, Assets& assets);
 
     static void loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                         const std::string& baseDir, const Renderer& renderer);
+                         const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                         std::size_t meshIndex);
 
     [[nodiscard]]
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);

@@ -3,10 +3,11 @@
 #include <string>
 
 #include <fire_engine/graphics/colour3.hpp>
-#include <fire_engine/graphics/texture.hpp>
 
 namespace fire_engine
 {
+
+class Texture;
 
 class Material
 {
@@ -14,17 +15,22 @@ public:
     Material() = default;
     ~Material() = default;
 
-    Material(const Material&) = delete;
-    Material& operator=(const Material&) = delete;
+    Material(const Material&) = default;
+    Material& operator=(const Material&) = default;
     Material(Material&&) noexcept = default;
     Material& operator=(Material&&) noexcept = default;
 
-    void loadTexture(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physDevice,
-                     vk::CommandPool cmdPool, const vk::raii::Queue& queue);
-
     [[nodiscard]] const Texture& texture() const noexcept
     {
-        return texture_;
+        return *texture_;
+    }
+    void texture(const Texture* t) noexcept
+    {
+        texture_ = t;
+    }
+    [[nodiscard]] bool hasTexture() const noexcept
+    {
+        return texture_ != nullptr;
     }
 
     [[nodiscard]] const std::string& name() const noexcept
@@ -199,7 +205,7 @@ private:
     float anisotropy_{0.0f};
     float anisotropyRotation_{0.0f};
 
-    Texture texture_;
+    const Texture* texture_{nullptr};
 };
 
 } // namespace fire_engine
