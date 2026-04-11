@@ -140,8 +140,8 @@ TEST(NodeHierarchy, ChildOwnership)
 TEST(NodeComponent, DefaultComponentIsFirstVariantAlternative)
 {
     Node n;
-    // Default-constructed variant holds the first alternative (Animator)
-    EXPECT_TRUE(std::holds_alternative<fire_engine::Animator>(n.component()));
+    // Default-constructed variant holds the first alternative (Empty)
+    EXPECT_TRUE(std::holds_alternative<fire_engine::Empty>(n.component()));
 }
 
 TEST(NodeComponent, EmplaceCamera)

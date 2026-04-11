@@ -9,7 +9,6 @@ namespace fire_engine
 class Mesh : public Component
 {
 public:
-    Mesh() = default;
     explicit Mesh(Object object);
     ~Mesh() override = default;
 

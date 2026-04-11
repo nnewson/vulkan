@@ -35,6 +35,7 @@ add_library(fireengine SHARED
     src/renderer/swapchain.cpp
     src/scene/animator.cpp
     src/scene/camera.cpp
+    src/scene/empty.cpp
     src/scene/mesh.cpp
     src/scene/node.cpp
     src/scene/scene_graph.cpp

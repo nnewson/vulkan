@@ -13,6 +13,7 @@ class Animator;
 class Assets;
 class Material;
 class Node;
+class Object;
 class Renderer;
 class SceneGraph;
 
@@ -28,9 +29,10 @@ private:
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, const Renderer& renderer, Assets& assets);
 
-    static void loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                         const std::string& baseDir, const Renderer& renderer, Assets& assets,
-                         std::size_t meshIndex);
+    [[nodiscard]]
+    static Object loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
+                           const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                           std::size_t meshIndex);
 
     [[nodiscard]]
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);

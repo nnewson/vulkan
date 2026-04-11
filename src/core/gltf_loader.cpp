@@ -121,10 +121,11 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
             if (gltfNode.meshIndex.has_value())
             {
                 auto meshNode = std::make_unique<Node>(std::string(gltfNode.name) + "_Mesh");
-                meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
-                loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], meshRef, baseDir.string(),
-                         renderer, assets, gltfNode.meshIndex.value());
+                auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()],
+                                       baseDir.string(), renderer, assets,
+                                       gltfNode.meshIndex.value());
+                meshRef.component().emplace<Mesh>(std::move(object));
             }
 
             // Recurse into child nodes
@@ -151,9 +152,9 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
     // Load mesh if present
     if (gltfNode.meshIndex.has_value())
     {
-        node.component().emplace<Mesh>();
-        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], node, baseDir, renderer, assets,
-                 gltfNode.meshIndex.value());
+        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, renderer,
+                               assets, gltfNode.meshIndex.value());
+        node.component().emplace<Mesh>(std::move(object));
     }
 
     // Recurse into children
@@ -182,10 +183,11 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
             if (childGltfNode.meshIndex.has_value())
             {
                 auto meshNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Mesh");
-                meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
-                loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], meshRef, baseDir,
-                         renderer, assets, childGltfNode.meshIndex.value());
+                auto object =
+                    loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], baseDir,
+                             renderer, assets, childGltfNode.meshIndex.value());
+                meshRef.component().emplace<Mesh>(std::move(object));
             }
 
             for (auto grandchildIndex : childGltfNode.children)
@@ -200,9 +202,9 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
     }
 }
 
-void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                          const std::string& baseDir, const Renderer& renderer, Assets& assets,
-                          std::size_t meshIndex)
+Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
+                            const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                            std::size_t meshIndex)
 {
     for (const auto& primitive : mesh.primitives)
     {
@@ -348,10 +350,11 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
         // Create per-instance Object referencing the shared Geometry
         Object object;
         object.load(geometry, renderer);
-
-        auto& meshComponent = std::get<Mesh>(node.component());
-        meshComponent = Mesh(std::move(object));
+        return object;
     }
+
+    // Fallback (should not reach here if mesh has primitives)
+    return Object{};
 }
 
 std::pair<Material, std::string>
