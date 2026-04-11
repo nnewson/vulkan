@@ -3,6 +3,7 @@
 #include <string>
 
 #include <fire_engine/graphics/colour3.hpp>
+#include <fire_engine/graphics/texture.hpp>
 
 namespace fire_engine
 {
@@ -13,10 +14,18 @@ public:
     Material() = default;
     ~Material() = default;
 
-    Material(const Material&) = default;
-    Material& operator=(const Material&) = default;
+    Material(const Material&) = delete;
+    Material& operator=(const Material&) = delete;
     Material(Material&&) noexcept = default;
     Material& operator=(Material&&) noexcept = default;
+
+    void loadTexture(const vk::raii::Device& device, const vk::raii::PhysicalDevice& physDevice,
+                     vk::CommandPool cmdPool, const vk::raii::Queue& queue);
+
+    [[nodiscard]] const Texture& texture() const noexcept
+    {
+        return texture_;
+    }
 
     [[nodiscard]] const std::string& name() const noexcept
     {
@@ -189,6 +198,8 @@ private:
     float clearcoatRoughness_{0.0f};
     float anisotropy_{0.0f};
     float anisotropyRotation_{0.0f};
+
+    Texture texture_;
 };
 
 } // namespace fire_engine

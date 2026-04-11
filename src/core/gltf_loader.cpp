@@ -272,7 +272,13 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
         renderData.indices(std::move(idxs));
 
         auto& meshComponent = std::get<Mesh>(node.component());
-        meshComponent.load(renderData, material, texturePath, renderer);
+
+        // Set texture path on material before loading
+        material.mapKd(texturePath);
+        renderData.material(std::move(material));
+        renderData.load(renderer);
+
+        meshComponent = Mesh(std::move(renderData));
     }
 }
 

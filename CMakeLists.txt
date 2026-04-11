@@ -22,7 +22,9 @@ add_library(fireengine SHARED
     src/core/shader_loader.cpp
     src/core/system.cpp
     src/fire_engine.cpp
+    src/graphics/geometry.cpp
     src/graphics/image.cpp
+    src/graphics/material.cpp
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp
