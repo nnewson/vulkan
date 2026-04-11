@@ -58,10 +58,37 @@ void applyTRS(const fastgltf::Node& gltfNode, Node& node)
     }
 }
 
+std::string descendantMeshName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
+{
+    if (gltfNode.meshIndex.has_value())
+    {
+        const auto& name = asset.meshes[gltfNode.meshIndex.value()].name;
+        if (!name.empty())
+            return std::string(name);
+    }
+    for (auto childIndex : gltfNode.children)
+    {
+        auto result = descendantMeshName(asset, asset.nodes[childIndex]);
+        if (!result.empty())
+            return result;
+    }
+    return {};
+}
+
+std::string nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
+{
+    if (!gltfNode.name.empty())
+        return std::string(gltfNode.name);
+    auto meshName = descendantMeshName(asset, gltfNode);
+    if (!meshName.empty())
+        return meshName;
+    return "Node";
+}
+
 } // namespace
 
 void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
-                          Assets& assets)
+                           Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
     auto baseDir = gltfPath.parent_path();
@@ -104,39 +131,37 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
     const auto& gltfScene = asset.scenes[sceneIndex];
     for (auto nodeIndex : gltfScene.nodeIndices)
     {
-        // Create a dummy root node for scene-level children
-        auto rootNode = std::make_unique<Node>(std::string(asset.nodes[nodeIndex].name));
+        // Create root node using the glTF node name
+        auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
         auto& rootRef = scene.addNode(std::move(rootNode));
 
-        // If this node has an animation, wrap it with an Animator
+        // If this node has an animation, emplace Animator directly on the root node
         if (nodeHasAnimation(asset, nodeIndex))
         {
-            auto animNode =
-                std::make_unique<Node>(std::string(asset.nodes[nodeIndex].name) + "_Animator");
-            animNode->component().emplace<Animator>();
-
-            // Apply the node's static TRS to the root node
             const auto& gltfNode = asset.nodes[nodeIndex];
             applyTRS(gltfNode, rootRef);
 
-            auto& animRef = rootRef.addChild(std::move(animNode));
-            loadAnimation(asset, nodeIndex, std::get<Animator>(animRef.component()));
+            rootRef.component().emplace<Animator>();
+            loadAnimation(asset, nodeIndex, std::get<Animator>(rootRef.component()));
 
-            // Load mesh as child of animator
+            // Load mesh as child of this node
             if (gltfNode.meshIndex.has_value())
             {
-                auto meshNode = std::make_unique<Node>(std::string(gltfNode.name) + "_Mesh");
-                auto& meshRef = animRef.addChild(std::move(meshNode));
-                auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()],
-                                       baseDir.string(), renderer, assets,
-                                       gltfNode.meshIndex.value());
+                const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
+                std::string meshName = gltfMesh.name.empty() ? std::string(gltfNode.name) + "_Mesh"
+                                                             : std::string(gltfMesh.name);
+                auto meshNode = std::make_unique<Node>(std::move(meshName));
+                auto& meshRef = rootRef.addChild(std::move(meshNode));
+                auto object =
+                    loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir.string(),
+                             renderer, assets, gltfNode.meshIndex.value());
                 meshRef.component().emplace<Mesh>(std::move(object));
             }
 
             // Recurse into child nodes
             for (auto childIndex : gltfNode.children)
             {
-                loadNode(asset, childIndex, animRef, baseDir.string(), renderer, assets);
+                loadNode(asset, childIndex, rootRef, baseDir.string(), renderer, assets);
             }
         }
         else
@@ -165,7 +190,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
     // Recurse into children
     for (auto childIndex : gltfNode.children)
     {
-        auto childNode = std::make_unique<Node>(std::string(asset.nodes[childIndex].name));
+        auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
         auto& childRef = node.addChild(std::move(childNode));
 
         if (nodeHasAnimation(asset, childIndex))
@@ -180,24 +205,25 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
             // on the same component. Fix by skipping animated channels when applying.
             applyTRS(childGltfNode, childRef);
 
-            auto animNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Animator");
-            animNode->component().emplace<Animator>();
-            auto& animRef = childRef.addChild(std::move(animNode));
-            loadAnimation(asset, childIndex, std::get<Animator>(animRef.component()));
+            childRef.component().emplace<Animator>();
+            loadAnimation(asset, childIndex, std::get<Animator>(childRef.component()));
 
             if (childGltfNode.meshIndex.has_value())
             {
-                auto meshNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Mesh");
-                auto& meshRef = animRef.addChild(std::move(meshNode));
-                auto object =
-                    loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], baseDir,
-                             renderer, assets, childGltfNode.meshIndex.value());
+                const auto& gltfMesh = asset.meshes[childGltfNode.meshIndex.value()];
+                std::string meshName = gltfMesh.name.empty()
+                                           ? std::string(childGltfNode.name) + "_Mesh"
+                                           : std::string(gltfMesh.name);
+                auto meshNode = std::make_unique<Node>(std::move(meshName));
+                auto& meshRef = childRef.addChild(std::move(meshNode));
+                auto object = loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()],
+                                       baseDir, renderer, assets, childGltfNode.meshIndex.value());
                 meshRef.component().emplace<Mesh>(std::move(object));
             }
 
             for (auto grandchildIndex : childGltfNode.children)
             {
-                loadNode(asset, grandchildIndex, animRef, baseDir, renderer, assets);
+                loadNode(asset, grandchildIndex, childRef, baseDir, renderer, assets);
             }
         }
         else
@@ -249,10 +275,9 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             if (defaultTex.view() == vk::ImageView{})
             {
                 auto& device = renderer.device();
-                defaultTex = Texture::load_from_file("default.png", device.device(),
-                                                     device.physicalDevice(),
-                                                     renderer.frame().commandPool(),
-                                                     device.graphicsQueue());
+                defaultTex =
+                    Texture::load_from_file("default.png", device.device(), device.physicalDevice(),
+                                            renderer.frame().commandPool(), device.graphicsQueue());
             }
             texPtr = &defaultTex;
         }
@@ -327,10 +352,9 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             for (std::size_t i = 0; i < positions.size(); ++i)
             {
                 Vec3 pos{positions[i].x(), positions[i].y(), positions[i].z()};
-                Vec3 norm =
-                    (i < normals.size())
-                        ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
-                        : Vec3{0.0f, 1.0f, 0.0f};
+                Vec3 norm = (i < normals.size())
+                                ? Vec3{normals[i].x(), normals[i].y(), normals[i].z()}
+                                : Vec3{0.0f, 1.0f, 0.0f};
                 float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
                 float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
 
@@ -366,9 +390,9 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
     return object;
 }
 
-std::pair<Material, std::string>
-GltfLoader::loadMaterial(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                         const std::string& baseDir)
+std::pair<Material, std::string> GltfLoader::loadMaterial(const fastgltf::Asset& asset,
+                                                          const fastgltf::Primitive& primitive,
+                                                          const std::string& baseDir)
 {
     Material material;
     std::string texturePath;

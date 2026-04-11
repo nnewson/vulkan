@@ -1,6 +1,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <memory>
+#include <print>
 
 #include <fire_engine/fire_engine.hpp>
 
@@ -47,8 +48,10 @@ void FireEngine::loadScene()
     camera_ = &camera;
 
     // Load glTF scene
-    GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_, assets_);
-    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_, assets_);
+    // GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_, assets_);
+    GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_, assets_);
+
+    std::print("{}\n", scene_);
 }
 
 void FireEngine::mainLoop()

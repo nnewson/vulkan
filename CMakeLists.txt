@@ -109,6 +109,7 @@ add_executable(test_fire_engine
     tests/scene/test_camera.cpp
     tests/scene/test_node.cpp
     tests/scene/test_scene_graph.cpp
+    tests/scene/test_formatter.cpp
     tests/animation/test_linear_animation.cpp
     tests/scene/test_transform.cpp
 )

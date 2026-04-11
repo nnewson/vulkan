@@ -1,5 +1,7 @@
 #pragma once
 
+#include <format>
+
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 
@@ -64,3 +66,22 @@ private:
 };
 
 } // namespace fire_engine
+
+template <>
+struct std::formatter<fire_engine::Transform>
+{
+    constexpr auto parse(std::format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    auto format(const fire_engine::Transform& t, std::format_context& ctx) const
+    {
+        auto p = t.position();
+        auto r = t.rotation();
+        auto s = t.scale();
+        return std::format_to(ctx.out(), "pos({:.2f}, {:.2f}, {:.2f}) rot({:.2f}, {:.2f}, {:.2f}) "
+                                         "scale({:.2f}, {:.2f}, {:.2f})",
+                              p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), s.x(), s.y(), s.z());
+    }
+};
