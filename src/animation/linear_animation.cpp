@@ -1,141 +1,132 @@
 #include <fire_engine/animation/linear_animation.hpp>
 
+#include <algorithm>
 #include <cmath>
+#include <utility>
 
 namespace fire_engine
 {
 
-Mat4 LinearAnimation::sample(float t) const noexcept
+namespace
 {
-    if (keyframes_.empty())
+
+float loopTime(float t, float dur) noexcept
+{
+    if (dur <= 0.0f)
     {
-        return Mat4::identity();
+        return 0.0f;
+    }
+    t = std::fmod(t, dur);
+    if (t < 0.0f)
+    {
+        t += dur;
+    }
+    return t;
+}
+
+// Find the bracketing index and interpolation alpha in the keyframe list.
+// Returns (i, alpha) where keyframes[i].time <= t < keyframes[i+1].time and
+// alpha in [0, 1]. Clamps at both endpoints: if t is before the first keyframe
+// returns (0, 0); if t is past the last keyframe returns (last, 0). This matches
+// the glTF spec, which says pre-first and post-last samples take the boundary
+// key's value.
+template <typename KF>
+std::pair<std::size_t, float> findBracket(const std::vector<KF>& kf, float t) noexcept
+{
+    // Clamp to the first keyframe if t is before it (glTF spec: pre-first values
+    // use the first key's value). Without this, the loop below returns (0, alpha<0)
+    // and the caller extrapolates backwards off the curve.
+    if (t <= kf.front().time)
+    {
+        return {0, 0.0f};
     }
 
-    if (keyframes_.size() == 1)
-    {
-        return quatToMat4({keyframes_[0].qx, keyframes_[0].qy, keyframes_[0].qz, keyframes_[0].qw});
-    }
-
-    // Loop the animation
-    float dur = duration();
-    if (dur > 0.0f)
-    {
-        t = std::fmod(t, dur);
-        if (t < 0.0f)
-        {
-            t += dur;
-        }
-    }
-
-    // Find bracketing keyframes
     std::size_t i = 0;
-    for (; i < keyframes_.size() - 1; ++i)
+    for (; i < kf.size() - 1; ++i)
     {
-        if (t < keyframes_[i + 1].time)
+        if (t < kf[i + 1].time)
         {
             break;
         }
     }
-
-    // Clamp to last keyframe
-    if (i >= keyframes_.size() - 1)
+    if (i >= kf.size() - 1)
     {
-        const auto& kf = keyframes_.back();
-        return quatToMat4({kf.qx, kf.qy, kf.qz, kf.qw});
+        return {kf.size() - 1, 0.0f};
     }
 
-    const auto& kf0 = keyframes_[i];
-    const auto& kf1 = keyframes_[i + 1];
-
-    float dt = kf1.time - kf0.time;
-    float alpha = (dt > 0.0f) ? (t - kf0.time) / dt : 0.0f;
-
-    Quat q0{kf0.qx, kf0.qy, kf0.qz, kf0.qw};
-    Quat q1{kf1.qx, kf1.qy, kf1.qz, kf1.qw};
-
-    return quatToMat4(slerp(q0, q1, alpha));
+    float dt = kf[i + 1].time - kf[i].time;
+    float alpha = (dt > 0.0f) ? (t - kf[i].time) / dt : 0.0f;
+    return {i, alpha};
 }
 
-LinearAnimation::Quat LinearAnimation::slerp(Quat a, Quat b, float t) noexcept
+Quaternion sampleRotation(const std::vector<LinearAnimation::RotationKeyframe>& kf,
+                          float t) noexcept
 {
-    float dot = a.x * b.x + a.y * b.y + a.z * b.z + a.w * b.w;
-
-    // If the dot product is negative, negate one quaternion to take the shorter path
-    if (dot < 0.0f)
+    if (kf.empty())
     {
-        b.x = -b.x;
-        b.y = -b.y;
-        b.z = -b.z;
-        b.w = -b.w;
-        dot = -dot;
+        return Quaternion::identity();
+    }
+    if (kf.size() == 1)
+    {
+        return {kf[0].qx, kf[0].qy, kf[0].qz, kf[0].qw};
     }
 
-    // If quaternions are very close, use linear interpolation to avoid division by zero
-    if (dot > 0.9995f)
+    auto [i, alpha] = findBracket(kf, t);
+    Quaternion q0{kf[i].qx, kf[i].qy, kf[i].qz, kf[i].qw};
+    if (alpha == 0.0f)
     {
-        Quat result{
-            a.x + t * (b.x - a.x),
-            a.y + t * (b.y - a.y),
-            a.z + t * (b.z - a.z),
-            a.w + t * (b.w - a.w),
-        };
-        // Normalise
-        float len = std::sqrt(result.x * result.x + result.y * result.y + result.z * result.z +
-                              result.w * result.w);
-        if (len > 0.0f)
-        {
-            result.x /= len;
-            result.y /= len;
-            result.z /= len;
-            result.w /= len;
-        }
-        return result;
+        return q0;
     }
-
-    float theta = std::acos(dot);
-    float sinTheta = std::sin(theta);
-
-    float wa = std::sin((1.0f - t) * theta) / sinTheta;
-    float wb = std::sin(t * theta) / sinTheta;
-
-    return {
-        wa * a.x + wb * b.x,
-        wa * a.y + wb * b.y,
-        wa * a.z + wb * b.z,
-        wa * a.w + wb * b.w,
-    };
+    Quaternion q1{kf[i + 1].qx, kf[i + 1].qy, kf[i + 1].qz, kf[i + 1].qw};
+    return Quaternion::slerp(q0, q1, alpha);
 }
 
-Mat4 LinearAnimation::quatToMat4(Quat q) noexcept
+Vec3 sampleTranslation(const std::vector<LinearAnimation::TranslationKeyframe>& kf,
+                       float t) noexcept
 {
-    float xx = q.x * q.x;
-    float yy = q.y * q.y;
-    float zz = q.z * q.z;
-    float xy = q.x * q.y;
-    float xz = q.x * q.z;
-    float yz = q.y * q.z;
-    float wx = q.w * q.x;
-    float wy = q.w * q.y;
-    float wz = q.w * q.z;
+    if (kf.empty())
+    {
+        return {};
+    }
+    if (kf.size() == 1)
+    {
+        return kf[0].position;
+    }
 
-    // Column-major rotation matrix from unit quaternion
-    Mat4 m;
-    // Column 0
-    m[0, 0] = 1.0f - 2.0f * (yy + zz);
-    m[1, 0] = 2.0f * (xy + wz);
-    m[2, 0] = 2.0f * (xz - wy);
-    // Column 1
-    m[0, 1] = 2.0f * (xy - wz);
-    m[1, 1] = 1.0f - 2.0f * (xx + zz);
-    m[2, 1] = 2.0f * (yz + wx);
-    // Column 2
-    m[0, 2] = 2.0f * (xz + wy);
-    m[1, 2] = 2.0f * (yz - wx);
-    m[2, 2] = 1.0f - 2.0f * (xx + yy);
-    // Column 3
-    m[3, 3] = 1.0f;
-    return m;
+    auto [i, alpha] = findBracket(kf, t);
+    if (alpha == 0.0f)
+    {
+        return kf[i].position;
+    }
+    return kf[i].position + (kf[i + 1].position - kf[i].position) * alpha;
+}
+
+} // namespace
+
+float LinearAnimation::duration() const noexcept
+{
+    if (duration_ >= 0.0f)
+    {
+        return duration_;
+    }
+    float rotDur = rotationKeyframes_.empty() ? 0.0f : rotationKeyframes_.back().time;
+    float transDur = translationKeyframes_.empty() ? 0.0f : translationKeyframes_.back().time;
+    return std::max(rotDur, transDur);
+}
+
+Mat4 LinearAnimation::sample(float t) const noexcept
+{
+    if (rotationKeyframes_.empty() && translationKeyframes_.empty())
+    {
+        return Mat4::identity();
+    }
+
+    float looped = loopTime(t, duration());
+
+    Quaternion rotation = sampleRotation(rotationKeyframes_, looped);
+    Vec3 position = sampleTranslation(translationKeyframes_, looped);
+
+    return Mat4::translate(position) * rotation.toMat4();
 }
 
 } // namespace fire_engine

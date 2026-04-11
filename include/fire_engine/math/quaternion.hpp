@@ -1,0 +1,210 @@
+#pragma once
+
+#include <cmath>
+
+#include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/mat4.hpp>
+
+namespace fire_engine
+{
+
+class Quaternion
+{
+public:
+    constexpr Quaternion(float x = 0.0f, float y = 0.0f, float z = 0.0f, float w = 1.0f) noexcept
+        : x_(x),
+          y_(y),
+          z_(z),
+          w_(w)
+    {
+    }
+
+    ~Quaternion() = default;
+
+    Quaternion(const Quaternion&) = default;
+    Quaternion& operator=(const Quaternion&) = default;
+    Quaternion(Quaternion&&) noexcept = default;
+    Quaternion& operator=(Quaternion&&) noexcept = default;
+
+    [[nodiscard]]
+    constexpr float x() const noexcept
+    {
+        return x_;
+    }
+
+    constexpr void x(float x) noexcept
+    {
+        x_ = x;
+    }
+
+    [[nodiscard]]
+    constexpr float y() const noexcept
+    {
+        return y_;
+    }
+
+    constexpr void y(float y) noexcept
+    {
+        y_ = y;
+    }
+
+    [[nodiscard]]
+    constexpr float z() const noexcept
+    {
+        return z_;
+    }
+
+    constexpr void z(float z) noexcept
+    {
+        z_ = z;
+    }
+
+    [[nodiscard]]
+    constexpr float w() const noexcept
+    {
+        return w_;
+    }
+
+    constexpr void w(float w) noexcept
+    {
+        w_ = w;
+    }
+
+    [[nodiscard]]
+    static constexpr Quaternion identity() noexcept
+    {
+        return {};
+    }
+
+    [[nodiscard]]
+    constexpr Quaternion operator-() const noexcept
+    {
+        return {-x_, -y_, -z_, -w_};
+    }
+
+    [[nodiscard]]
+    constexpr bool operator==(const Quaternion& rhs) const noexcept
+    {
+        return x_ == rhs.x_ && y_ == rhs.y_ && z_ == rhs.z_ && w_ == rhs.w_;
+    }
+
+    [[nodiscard]]
+    static constexpr float dotProduct(const Quaternion& a, const Quaternion& b) noexcept
+    {
+        return a.x_ * b.x_ + a.y_ * b.y_ + a.z_ * b.z_ + a.w_ * b.w_;
+    }
+
+    [[nodiscard]]
+    constexpr float dotProduct(const Quaternion& rhs) const noexcept
+    {
+        return Quaternion::dotProduct(*this, rhs);
+    }
+
+    [[nodiscard]]
+    constexpr float magnitudeSquared() const noexcept
+    {
+        return x_ * x_ + y_ * y_ + z_ * z_ + w_ * w_;
+    }
+
+    [[nodiscard]]
+    float magnitude() const noexcept
+    {
+        return std::sqrt(magnitudeSquared());
+    }
+
+    [[nodiscard]]
+    static Quaternion normalise(const Quaternion& q) noexcept
+    {
+        float len = q.magnitude();
+        if (len < float_epsilon)
+        {
+            return Quaternion::identity();
+        }
+        return {q.x_ / len, q.y_ / len, q.z_ / len, q.w_ / len};
+    }
+
+    Quaternion& normalise() noexcept
+    {
+        *this = Quaternion::normalise(*this);
+        return *this;
+    }
+
+    [[nodiscard]]
+    static Quaternion slerp(const Quaternion& a, const Quaternion& b, float t) noexcept
+    {
+        float dot = Quaternion::dotProduct(a, b);
+
+        // If the dot product is negative, negate one quaternion to take the shorter path
+        Quaternion bCorrected = b;
+        if (dot < 0.0f)
+        {
+            bCorrected = -b;
+            dot = -dot;
+        }
+
+        // If the inputs are very close, fall back to NLERP to avoid division by zero
+        if (dot > 0.9995f)
+        {
+            Quaternion result{
+                a.x_ + t * (bCorrected.x_ - a.x_),
+                a.y_ + t * (bCorrected.y_ - a.y_),
+                a.z_ + t * (bCorrected.z_ - a.z_),
+                a.w_ + t * (bCorrected.w_ - a.w_),
+            };
+            return Quaternion::normalise(result);
+        }
+
+        float theta = std::acos(dot);
+        float sinTheta = std::sin(theta);
+
+        float wa = std::sin((1.0f - t) * theta) / sinTheta;
+        float wb = std::sin(t * theta) / sinTheta;
+
+        return {
+            wa * a.x_ + wb * bCorrected.x_,
+            wa * a.y_ + wb * bCorrected.y_,
+            wa * a.z_ + wb * bCorrected.z_,
+            wa * a.w_ + wb * bCorrected.w_,
+        };
+    }
+
+    [[nodiscard]]
+    Mat4 toMat4() const noexcept
+    {
+        float xx = x_ * x_;
+        float yy = y_ * y_;
+        float zz = z_ * z_;
+        float xy = x_ * y_;
+        float xz = x_ * z_;
+        float yz = y_ * z_;
+        float wx = w_ * x_;
+        float wy = w_ * y_;
+        float wz = w_ * z_;
+
+        // Column-major rotation matrix from unit quaternion
+        Mat4 m;
+        // Column 0
+        m[0, 0] = 1.0f - 2.0f * (yy + zz);
+        m[1, 0] = 2.0f * (xy + wz);
+        m[2, 0] = 2.0f * (xz - wy);
+        // Column 1
+        m[0, 1] = 2.0f * (xy - wz);
+        m[1, 1] = 1.0f - 2.0f * (xx + zz);
+        m[2, 1] = 2.0f * (yz + wx);
+        // Column 2
+        m[0, 2] = 2.0f * (xz + wy);
+        m[1, 2] = 2.0f * (yz - wx);
+        m[2, 2] = 1.0f - 2.0f * (xx + yy);
+        // Column 3
+        m[3, 3] = 1.0f;
+        return m;
+    }
+
+private:
+    float x_;
+    float y_;
+    float z_;
+    float w_;
+};
+
+} // namespace fire_engine

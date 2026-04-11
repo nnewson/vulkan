@@ -16,7 +16,8 @@ using fire_engine::Transform;
 TEST(Animator, DefaultConstructionHasNoAnimation)
 {
     Animator a;
-    EXPECT_TRUE(a.animation().keyframes().empty());
+    EXPECT_TRUE(a.animation().rotationKeyframes().empty());
+    EXPECT_TRUE(a.animation().translationKeyframes().empty());
     EXPECT_FLOAT_EQ(a.animation().duration(), 0.0f);
 }
 
@@ -53,7 +54,7 @@ TEST(Animator, UpdateSamplesAnimationAtElapsedTime)
     // 90 degrees around Y over 2 seconds
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
     float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
-    a.animation().keyframes({
+    a.animation().rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {2.0f, 0.0f, s45, 0.0f, c45},
     });

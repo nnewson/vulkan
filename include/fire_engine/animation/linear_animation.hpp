@@ -3,6 +3,8 @@
 #include <vector>
 
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/math/quaternion.hpp>
+#include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
 {
@@ -10,13 +12,19 @@ namespace fire_engine
 class LinearAnimation
 {
 public:
-    struct Keyframe
+    struct RotationKeyframe
     {
         float time{0.0f};
         float qx{0.0f};
         float qy{0.0f};
         float qz{0.0f};
         float qw{1.0f};
+    };
+
+    struct TranslationKeyframe
+    {
+        float time{0.0f};
+        Vec3 position{};
     };
 
     LinearAnimation() = default;
@@ -27,35 +35,41 @@ public:
     LinearAnimation(LinearAnimation&&) noexcept = default;
     LinearAnimation& operator=(LinearAnimation&&) noexcept = default;
 
-    [[nodiscard]] const std::vector<Keyframe>& keyframes() const noexcept
+    [[nodiscard]] const std::vector<RotationKeyframe>& rotationKeyframes() const noexcept
     {
-        return keyframes_;
+        return rotationKeyframes_;
     }
-    void keyframes(std::vector<Keyframe> kf) noexcept
+    void rotationKeyframes(std::vector<RotationKeyframe> kf) noexcept
     {
-        keyframes_ = std::move(kf);
+        rotationKeyframes_ = std::move(kf);
     }
 
-    [[nodiscard]] float duration() const noexcept
+    [[nodiscard]] const std::vector<TranslationKeyframe>& translationKeyframes() const noexcept
     {
-        return keyframes_.empty() ? 0.0f : keyframes_.back().time;
+        return translationKeyframes_;
+    }
+    void translationKeyframes(std::vector<TranslationKeyframe> kf) noexcept
+    {
+        translationKeyframes_ = std::move(kf);
+    }
+
+    [[nodiscard]] float duration() const noexcept;
+    // Explicitly override the loop duration. Used by the glTF loader so every
+    // LinearAnimation participating in the same glTF animation loops in lockstep
+    // across its full span (max of *all* channels, not just this node's channels).
+    // A negative value (the default) means "use the max keyframe time across my
+    // own channels".
+    void duration(float d) noexcept
+    {
+        duration_ = d;
     }
 
     [[nodiscard]] Mat4 sample(float t) const noexcept;
 
 private:
-    struct Quat
-    {
-        float x{0.0f};
-        float y{0.0f};
-        float z{0.0f};
-        float w{1.0f};
-    };
-
-    [[nodiscard]] static Quat slerp(Quat a, Quat b, float t) noexcept;
-    [[nodiscard]] static Mat4 quatToMat4(Quat q) noexcept;
-
-    std::vector<Keyframe> keyframes_;
+    std::vector<RotationKeyframe> rotationKeyframes_;
+    std::vector<TranslationKeyframe> translationKeyframes_;
+    float duration_{-1.0f};
 };
 
 } // namespace fire_engine
