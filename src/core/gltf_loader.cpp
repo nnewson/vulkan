@@ -1,3 +1,4 @@
+#include "fire_engine/renderer/renderer.hpp"
 #include <fire_engine/core/gltf_loader.hpp>
 
 #include <cmath>
@@ -42,7 +43,7 @@ Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
     return {pitch, yaw, roll};
 }
 
-void applyTrs(const fastgltf::Node& gltfNode, Node& node)
+void applyTRS(const fastgltf::Node& gltfNode, Node& node)
 {
     if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
     {
@@ -56,8 +57,7 @@ void applyTrs(const fastgltf::Node& gltfNode, Node& node)
 
 } // namespace
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Device& device,
-                           const Pipeline& pipeline, Frame& frame)
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer)
 {
     auto gltfPath = std::filesystem::path(path);
     auto baseDir = gltfPath.parent_path();
@@ -103,7 +103,7 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Dev
 
             // Apply the node's static TRS to the root node
             const auto& gltfNode = asset.nodes[nodeIndex];
-            applyTrs(gltfNode, rootRef);
+            applyTRS(gltfNode, rootRef);
 
             auto& animRef = rootRef.addChild(std::move(animNode));
             loadAnimation(asset, nodeIndex, std::get<Animator>(animRef.component()));
@@ -115,37 +115,35 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Dev
                 meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
                 loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], meshRef, baseDir.string(),
-                         device, pipeline, frame);
+                         renderer);
             }
 
             // Recurse into child nodes
             for (auto childIndex : gltfNode.children)
             {
-                loadNode(asset, childIndex, animRef, baseDir.string(), device, pipeline, frame);
+                loadNode(asset, childIndex, animRef, baseDir.string(), renderer);
             }
         }
         else
         {
-            loadNode(asset, nodeIndex, rootRef, baseDir.string(), device, pipeline, frame);
+            loadNode(asset, nodeIndex, rootRef, baseDir.string(), renderer);
         }
     }
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir, const Device& device,
-                          const Pipeline& pipeline, Frame& frame)
+                          const std::string& baseDir, const Renderer& renderer)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
     // Apply this node's static TRS to its own Node
-    applyTrs(gltfNode, node);
+    applyTRS(gltfNode, node);
 
     // Load mesh if present
     if (gltfNode.meshIndex.has_value())
     {
         node.component().emplace<Mesh>();
-        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], node, baseDir, device, pipeline,
-                 frame);
+        loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], node, baseDir, renderer);
     }
 
     // Recurse into children
@@ -164,7 +162,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
             // the Animator compose its sampled matrix on top, which double-applies if an
             // asset has both a non-identity static translation/rotation and an animation
             // on the same component. Fix by skipping animated channels when applying.
-            applyTrs(childGltfNode, childRef);
+            applyTRS(childGltfNode, childRef);
 
             auto animNode = std::make_unique<Node>(std::string(childGltfNode.name) + "_Animator");
             animNode->component().emplace<Animator>();
@@ -177,63 +175,28 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
                 meshNode->component().emplace<Mesh>();
                 auto& meshRef = animRef.addChild(std::move(meshNode));
                 loadMesh(asset, asset.meshes[childGltfNode.meshIndex.value()], meshRef, baseDir,
-                         device, pipeline, frame);
+                         renderer);
             }
 
             for (auto grandchildIndex : childGltfNode.children)
             {
-                loadNode(asset, grandchildIndex, animRef, baseDir, device, pipeline, frame);
+                loadNode(asset, grandchildIndex, animRef, baseDir, renderer);
             }
         }
         else
         {
-            loadNode(asset, childIndex, childRef, baseDir, device, pipeline, frame);
+            loadNode(asset, childIndex, childRef, baseDir, renderer);
         }
     }
 }
 
 void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node,
-                          const std::string& baseDir, const Device& device,
-                          const Pipeline& pipeline, Frame& frame)
+                          const std::string& baseDir, const Renderer& renderer)
 {
     for (const auto& primitive : mesh.primitives)
     {
         Geometry renderData;
-        Material material;
-        std::string texturePath;
-
-        // Extract material properties
-        if (primitive.materialIndex.has_value())
-        {
-            const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
-            material.name(std::string(gltfMat.name));
-
-            const auto& pbr = gltfMat.pbrData;
-            material.diffuse({static_cast<float>(pbr.baseColorFactor.x()),
-                              static_cast<float>(pbr.baseColorFactor.y()),
-                              static_cast<float>(pbr.baseColorFactor.z())});
-            material.metallic(static_cast<float>(pbr.metallicFactor));
-            material.roughness(static_cast<float>(pbr.roughnessFactor));
-
-            material.emissive({static_cast<float>(gltfMat.emissiveFactor.x()),
-                               static_cast<float>(gltfMat.emissiveFactor.y()),
-                               static_cast<float>(gltfMat.emissiveFactor.z())});
-
-            // Resolve base color texture path
-            if (pbr.baseColorTexture.has_value())
-            {
-                auto texIndex = pbr.baseColorTexture.value().textureIndex;
-                const auto& tex = asset.textures[texIndex];
-                if (tex.imageIndex.has_value())
-                {
-                    const auto& img = asset.images[tex.imageIndex.value()];
-                    if (auto* uri = std::get_if<fastgltf::sources::URI>(&img.data))
-                    {
-                        texturePath = baseDir + "/" + std::string(uri->uri.path());
-                    }
-                }
-            }
-        }
+        auto [material, texturePath] = loadMaterial(asset, primitive, baseDir);
 
         // Read vertex attributes
         const auto* posAttr = primitive.findAttribute("POSITION");
@@ -309,8 +272,50 @@ void GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& me
         renderData.indices(std::move(idxs));
 
         auto& meshComponent = std::get<Mesh>(node.component());
-        meshComponent.load(renderData, material, texturePath, device, pipeline, frame);
+        meshComponent.load(renderData, material, texturePath, renderer);
     }
+}
+
+std::pair<Material, std::string>
+GltfLoader::loadMaterial(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                         const std::string& baseDir)
+{
+    Material material;
+    std::string texturePath;
+
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        material.name(std::string(gltfMat.name));
+
+        const auto& pbr = gltfMat.pbrData;
+        material.diffuse({static_cast<float>(pbr.baseColorFactor.x()),
+                          static_cast<float>(pbr.baseColorFactor.y()),
+                          static_cast<float>(pbr.baseColorFactor.z())});
+        material.metallic(static_cast<float>(pbr.metallicFactor));
+        material.roughness(static_cast<float>(pbr.roughnessFactor));
+
+        material.emissive({static_cast<float>(gltfMat.emissiveFactor.x()),
+                           static_cast<float>(gltfMat.emissiveFactor.y()),
+                           static_cast<float>(gltfMat.emissiveFactor.z())});
+
+        // Resolve base color texture path
+        if (pbr.baseColorTexture.has_value())
+        {
+            auto texIndex = pbr.baseColorTexture.value().textureIndex;
+            const auto& tex = asset.textures[texIndex];
+            if (tex.imageIndex.has_value())
+            {
+                const auto& img = asset.images[tex.imageIndex.value()];
+                if (auto* uri = std::get_if<fastgltf::sources::URI>(&img.data))
+                {
+                    texturePath = baseDir + "/" + std::string(uri->uri.path());
+                }
+            }
+        }
+    }
+
+    return {std::move(material), std::move(texturePath)};
 }
 
 bool GltfLoader::nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex)

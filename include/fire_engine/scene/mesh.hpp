@@ -13,6 +13,7 @@
 namespace fire_engine
 {
 
+class Renderer;
 class Device;
 class Frame;
 class Pipeline;
@@ -29,7 +30,7 @@ public:
     Mesh& operator=(Mesh&&) noexcept = default;
 
     void load(const Geometry& renderData, const Material& material, const std::string& texturePath,
-              const Device& device, const Pipeline& pipeline, Frame& frame);
+              const Renderer& renderer);
 
     void update(const CameraState& input_state, const Transform& transform) override;
 

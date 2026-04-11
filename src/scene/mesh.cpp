@@ -1,3 +1,4 @@
+#include "fire_engine/renderer/renderer.hpp"
 #include <fire_engine/scene/mesh.hpp>
 
 #include <fire_engine/math/constants.hpp>
@@ -12,9 +13,9 @@ namespace fire_engine
 {
 
 void Mesh::load(const Geometry& renderData, const Material& material,
-                const std::string& texturePath, const Device& device, const Pipeline& pipeline,
-                Frame& frame)
+                const std::string& texturePath, const Renderer& renderer)
 {
+    auto& device = renderer.device();
     vkDevice_ = &device.device();
 
     material_ = material;
@@ -46,7 +47,7 @@ void Mesh::load(const Geometry& renderData, const Material& material,
     // Load texture
     std::string texPath = texturePath.empty() ? "default.png" : texturePath;
     texture_ = Texture::load_from_file(texPath, *vkDevice_, device.physicalDevice(),
-                                       frame.commandPool(), device.graphicsQueue());
+                                       renderer.frame().commandPool(), device.graphicsQueue());
 
     // Create material uniform buffers
     vk::DeviceSize matSize = sizeof(MaterialUBO);
@@ -92,7 +93,7 @@ void Mesh::load(const Geometry& renderData, const Material& material,
     // Create per-mesh UBOs and descriptor sets
     createUniformBuffers(device);
     createDescriptorPool();
-    createDescriptorSets(pipeline);
+    createDescriptorSets(renderer.pipeline());
 }
 
 void Mesh::createUniformBuffers(const Device& device)
