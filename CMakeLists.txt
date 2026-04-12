@@ -107,6 +107,7 @@ add_executable(test_fire_engine
     tests/graphics/test_assets.cpp
     tests/graphics/test_material.cpp
     tests/graphics/test_geometry.cpp
+    tests/render/test_ubo.cpp
     tests/core/test_shader_loader.cpp
     tests/core/test_system.cpp
     tests/core/test_gltf_loader.cpp

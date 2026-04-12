@@ -36,6 +36,7 @@ public:
                           Assets& assets);
 
     using NodeMap = std::unordered_map<std::size_t, Node*>;
+    using AnimationMap = std::unordered_map<std::size_t, std::size_t>;
 
 private:
     // Asset parsing and setup
@@ -59,11 +60,12 @@ private:
 
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                       Node& node, const std::string& baseDir,
-                                      const Renderer& renderer, Assets& assets, NodeMap& nodeMap);
+                                      const Renderer& renderer, Assets& assets, NodeMap& nodeMap,
+                                       AnimationMap& animMap);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, const Renderer& renderer, Assets& assets,
-                         NodeMap& nodeMap);
+                         NodeMap& nodeMap, AnimationMap& animMap);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
@@ -101,7 +103,7 @@ private:
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);
 
     static void loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                              Animator& animator);
+                              LinearAnimation& anim, std::size_t numMorphTargets = 0);
 
     [[nodiscard]]
     static float computeSharedDuration(const fastgltf::Asset& asset, std::size_t nodeIndex);
@@ -118,6 +120,11 @@ private:
     [[nodiscard]]
     static std::vector<LinearAnimation::ScaleKeyframe>
     loadScaleKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler);
+
+    [[nodiscard]]
+    static std::vector<LinearAnimation::WeightKeyframe>
+    loadWeightKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler,
+                        std::size_t numTargets);
 };
 
 } // namespace fire_engine

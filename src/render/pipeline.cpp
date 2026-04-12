@@ -49,12 +49,14 @@ void Pipeline::createRenderPass(const Swapchain& swapchain)
 
 void Pipeline::createDescriptorSetLayout()
 {
-    std::array<vk::DescriptorSetLayoutBinding, 4> bindings = {{
+    std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {{
         {0, vk::DescriptorType::eUniformBuffer, 1,
          vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
         {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
         {2, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {3, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+        {4, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+        {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex},
     }};
 
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);

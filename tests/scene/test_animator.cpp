@@ -2,10 +2,13 @@
 
 #include <cmath>
 
+#include <fire_engine/animation/linear_animation.hpp>
+
 #include <gtest/gtest.h>
 
 using fire_engine::Animator;
 using fire_engine::CameraState;
+using fire_engine::LinearAnimation;
 using fire_engine::Mat4;
 using fire_engine::Transform;
 
@@ -13,21 +16,44 @@ using fire_engine::Transform;
 // Default Construction
 // ==========================================================================
 
-TEST(Animator, DefaultConstructionHasNoAnimation)
+TEST(Animator, DefaultConstructionHasNullAnimation)
 {
     Animator a;
-    EXPECT_TRUE(a.animation().rotationKeyframes().empty());
-    EXPECT_TRUE(a.animation().translationKeyframes().empty());
-    EXPECT_FLOAT_EQ(a.animation().duration(), 0.0f);
+    EXPECT_EQ(a.animation(), nullptr);
 }
 
 // ==========================================================================
 // Animation Sampling via Update
 // ==========================================================================
 
+TEST(Animator, UpdateWithNullAnimationProducesIdentity)
+{
+    Animator a;
+    CameraState state;
+    Transform transform;
+    state.time(1.0);
+    a.update(state, transform);
+
+    int dummy = 0;
+    auto& ctx = reinterpret_cast<fire_engine::RenderContext&>(dummy);
+    Mat4 world = Mat4::identity();
+    Mat4 result = a.render(ctx, world);
+
+    for (int r = 0; r < 4; ++r)
+    {
+        for (int c = 0; c < 4; ++c)
+        {
+            EXPECT_NEAR((result[r, c]), (world[r, c]), 1e-5f);
+        }
+    }
+}
+
 TEST(Animator, UpdateWithNoKeyframesProducesIdentity)
 {
     Animator a;
+    LinearAnimation anim;
+    a.animation(&anim);
+
     CameraState state;
     Transform transform;
     state.time(1.0);
@@ -50,14 +76,16 @@ TEST(Animator, UpdateWithNoKeyframesProducesIdentity)
 TEST(Animator, UpdateSamplesAnimationAtElapsedTime)
 {
     Animator a;
+    LinearAnimation anim;
 
     // 90 degrees around Y over 2 seconds
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
     float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
-    a.animation().rotationKeyframes({
+    anim.rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {2.0f, 0.0f, s45, 0.0f, c45},
     });
+    a.animation(&anim);
 
     CameraState state;
     Transform transform;
@@ -85,6 +113,9 @@ TEST(Animator, UpdateSamplesAnimationAtElapsedTime)
 TEST(Animator, RenderAppliesWorldMatrix)
 {
     Animator a;
+    LinearAnimation anim;
+    a.animation(&anim);
+
     CameraState state;
     Transform transform;
     state.time(0.0);

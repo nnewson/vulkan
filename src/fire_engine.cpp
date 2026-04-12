@@ -50,7 +50,8 @@ void FireEngine::loadScene()
     // Load glTF scene
     // GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_, assets_);
     // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_, assets_);
-    GltfLoader::loadScene("RiggedSimple/RiggedSimple.gltf", scene_, *renderer_, assets_);
+    // GltfLoader::loadScene("RiggedSimple/RiggedSimple.gltf", scene_, *renderer_, assets_);
+    GltfLoader::loadScene("AnimatedMorphCube/AnimatedMorphCube.gltf", scene_, *renderer_, assets_);
 
     std::print("{}\n", scene_);
 }

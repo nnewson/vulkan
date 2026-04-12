@@ -140,3 +140,63 @@ TEST(Geometry, MoveAssignmentTransfersState)
     target = std::move(original);
     EXPECT_EQ(target.vertices().size(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Morph target tests
+// ---------------------------------------------------------------------------
+
+TEST(GeometryMorph, DefaultHasNoMorphTargets)
+{
+    Geometry geo;
+    EXPECT_EQ(geo.morphTargetCount(), 0u);
+    EXPECT_TRUE(geo.morphPositions().empty());
+    EXPECT_TRUE(geo.morphNormals().empty());
+}
+
+TEST(GeometryMorph, SetMorphPositions)
+{
+    Geometry geo;
+    std::vector<std::vector<Vec3>> positions = {
+        {{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+        {{0.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},
+    };
+    geo.morphPositions(positions);
+    EXPECT_EQ(geo.morphTargetCount(), 2u);
+    EXPECT_EQ(geo.morphPositions().size(), 2u);
+    EXPECT_EQ(geo.morphPositions()[0].size(), 2u);
+}
+
+TEST(GeometryMorph, SetMorphNormals)
+{
+    Geometry geo;
+    std::vector<std::vector<Vec3>> normals = {
+        {{0.0f, 0.0f, 1.0f}},
+    };
+    geo.morphNormals(normals);
+    EXPECT_EQ(geo.morphNormals().size(), 1u);
+}
+
+TEST(GeometryMorph, MorphTargetCountReflectsPositions)
+{
+    Geometry geo;
+    geo.morphPositions({
+        {{1.0f, 0.0f, 0.0f}},
+        {{0.0f, 1.0f, 0.0f}},
+        {{0.0f, 0.0f, 1.0f}},
+    });
+    EXPECT_EQ(geo.morphTargetCount(), 3u);
+}
+
+TEST(GeometryMorph, MoveRetainsMorphData)
+{
+    Geometry original;
+    original.morphPositions({
+        {{1.0f, 2.0f, 3.0f}},
+    });
+    original.morphNormals({
+        {{0.0f, 0.0f, 1.0f}},
+    });
+    Geometry moved(std::move(original));
+    EXPECT_EQ(moved.morphTargetCount(), 1u);
+    EXPECT_EQ(moved.morphNormals().size(), 1u);
+}

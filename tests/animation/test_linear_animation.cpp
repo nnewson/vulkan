@@ -450,3 +450,145 @@ TEST(LinearAnimation, ScaleDurationExtendsOverallDuration)
     });
     EXPECT_FLOAT_EQ(anim.duration(), 5.0f);
 }
+
+// ---------------------------------------------------------------------------
+// WeightKeyframe tests
+// ---------------------------------------------------------------------------
+
+TEST(WeightKeyframe, DefaultConstructionHasNoWeightKeyframes)
+{
+    LinearAnimation anim;
+    EXPECT_TRUE(anim.weightKeyframes().empty());
+}
+
+TEST(WeightKeyframe, SetWeightKeyframes)
+{
+    LinearAnimation anim;
+    std::vector<LinearAnimation::WeightKeyframe> kf = {
+        {0.0f, {0.0f, 0.0f}},
+        {1.0f, {1.0f, 0.5f}},
+        {2.0f, {0.0f, 1.0f}},
+    };
+    anim.weightKeyframes(kf);
+    EXPECT_EQ(anim.weightKeyframes().size(), 3u);
+}
+
+TEST(WeightKeyframe, WeightKeyframesContributeToDuration)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {3.0f, {1.0f}},
+    });
+    EXPECT_FLOAT_EQ(anim.duration(), 3.0f);
+}
+
+TEST(WeightKeyframe, DurationUsesMaxOfAllChannels)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {2.0f, {1.0f}},
+    });
+    anim.rotationKeyframes({
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        {5.0f, 0.0f, 1.0f, 0.0f, 0.0f},
+    });
+    EXPECT_FLOAT_EQ(anim.duration(), 5.0f);
+}
+
+TEST(SampleWeights, EmptyKeyframesReturnsZeros)
+{
+    LinearAnimation anim;
+    auto w = anim.sampleWeights(0.5f, 2);
+    EXPECT_EQ(w.size(), 2u);
+    EXPECT_FLOAT_EQ(w[0], 0.0f);
+    EXPECT_FLOAT_EQ(w[1], 0.0f);
+}
+
+TEST(SampleWeights, ZeroTargetsReturnsEmpty)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({{0.0f, {1.0f}}});
+    auto w = anim.sampleWeights(0.0f, 0);
+    EXPECT_TRUE(w.empty());
+}
+
+TEST(SampleWeights, SingleKeyframeReturnsConstant)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({{0.0f, {0.7f, 0.3f}}});
+    anim.duration(1.0f);
+    auto w = anim.sampleWeights(0.5f, 2);
+    EXPECT_FLOAT_EQ(w[0], 0.7f);
+    EXPECT_FLOAT_EQ(w[1], 0.3f);
+}
+
+TEST(SampleWeights, InterpolatesBetweenKeyframes)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f, 1.0f}},
+        {2.0f, {1.0f, 0.0f}},
+    });
+    anim.duration(2.0f);
+
+    auto w = anim.sampleWeights(1.0f, 2);
+    EXPECT_NEAR(w[0], 0.5f, 1e-5f);
+    EXPECT_NEAR(w[1], 0.5f, 1e-5f);
+}
+
+TEST(SampleWeights, InterpolatesAtQuarter)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {4.0f, {1.0f}},
+    });
+    anim.duration(4.0f);
+
+    auto w = anim.sampleWeights(1.0f, 1);
+    EXPECT_NEAR(w[0], 0.25f, 1e-5f);
+}
+
+TEST(SampleWeights, ClampsAtExactKeyframe)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f, 0.0f}},
+        {1.0f, {0.8f, 0.2f}},
+        {2.0f, {0.0f, 1.0f}},
+    });
+    anim.duration(2.0f);
+
+    auto w = anim.sampleWeights(1.0f, 2);
+    EXPECT_NEAR(w[0], 0.8f, 1e-5f);
+    EXPECT_NEAR(w[1], 0.2f, 1e-5f);
+}
+
+TEST(SampleWeights, PadsExtraTargetsWithZero)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({{0.0f, {0.5f}}});
+    anim.duration(1.0f);
+    // Request 3 targets but keyframes only have 1 weight
+    auto w = anim.sampleWeights(0.0f, 3);
+    EXPECT_EQ(w.size(), 3u);
+    EXPECT_FLOAT_EQ(w[0], 0.5f);
+    EXPECT_FLOAT_EQ(w[1], 0.0f);
+    EXPECT_FLOAT_EQ(w[2], 0.0f);
+}
+
+TEST(SampleWeights, LoopsAnimation)
+{
+    LinearAnimation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {2.0f, {1.0f}},
+    });
+    anim.duration(2.0f);
+
+    // t=3.0 loops to t=1.0 -> midpoint
+    auto w = anim.sampleWeights(3.0f, 1);
+    EXPECT_NEAR(w[0], 0.5f, 1e-5f);
+}

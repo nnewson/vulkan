@@ -1,11 +1,14 @@
 #pragma once
 
+#include <vector>
+
 #include <fire_engine/graphics/object.hpp>
 #include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
 {
 
+class LinearAnimation;
 class Skin;
 
 class Mesh : public Component
@@ -24,6 +27,16 @@ public:
         object_.skin(s);
     }
 
+    void morphAnimation(LinearAnimation* anim) noexcept
+    {
+        morphAnimation_ = anim;
+    }
+
+    void initialMorphWeights(std::vector<float> w) noexcept
+    {
+        morphWeights_ = std::move(w);
+    }
+
     void update(const CameraState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
@@ -31,6 +44,10 @@ public:
 
 private:
     Object object_;
+    LinearAnimation* morphAnimation_{nullptr};
+    std::vector<float> morphWeights_;
+    double startTime_{0.0};
+    bool morphInitialized_{false};
 };
 
 } // namespace fire_engine

@@ -4,6 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <stdexcept>
+#include <unordered_set>
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/math.hpp>
@@ -143,6 +144,20 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
     }
     assets.resizeGeometries(totalPrimitives);
     assets.resizeSkins(asset.skins.size());
+
+    // Count unique animated nodes for LinearAnimation slots
+    std::unordered_set<std::size_t> animatedNodes;
+    for (const auto& anim : asset.animations)
+    {
+        for (const auto& channel : anim.channels)
+        {
+            if (channel.nodeIndex.has_value())
+            {
+                animatedNodes.insert(channel.nodeIndex.value());
+            }
+        }
+    }
+    assets.resizeAnimations(animatedNodes.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -166,6 +181,7 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
 
     const auto& gltfScene = asset.scenes[sceneIndex];
     NodeMap nodeMap;
+    AnimationMap animMap;
     for (auto nodeIndex : gltfScene.nodeIndices)
     {
         auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
@@ -175,12 +191,12 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(),
-                                  renderer, assets, nodeMap);
+                                  renderer, assets, nodeMap, animMap);
         }
         else
         {
             loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), renderer, assets,
-                     nodeMap);
+                     nodeMap, animMap);
         }
     }
 
@@ -190,35 +206,108 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                        Node& node, const std::string& baseDir,
-                                       const Renderer& renderer, Assets& assets, NodeMap& nodeMap)
+                                       const Renderer& renderer, Assets& assets, NodeMap& nodeMap, AnimationMap& animMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
 
-    node.component().emplace<Animator>();
-    loadAnimation(asset, nodeIndex, std::get<Animator>(node.component()));
-
+    // Determine morph target count from the mesh (if any)
+    std::size_t numMorphTargets = 0;
     if (gltfNode.meshIndex.has_value())
     {
         const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
-        std::string meshName = gltfMesh.name.empty() ? std::string(gltfNode.name) + "_Mesh"
-                                                     : std::string(gltfMesh.name);
-        auto meshNode = std::make_unique<Node>(std::move(meshName));
-        auto& meshRef = node.addChild(std::move(meshNode));
-        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, renderer,
-                               assets, gltfNode.meshIndex.value());
-        meshRef.component().emplace<Mesh>(std::move(object));
+        if (!gltfMesh.primitives.empty() && !gltfMesh.primitives[0].targets.empty())
+        {
+            numMorphTargets = gltfMesh.primitives[0].targets.size();
+        }
+    }
+
+    // Check if this node has transform vs weight animation channels
+    bool hasTransformAnim = false;
+    bool hasWeightAnim = false;
+    for (const auto& anim : asset.animations)
+    {
+        for (const auto& channel : anim.channels)
+        {
+            if (!channel.nodeIndex.has_value() || channel.nodeIndex.value() != nodeIndex)
+            {
+                continue;
+            }
+            if (channel.path == fastgltf::AnimationPath::Rotation ||
+                channel.path == fastgltf::AnimationPath::Translation ||
+                channel.path == fastgltf::AnimationPath::Scale)
+            {
+                hasTransformAnim = true;
+            }
+            else if (channel.path == fastgltf::AnimationPath::Weights)
+            {
+                hasWeightAnim = true;
+            }
+        }
+    }
+
+    auto animIndex = animMap.size();
+    animMap[nodeIndex] = animIndex;
+    auto& la = assets.animation(animIndex);
+    loadAnimation(asset, nodeIndex, la, numMorphTargets);
+
+    if (hasTransformAnim)
+    {
+        // Node gets an Animator for transform; mesh goes on a child node
+        node.component().emplace<Animator>();
+        std::get<Animator>(node.component()).animation(&la);
+
+        if (gltfNode.meshIndex.has_value())
+        {
+            const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
+            std::string meshName = gltfMesh.name.empty() ? std::string(gltfNode.name) + "_Mesh"
+                                                         : std::string(gltfMesh.name);
+            auto meshNode = std::make_unique<Node>(std::move(meshName));
+            auto& meshRef = node.addChild(std::move(meshNode));
+            auto object = loadMesh(asset, gltfMesh, baseDir, renderer, assets,
+                                   gltfNode.meshIndex.value());
+            meshRef.component().emplace<Mesh>(std::move(object));
+
+            if (hasWeightAnim)
+            {
+                auto& mesh = std::get<Mesh>(meshRef.component());
+                mesh.morphAnimation(&la);
+                mesh.initialMorphWeights(std::vector<float>(numMorphTargets, 0.0f));
+            }
+        }
+    }
+    else if (gltfNode.meshIndex.has_value())
+    {
+        // Only weight animation -- mesh goes directly on this node
+        const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
+        auto object =
+            loadMesh(asset, gltfMesh, baseDir, renderer, assets, gltfNode.meshIndex.value());
+        node.component().emplace<Mesh>(std::move(object));
+        auto& mesh = std::get<Mesh>(node.component());
+
+        if (hasWeightAnim)
+        {
+            mesh.morphAnimation(&la);
+        }
+
+        // Apply initial weights from glTF mesh
+        std::vector<float> initialWeights(numMorphTargets, 0.0f);
+        for (std::size_t w = 0; w < gltfMesh.weights.size() && w < numMorphTargets; ++w)
+        {
+            initialWeights[w] = gltfMesh.weights[w];
+        }
+        mesh.initialMorphWeights(std::move(initialWeights));
     }
 
     for (auto childIndex : gltfNode.children)
     {
-        loadNode(asset, childIndex, node, baseDir, renderer, assets, nodeMap);
+        loadNode(asset, childIndex, node, baseDir, renderer, assets, nodeMap, animMap);
     }
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
                           const std::string& baseDir, const Renderer& renderer, Assets& assets,
-                          NodeMap& nodeMap)
+                          NodeMap& nodeMap, AnimationMap& animMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -238,11 +327,12 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
         if (nodeHasAnimation(asset, childIndex))
         {
-            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap);
+            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap,
+                                  animMap);
         }
         else
         {
-            loadNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap);
+            loadNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap, animMap);
         }
     }
 }
@@ -424,6 +514,46 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
     }
     geometry.indices(std::move(idxs));
     geometry.material(matPtr);
+
+    // Load morph targets
+    if (!primitive.targets.empty())
+    {
+        std::vector<std::vector<Vec3>> morphPositions;
+        std::vector<std::vector<Vec3>> morphNormals;
+
+        for (std::size_t ti = 0; ti < primitive.targets.size(); ++ti)
+        {
+            const auto& target = primitive.targets[ti];
+            std::vector<Vec3> targetPos(positions.size());
+            std::vector<Vec3> targetNorm(positions.size());
+
+            for (const auto& attr : target)
+            {
+                const auto& accessor = asset.accessors[attr.accessorIndex];
+                if (attr.name == "POSITION")
+                {
+                    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+                        asset, accessor,
+                        [&](fastgltf::math::fvec3 p, std::size_t idx)
+                        { targetPos[idx] = Vec3{p.x(), p.y(), p.z()}; });
+                }
+                else if (attr.name == "NORMAL")
+                {
+                    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+                        asset, accessor,
+                        [&](fastgltf::math::fvec3 n, std::size_t idx)
+                        { targetNorm[idx] = Vec3{n.x(), n.y(), n.z()}; });
+                }
+            }
+
+            morphPositions.push_back(std::move(targetPos));
+            morphNormals.push_back(std::move(targetNorm));
+        }
+
+        geometry.morphPositions(std::move(morphPositions));
+        geometry.morphNormals(std::move(morphNormals));
+    }
+
     geometry.load(renderer);
 }
 
@@ -625,10 +755,46 @@ GltfLoader::loadScaleKeyframes(const fastgltf::Asset& asset,
     return kf;
 }
 
-void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                               Animator& animator)
+std::vector<LinearAnimation::WeightKeyframe>
+GltfLoader::loadWeightKeyframes(const fastgltf::Asset& asset,
+                                const fastgltf::AnimationSampler& sampler,
+                                std::size_t numTargets)
 {
-    auto& la = animator.animation();
+    const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+    const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+
+    std::vector<float> times(inputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<float>(asset, inputAccessor,
+                                              [&](float t, std::size_t idx) { times[idx] = t; });
+
+    // Output is a flat array of scalars: numKeyframes * numTargets weights
+    std::vector<float> allWeights(outputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<float>(
+        asset, outputAccessor, [&](float w, std::size_t idx) { allWeights[idx] = w; });
+
+    std::vector<LinearAnimation::WeightKeyframe> kf;
+    kf.reserve(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
+    {
+        LinearAnimation::WeightKeyframe wkf;
+        wkf.time = times[i];
+        wkf.weights.resize(numTargets, 0.0f);
+        for (std::size_t w = 0; w < numTargets; ++w)
+        {
+            std::size_t idx = i * numTargets + w;
+            if (idx < allWeights.size())
+            {
+                wkf.weights[w] = allWeights[idx];
+            }
+        }
+        kf.push_back(std::move(wkf));
+    }
+    return kf;
+}
+
+void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                               LinearAnimation& la, std::size_t numMorphTargets)
+{
     float sharedDuration = computeSharedDuration(asset, nodeIndex);
 
     for (const auto& anim : asset.animations)
@@ -653,6 +819,10 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
             else if (channel.path == fastgltf::AnimationPath::Scale)
             {
                 la.scaleKeyframes(loadScaleKeyframes(asset, sampler));
+            }
+            else if (channel.path == fastgltf::AnimationPath::Weights && numMorphTargets > 0)
+            {
+                la.weightKeyframes(loadWeightKeyframes(asset, sampler, numMorphTargets));
             }
         }
     }

@@ -131,7 +131,8 @@ float LinearAnimation::duration() const noexcept
     float rotDur = rotationKeyframes_.empty() ? 0.0f : rotationKeyframes_.back().time;
     float transDur = translationKeyframes_.empty() ? 0.0f : translationKeyframes_.back().time;
     float scaleDur = scaleKeyframes_.empty() ? 0.0f : scaleKeyframes_.back().time;
-    return std::max({rotDur, transDur, scaleDur});
+    float weightDur = weightKeyframes_.empty() ? 0.0f : weightKeyframes_.back().time;
+    return std::max({rotDur, transDur, scaleDur, weightDur});
 }
 
 Mat4 LinearAnimation::sample(float t) const noexcept
@@ -148,6 +149,43 @@ Mat4 LinearAnimation::sample(float t) const noexcept
     Vec3 scl = sampleScale(scaleKeyframes_, looped);
 
     return Mat4::translate(position) * rotation.toMat4() * Mat4::scale(scl);
+}
+
+std::vector<float> LinearAnimation::sampleWeights(float t, std::size_t numTargets) const
+{
+    if (weightKeyframes_.empty() || numTargets == 0)
+    {
+        return std::vector<float>(numTargets, 0.0f);
+    }
+
+    float looped = loopTime(t, duration());
+
+    if (weightKeyframes_.size() == 1)
+    {
+        auto result = weightKeyframes_[0].weights;
+        result.resize(numTargets, 0.0f);
+        return result;
+    }
+
+    auto [i, alpha] = findBracket(weightKeyframes_, looped);
+
+    const auto& w0 = weightKeyframes_[i].weights;
+    if (alpha == 0.0f)
+    {
+        auto result = w0;
+        result.resize(numTargets, 0.0f);
+        return result;
+    }
+
+    const auto& w1 = weightKeyframes_[i + 1].weights;
+    std::vector<float> result(numTargets, 0.0f);
+    for (std::size_t j = 0; j < numTargets; ++j)
+    {
+        float a = (j < w0.size()) ? w0[j] : 0.0f;
+        float b = (j < w1.size()) ? w1[j] : 0.0f;
+        result[j] = a + (b - a) * alpha;
+    }
+    return result;
 }
 
 } // namespace fire_engine

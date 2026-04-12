@@ -8,6 +8,7 @@
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/render/device.hpp>
 #include <fire_engine/render/frame.hpp>
+
 #include <fire_engine/render/pipeline.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/render/swapchain.hpp>
@@ -32,6 +33,7 @@ void Object::load(const Renderer& renderer)
     {
         createMaterialBuffers(device, binding);
         createSkinBuffers(device, binding);
+        createMorphBuffers(device, binding);
     }
 
     createDescriptorPool(device);
@@ -133,14 +135,108 @@ void Object::createSkinBuffers(const Device& device, GeometryBindings& binding)
     }
 }
 
+void Object::createMorphBuffers(const Device& device, GeometryBindings& binding)
+{
+    // Create per-frame morph UBO buffers
+    vk::DeviceSize morphUboSize = sizeof(MorphUBO);
+    binding.morphUboBufs.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.morphUboMems.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.morphUboMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    MorphUBO morphUbo{};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        auto [mBuf, mMem] = device.createBuffer(morphUboSize,
+                                                vk::BufferUsageFlagBits::eUniformBuffer,
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+        binding.morphUboMapped[i] = mMem.mapMemory(0, morphUboSize);
+        binding.morphUboBufs.push_back(std::move(mBuf));
+        binding.morphUboMems.push_back(std::move(mMem));
+        memcpy(binding.morphUboMapped[i], &morphUbo, sizeof(morphUbo));
+    }
+
+    // Create SSBO for morph target deltas (static, uploaded once)
+    auto numTargets = binding.geometry->morphTargetCount();
+    auto numVerts = binding.geometry->vertices().size();
+
+    if (numTargets == 0 || numVerts == 0)
+    {
+        // Create a minimal dummy SSBO (binding must always be valid)
+        vk::DeviceSize dummySize = sizeof(float) * 4;
+        auto [sBuf, sMem] = device.createBuffer(dummySize,
+                                                vk::BufferUsageFlagBits::eStorageBuffer,
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+        float zeros[4] = {0.0f, 0.0f, 0.0f, 0.0f};
+        void* mapped = sMem.mapMemory(0, dummySize);
+        memcpy(mapped, zeros, dummySize);
+        sMem.unmapMemory();
+        binding.morphSsbo = std::move(sBuf);
+        binding.morphSsboMem = std::move(sMem);
+        return;
+    }
+
+    // Layout: [pos_target0_v0..pos_target0_vN, ..., pos_targetM_vN,
+    //          norm_target0_v0..norm_target0_vN, ..., norm_targetM_vN]
+    // Each entry is a vec4 (xyz + padding)
+    std::size_t totalEntries = numTargets * numVerts * 2; // positions + normals
+    vk::DeviceSize ssboSize = totalEntries * sizeof(float) * 4;
+
+    auto [sBuf, sMem] = device.createBuffer(ssboSize,
+                                            vk::BufferUsageFlagBits::eStorageBuffer,
+                                            vk::MemoryPropertyFlagBits::eHostVisible |
+                                                vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* mapped = sMem.mapMemory(0, ssboSize);
+    auto* dst = static_cast<float*>(mapped);
+
+    const auto& morphPositions = binding.geometry->morphPositions();
+    const auto& morphNormals = binding.geometry->morphNormals();
+
+    // Write position deltas
+    for (std::size_t t = 0; t < numTargets; ++t)
+    {
+        for (std::size_t v = 0; v < numVerts; ++v)
+        {
+            const auto& pos = (t < morphPositions.size() && v < morphPositions[t].size())
+                                  ? morphPositions[t][v]
+                                  : Vec3{};
+            *dst++ = pos.x();
+            *dst++ = pos.y();
+            *dst++ = pos.z();
+            *dst++ = 0.0f; // padding
+        }
+    }
+
+    // Write normal deltas
+    for (std::size_t t = 0; t < numTargets; ++t)
+    {
+        for (std::size_t v = 0; v < numVerts; ++v)
+        {
+            const auto& norm = (t < morphNormals.size() && v < morphNormals[t].size())
+                                   ? morphNormals[t][v]
+                                   : Vec3{};
+            *dst++ = norm.x();
+            *dst++ = norm.y();
+            *dst++ = norm.z();
+            *dst++ = 0.0f; // padding
+        }
+    }
+
+    sMem.unmapMemory();
+    binding.morphSsbo = std::move(sBuf);
+    binding.morphSsboMem = std::move(sMem);
+}
+
 void Object::createDescriptorPool(const Device& device)
 {
     auto numGeometries = static_cast<uint32_t>(bindings_.size());
     uint32_t totalSets = numGeometries * MAX_FRAMES_IN_FLIGHT;
 
-    std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
-        {vk::DescriptorType::eUniformBuffer, totalSets * 3},
+    std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
+        {vk::DescriptorType::eUniformBuffer, totalSets * 4},
         {vk::DescriptorType::eCombinedImageSampler, totalSets},
+        {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
                                     poolSizes);
@@ -171,8 +267,17 @@ void Object::createDescriptorSets(const Device& device, const Pipeline& pipeline
             vk::DescriptorImageInfo texInfo(mat.texture().sampler(), mat.texture().view(),
                                             vk::ImageLayout::eShaderReadOnlyOptimal);
             vk::DescriptorBufferInfo skinBufInfo(*binding.skinBufs[i], 0, sizeof(SkinUBO));
+            vk::DescriptorBufferInfo morphUboBufInfo(*binding.morphUboBufs[i], 0,
+                                                     sizeof(MorphUBO));
 
-            std::array<vk::WriteDescriptorSet, 4> writes = {{
+            vk::DeviceSize ssboSize = binding.geometry->morphTargetCount() > 0
+                                          ? binding.geometry->morphTargetCount() *
+                                                binding.geometry->vertices().size() * 2 *
+                                                sizeof(float) * 4
+                                          : sizeof(float) * 4;
+            vk::DescriptorBufferInfo morphSsboBufInfo(*binding.morphSsbo, 0, ssboSize);
+
+            std::array<vk::WriteDescriptorSet, 6> writes = {{
                 {*binding.descSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
                  &uboBufInfo},
                 {*binding.descSets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
@@ -181,6 +286,10 @@ void Object::createDescriptorSets(const Device& device, const Pipeline& pipeline
                  &texInfo},
                 {*binding.descSets[i], 3, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
                  &skinBufInfo},
+                {*binding.descSets[i], 4, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                 &morphUboBufInfo},
+                {*binding.descSets[i], 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+                 &morphSsboBufInfo},
             }};
             device.device().updateDescriptorSets(writes, {});
         }
@@ -225,6 +334,25 @@ Mat4 Object::render(const RenderContext& ctx, const Mat4& world)
         {
             memcpy(binding.skinMapped[ctx.currentFrame], &skinUbo, sizeof(skinUbo));
         }
+    }
+
+    // Upload morph weights
+    for (auto& binding : bindings_)
+    {
+        auto numTargets = binding.geometry->morphTargetCount();
+        MorphUBO morphUbo{};
+        if (numTargets > 0 && !morphWeights_.empty())
+        {
+            morphUbo.hasMorph = 1;
+            morphUbo.morphTargetCount = static_cast<int>(numTargets);
+            morphUbo.vertexCount = static_cast<int>(binding.geometry->vertices().size());
+            for (std::size_t w = 0;
+                 w < morphWeights_.size() && w < static_cast<std::size_t>(MAX_MORPH_TARGETS); ++w)
+            {
+                morphUbo.weights[w] = morphWeights_[w];
+            }
+        }
+        memcpy(binding.morphUboMapped[ctx.currentFrame], &morphUbo, sizeof(morphUbo));
     }
 
     // Record draw commands for each geometry

@@ -74,12 +74,38 @@ public:
         return static_cast<uint32_t>(indices_.size());
     }
 
+    [[nodiscard]] const std::vector<std::vector<Vec3>>& morphPositions() const noexcept
+    {
+        return morphPositions_;
+    }
+    void morphPositions(std::vector<std::vector<Vec3>> v) noexcept
+    {
+        morphPositions_ = std::move(v);
+    }
+
+    [[nodiscard]] const std::vector<std::vector<Vec3>>& morphNormals() const noexcept
+    {
+        return morphNormals_;
+    }
+    void morphNormals(std::vector<std::vector<Vec3>> v) noexcept
+    {
+        morphNormals_ = std::move(v);
+    }
+
+    [[nodiscard]] std::size_t morphTargetCount() const noexcept
+    {
+        return morphPositions_.size();
+    }
+
 private:
     const vk::raii::Device* vkDevice_{nullptr};
 
     std::vector<Vertex> vertices_;
     std::vector<uint16_t> indices_;
     const Material* material_{nullptr};
+
+    std::vector<std::vector<Vec3>> morphPositions_;
+    std::vector<std::vector<Vec3>> morphNormals_;
 
     vk::raii::Buffer vertexBuf_{nullptr};
     vk::raii::DeviceMemory vertexMem_{nullptr};

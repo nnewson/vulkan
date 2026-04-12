@@ -33,6 +33,12 @@ public:
         Vec3 scale{1.0f, 1.0f, 1.0f};
     };
 
+    struct WeightKeyframe
+    {
+        float time{0.0f};
+        std::vector<float> weights;
+    };
+
     LinearAnimation() = default;
     ~LinearAnimation() = default;
 
@@ -68,6 +74,15 @@ public:
         scaleKeyframes_ = std::move(kf);
     }
 
+    [[nodiscard]] const std::vector<WeightKeyframe>& weightKeyframes() const noexcept
+    {
+        return weightKeyframes_;
+    }
+    void weightKeyframes(std::vector<WeightKeyframe> kf) noexcept
+    {
+        weightKeyframes_ = std::move(kf);
+    }
+
     [[nodiscard]] float duration() const noexcept;
     // Explicitly override the loop duration. Used by the glTF loader so every
     // LinearAnimation participating in the same glTF animation loops in lockstep
@@ -81,10 +96,13 @@ public:
 
     [[nodiscard]] Mat4 sample(float t) const noexcept;
 
+    [[nodiscard]] std::vector<float> sampleWeights(float t, std::size_t numTargets) const;
+
 private:
     std::vector<RotationKeyframe> rotationKeyframes_;
     std::vector<TranslationKeyframe> translationKeyframes_;
     std::vector<ScaleKeyframe> scaleKeyframes_;
+    std::vector<WeightKeyframe> weightKeyframes_;
     float duration_{-1.0f};
 };
 

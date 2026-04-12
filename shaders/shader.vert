@@ -12,6 +12,19 @@ layout(binding = 3) uniform SkinUBO {
     mat4 joints[64];
 } skin;
 
+layout(binding = 4) uniform MorphUBO {
+    int hasMorph;
+    int morphTargetCount;
+    int vertexCount;
+    int _pad0;
+    vec4 weights[2];
+} morph;
+
+// Morph target deltas: [pos0..posN, norm0..normN] packed as vec4 (w unused)
+layout(std430, binding = 5) readonly buffer MorphTargets {
+    vec4 data[];
+} morphTargets;
+
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec3 inColor;
 layout(location = 2) in vec3 inNormal;
@@ -25,6 +38,22 @@ layout(location = 2) out vec3 fragWorldPos;
 layout(location = 3) out vec2 fragTexCoord;
 
 void main() {
+    vec3 pos = inPos;
+    vec3 normal = inNormal;
+
+    // Apply morph targets
+    if (morph.hasMorph == 1) {
+        int nTargets = morph.morphTargetCount;
+        int nVerts = morph.vertexCount;
+        for (int i = 0; i < nTargets; i++) {
+            int posOffset = i * nVerts + gl_VertexIndex;
+            int normOffset = (nTargets + i) * nVerts + gl_VertexIndex;
+            float w = morph.weights[i / 4][i % 4];
+            pos += w * morphTargets.data[posOffset].xyz;
+            normal += w * morphTargets.data[normOffset].xyz;
+        }
+    }
+
     mat4 transform;
     if (ubo.hasSkin == 1) {
         transform = inWeights.x * skin.joints[inJoints.x]
@@ -35,10 +64,10 @@ void main() {
         transform = ubo.model;
     }
 
-    vec4 worldPos = transform * vec4(inPos, 1.0);
+    vec4 worldPos = transform * vec4(pos, 1.0);
     gl_Position = ubo.proj * ubo.view * worldPos;
     fragColor = inColor;
-    fragNormal = mat3(transform) * inNormal;
+    fragNormal = mat3(transform) * normal;
     fragWorldPos = worldPos.xyz;
     fragTexCoord = inTexCoord;
 }

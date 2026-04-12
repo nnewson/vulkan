@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <vector>
 
+#include <fire_engine/animation/linear_animation.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/skin.hpp>
@@ -40,6 +41,11 @@ public:
     void resizeSkins(std::size_t count)
     {
         skins_.resize(count);
+    }
+
+    void resizeAnimations(std::size_t count)
+    {
+        animations_.resize(count);
     }
 
     [[nodiscard]] Texture& texture(std::size_t index) noexcept
@@ -95,11 +101,25 @@ public:
         return skins_.size();
     }
 
+    [[nodiscard]] LinearAnimation& animation(std::size_t index) noexcept
+    {
+        return animations_[index];
+    }
+    [[nodiscard]] const LinearAnimation& animation(std::size_t index) const noexcept
+    {
+        return animations_[index];
+    }
+    [[nodiscard]] std::size_t animationCount() const noexcept
+    {
+        return animations_.size();
+    }
+
 private:
     std::vector<Texture> textures_;
     std::vector<Material> materials_;
     std::vector<Geometry> geometries_;
     std::vector<Skin> skins_;
+    std::vector<LinearAnimation> animations_;
 };
 
 } // namespace fire_engine

@@ -43,6 +43,11 @@ public:
 
     void updateSkin();
 
+    void morphWeights(const std::vector<float>& weights) noexcept
+    {
+        morphWeights_ = weights;
+    }
+
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world);
 
@@ -59,17 +64,26 @@ private:
         std::vector<vk::raii::DeviceMemory> skinMems;
         std::vector<void*> skinMapped;
 
+        std::vector<vk::raii::Buffer> morphUboBufs;
+        std::vector<vk::raii::DeviceMemory> morphUboMems;
+        std::vector<void*> morphUboMapped;
+
+        vk::raii::Buffer morphSsbo{nullptr};
+        vk::raii::DeviceMemory morphSsboMem{nullptr};
+
         std::vector<vk::raii::DescriptorSet> descSets;
     };
 
     void createUniformBuffers(const Device& device);
     void createMaterialBuffers(const Device& device, GeometryBindings& bindings);
     void createSkinBuffers(const Device& device, GeometryBindings& bindings);
+    void createMorphBuffers(const Device& device, GeometryBindings& bindings);
     void createDescriptorPool(const Device& device);
     void createDescriptorSets(const Device& device, const Pipeline& pipeline);
     static MaterialUBO toMaterialUBO(const Material& mat);
 
     Skin* skin_{nullptr};
+    std::vector<float> morphWeights_;
 
     std::vector<vk::raii::Buffer> uniformBufs_;
     std::vector<vk::raii::DeviceMemory> uniformMems_;

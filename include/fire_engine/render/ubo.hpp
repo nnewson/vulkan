@@ -43,4 +43,13 @@ struct SkinUBO
     Mat4 joints[MAX_JOINTS];
 };
 
+struct MorphUBO
+{
+    alignas(4) int hasMorph{0};
+    alignas(4) int morphTargetCount{0};
+    alignas(4) int vertexCount{0};
+    int _pad0{0};
+    float weights[MAX_MORPH_TARGETS]{};
+};
+
 } // namespace fire_engine
