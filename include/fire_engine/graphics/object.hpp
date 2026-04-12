@@ -10,10 +10,12 @@ namespace fire_engine
 {
 
 class Geometry;
+class Material;
 class Renderer;
 class Device;
 class Pipeline;
 struct RenderContext;
+struct MaterialUBO;
 
 class Object
 {
@@ -48,6 +50,7 @@ private:
     void createMaterialBuffers(const Device& device, GeometryBindings& bindings);
     void createDescriptorPool(const Device& device);
     void createDescriptorSets(const Device& device, const Pipeline& pipeline);
+    static MaterialUBO toMaterialUBO(const Material& mat);
 
     std::vector<vk::raii::Buffer> uniformBufs_;
     std::vector<vk::raii::DeviceMemory> uniformMems_;

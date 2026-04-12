@@ -55,12 +55,13 @@ void Object::createUniformBuffers(const Device& device)
 
 void Object::createMaterialBuffers(const Device& device, GeometryBindings& binding)
 {
-    const auto& mat = binding.geometry->material();
-
     vk::DeviceSize matSize = sizeof(MaterialUBO);
     binding.materialBufs.reserve(MAX_FRAMES_IN_FLIGHT);
     binding.materialMems.reserve(MAX_FRAMES_IN_FLIGHT);
     binding.materialMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    MaterialUBO matUbo = toMaterialUBO(binding.geometry->material());
+
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         auto [mBuf, mMem] = device.createBuffer(matSize, vk::BufferUsageFlagBits::eUniformBuffer,
@@ -70,32 +71,37 @@ void Object::createMaterialBuffers(const Device& device, GeometryBindings& bindi
         binding.materialBufs.push_back(std::move(mBuf));
         binding.materialMems.push_back(std::move(mMem));
 
-        MaterialUBO matUbo{};
-        matUbo.ambient[0] = mat.ambient().r();
-        matUbo.ambient[1] = mat.ambient().g();
-        matUbo.ambient[2] = mat.ambient().b();
-        matUbo.diffuse[0] = mat.diffuse().r();
-        matUbo.diffuse[1] = mat.diffuse().g();
-        matUbo.diffuse[2] = mat.diffuse().b();
-        matUbo.specular[0] = mat.specular().r();
-        matUbo.specular[1] = mat.specular().g();
-        matUbo.specular[2] = mat.specular().b();
-        matUbo.emissive[0] = mat.emissive().r();
-        matUbo.emissive[1] = mat.emissive().g();
-        matUbo.emissive[2] = mat.emissive().b();
-        matUbo.shininess = mat.shininess();
-        matUbo.ior = mat.ior();
-        matUbo.transparency = mat.transparency();
-        matUbo.illum = mat.illum();
-        matUbo.roughness = mat.roughness();
-        matUbo.metallic = mat.metallic();
-        matUbo.sheen = mat.sheen();
-        matUbo.clearcoat = mat.clearcoat();
-        matUbo.clearcoatRoughness = mat.clearcoatRoughness();
-        matUbo.anisotropy = mat.anisotropy();
-        matUbo.anisotropyRotation = mat.anisotropyRotation();
         memcpy(binding.materialMapped[i], &matUbo, sizeof(matUbo));
     }
+}
+
+MaterialUBO Object::toMaterialUBO(const Material& mat)
+{
+    MaterialUBO ubo{};
+    ubo.ambient[0] = mat.ambient().r();
+    ubo.ambient[1] = mat.ambient().g();
+    ubo.ambient[2] = mat.ambient().b();
+    ubo.diffuse[0] = mat.diffuse().r();
+    ubo.diffuse[1] = mat.diffuse().g();
+    ubo.diffuse[2] = mat.diffuse().b();
+    ubo.specular[0] = mat.specular().r();
+    ubo.specular[1] = mat.specular().g();
+    ubo.specular[2] = mat.specular().b();
+    ubo.emissive[0] = mat.emissive().r();
+    ubo.emissive[1] = mat.emissive().g();
+    ubo.emissive[2] = mat.emissive().b();
+    ubo.shininess = mat.shininess();
+    ubo.ior = mat.ior();
+    ubo.transparency = mat.transparency();
+    ubo.illum = mat.illum();
+    ubo.roughness = mat.roughness();
+    ubo.metallic = mat.metallic();
+    ubo.sheen = mat.sheen();
+    ubo.clearcoat = mat.clearcoat();
+    ubo.clearcoatRoughness = mat.clearcoatRoughness();
+    ubo.anisotropy = mat.anisotropy();
+    ubo.anisotropyRotation = mat.anisotropyRotation();
+    return ubo;
 }
 
 void Object::createDescriptorPool(const Device& device)

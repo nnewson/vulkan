@@ -64,19 +64,9 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
 {
     auto extent = swapchain.extent();
 
-    auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
-    auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
-    vk::ShaderModuleCreateInfo vertCi({}, vertCode.size(),
-                                      reinterpret_cast<const uint32_t*>(vertCode.data()));
-    vk::ShaderModuleCreateInfo fragCi({}, fragCode.size(),
-                                      reinterpret_cast<const uint32_t*>(fragCode.data()));
-    vk::raii::ShaderModule vertMod(*device_, vertCi);
-    vk::raii::ShaderModule fragMod(*device_, fragCi);
-
-    std::array<vk::PipelineShaderStageCreateInfo, 2> stages = {{
-        {{}, vk::ShaderStageFlagBits::eVertex, *vertMod, "main"},
-        {{}, vk::ShaderStageFlagBits::eFragment, *fragMod, "main"},
-    }};
+    vk::raii::ShaderModule vertMod{nullptr};
+    vk::raii::ShaderModule fragMod{nullptr};
+    auto stages = createShaderStages(vertMod, fragMod);
 
     auto bindDesc = Vertex::bindingDesc();
     auto attrDesc = Vertex::attrDescs();
@@ -104,15 +94,38 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
 
     vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
 
-    vk::PipelineLayoutCreateInfo plci({}, *descSetLayout_);
-    pipelineLayout_ = vk::raii::PipelineLayout(*device_, plci);
+    createPipelineLayout();
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
                                        &raster, &ms, &depthStencil, &colorBlend, nullptr,
                                        *pipelineLayout_, *renderPass_, 0);
 
     pipeline_ = vk::raii::Pipeline(*device_, nullptr, pci);
-    // Shader modules auto-destroyed at end of scope
+}
+
+std::array<vk::PipelineShaderStageCreateInfo, 2>
+Pipeline::createShaderStages(vk::raii::ShaderModule& vertMod,
+                             vk::raii::ShaderModule& fragMod) const
+{
+    auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
+    auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
+    vk::ShaderModuleCreateInfo vertCi({}, vertCode.size(),
+                                      reinterpret_cast<const uint32_t*>(vertCode.data()));
+    vk::ShaderModuleCreateInfo fragCi({}, fragCode.size(),
+                                      reinterpret_cast<const uint32_t*>(fragCode.data()));
+    vertMod = vk::raii::ShaderModule(*device_, vertCi);
+    fragMod = vk::raii::ShaderModule(*device_, fragCi);
+
+    return {{
+        {{}, vk::ShaderStageFlagBits::eVertex, *vertMod, "main"},
+        {{}, vk::ShaderStageFlagBits::eFragment, *fragMod, "main"},
+    }};
+}
+
+void Pipeline::createPipelineLayout()
+{
+    vk::PipelineLayoutCreateInfo plci({}, *descSetLayout_);
+    pipelineLayout_ = vk::raii::PipelineLayout(*device_, plci);
 }
 
 } // namespace fire_engine

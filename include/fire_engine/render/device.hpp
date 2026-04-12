@@ -69,6 +69,7 @@ private:
     [[nodiscard]] bool isDeviceSuitable(const vk::raii::PhysicalDevice& d);
     [[nodiscard]] std::pair<std::optional<uint32_t>, std::optional<uint32_t>>
     findQueueFamilies(const vk::raii::PhysicalDevice& d);
+    void printValidationInfo() const;
 
     vk::raii::Context context_;
     vk::raii::Instance instance_{nullptr};

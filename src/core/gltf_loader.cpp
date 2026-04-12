@@ -250,8 +250,7 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
                 std::string texPath = texturePath.empty() ? "default.png" : texturePath;
                 auto& device = renderer.device();
                 tex =
-                    Texture::load_from_file(texPath, device.device(), device.physicalDevice(),
-                                            renderer.frame().commandPool(), device.graphicsQueue());
+                    Texture::load_from_file(texPath, device, renderer.frame().commandPool());
             }
             return &tex;
         }
@@ -262,8 +261,7 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
     {
         auto& device = renderer.device();
         defaultTex =
-            Texture::load_from_file("default.png", device.device(), device.physicalDevice(),
-                                    renderer.frame().commandPool(), device.graphicsQueue());
+            Texture::load_from_file("default.png", device, renderer.frame().commandPool());
     }
     return &defaultTex;
 }

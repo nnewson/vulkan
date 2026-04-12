@@ -40,28 +40,32 @@ void Device::createInstance()
     if (enableValidation)
     {
         layers = validationLayers;
-
-        auto layersAvailable = context_.enumerateInstanceLayerProperties();
-        std::cout << "Available layers:\n";
-        for (const auto& layer : layersAvailable)
-        {
-            std::cout << '\t' << layer.layerName << '\n';
-        }
-        std::cout << '\n';
-
-        auto extentions = context_.enumerateInstanceExtensionProperties();
-        std::cout << "Available extensions:\n";
-        for (const auto& ext : extentions)
-        {
-            std::cout << '\t' << ext.extensionName << '\n';
-        }
-        std::cout << '\n';
+        printValidationInfo();
     }
 
     vk::InstanceCreateInfo ci(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo,
                               layers, exts);
 
     instance_ = vk::raii::Instance(context_, ci);
+}
+
+void Device::printValidationInfo() const
+{
+    auto layersAvailable = context_.enumerateInstanceLayerProperties();
+    std::cout << "Available layers:\n";
+    for (const auto& layer : layersAvailable)
+    {
+        std::cout << '\t' << layer.layerName << '\n';
+    }
+    std::cout << '\n';
+
+    auto extensions = context_.enumerateInstanceExtensionProperties();
+    std::cout << "Available extensions:\n";
+    for (const auto& ext : extensions)
+    {
+        std::cout << '\t' << ext.extensionName << '\n';
+    }
+    std::cout << '\n';
 }
 
 void Device::createSurface(const Window& window)

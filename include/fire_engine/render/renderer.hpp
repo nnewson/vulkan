@@ -1,5 +1,7 @@
 #pragma once
 
+#include <optional>
+
 #include <fire_engine/math/vec3.hpp>
 #include <fire_engine/render/device.hpp>
 #include <fire_engine/render/frame.hpp>
@@ -61,6 +63,9 @@ public:
 
 private:
     void recreateSwapchain(const Window& display);
+    [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
+    void beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex);
+    void submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex);
 
     Device device_;
     Swapchain swapchain_;

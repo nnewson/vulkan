@@ -21,6 +21,31 @@ Renderer::Renderer(const Window& window)
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
 {
+    auto imageIndex = acquireNextImage(display);
+    if (!imageIndex)
+    {
+        return;
+    }
+
+    auto cmd = frame_.commandBuffer(currentFrame_);
+    cmd.reset();
+    cmd.begin(vk::CommandBufferBeginInfo{});
+
+    beginRenderPass(cmd, *imageIndex);
+
+    RenderContext ctx{device_, swapchain_,    frame_,         pipeline_,
+                      cmd,     currentFrame_, cameraPosition, cameraTarget};
+    scene.render(ctx);
+
+    cmd.endRenderPass();
+    cmd.end();
+
+    submitAndPresent(display, cmd, *imageIndex);
+    currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+std::optional<uint32_t> Renderer::acquireNextImage(Window& display)
+{
     auto& dev = device_.device();
 
     (void)dev.waitForFences(frame_.inFlightFence(currentFrame_), vk::True, UINT64_MAX);
@@ -30,7 +55,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     if (acquireResult == vk::Result::eErrorOutOfDateKHR)
     {
         recreateSwapchain(display);
-        return;
+        return std::nullopt;
     }
     if (acquireResult != vk::Result::eSuccess && acquireResult != vk::Result::eSuboptimalKHR)
     {
@@ -38,13 +63,11 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     }
 
     dev.resetFences(frame_.inFlightFence(currentFrame_));
+    return imageIndex;
+}
 
-    auto cmd = frame_.commandBuffer(currentFrame_);
-    cmd.reset();
-
-    // Begin command buffer and render pass
-    cmd.begin(vk::CommandBufferBeginInfo{});
-
+void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
+{
     auto extent = swapchain_.extent();
     std::array<vk::ClearValue, 2> clears{};
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
@@ -55,16 +78,10 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_.pipeline());
+}
 
-    // Let the scene graph record draw commands
-    RenderContext ctx{device_, swapchain_,    frame_,         pipeline_,
-                      cmd,     currentFrame_, cameraPosition, cameraTarget};
-    scene.render(ctx);
-
-    cmd.endRenderPass();
-    cmd.end();
-
-    // Submit and present
+void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex)
+{
     vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     auto imageAvail = frame_.imageAvailable(currentFrame_);
     auto renderDone = frame_.renderFinished(imageIndex);
@@ -86,8 +103,6 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     {
         throw std::runtime_error("failed to present swap chain image");
     }
-
-    currentFrame_ = (currentFrame_ + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
 void Renderer::recreateSwapchain(const Window& display)

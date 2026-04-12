@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
 #include <vulkan/vulkan_raii.hpp>
@@ -42,6 +43,10 @@ private:
     void createRenderPass(const Swapchain& swapchain);
     void createDescriptorSetLayout();
     void createGraphicsPipeline(const Swapchain& swapchain);
+
+    [[nodiscard]] std::array<vk::PipelineShaderStageCreateInfo, 2>
+    createShaderStages(vk::raii::ShaderModule& vertMod, vk::raii::ShaderModule& fragMod) const;
+    void createPipelineLayout();
 
     const vk::raii::Device* device_{nullptr};
     vk::raii::RenderPass renderPass_{nullptr};
