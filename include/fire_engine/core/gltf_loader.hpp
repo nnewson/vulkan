@@ -103,6 +103,10 @@ private:
     static std::vector<LinearAnimation::TranslationKeyframe>
     loadTranslationKeyframes(const fastgltf::Asset& asset,
                              const fastgltf::AnimationSampler& sampler);
+
+    [[nodiscard]]
+    static std::vector<LinearAnimation::ScaleKeyframe>
+    loadScaleKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler);
 };
 
 } // namespace fire_engine

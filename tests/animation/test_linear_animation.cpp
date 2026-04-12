@@ -14,6 +14,7 @@ TEST(LinearAnimation, DefaultConstructionHasNoKeyframes)
     LinearAnimation anim;
     EXPECT_TRUE(anim.rotationKeyframes().empty());
     EXPECT_TRUE(anim.translationKeyframes().empty());
+    EXPECT_TRUE(anim.scaleKeyframes().empty());
     EXPECT_FLOAT_EQ(anim.duration(), 0.0f);
 }
 
@@ -336,4 +337,116 @@ TEST(LinearAnimation, ShorterChannelClampsWhileLongerInterpolates)
     EXPECT_NEAR((m[0, 3]), 1.5f, 1e-4f);
     EXPECT_NEAR((m[1, 3]), 0.0f, 1e-4f);
     EXPECT_NEAR((m[2, 3]), 0.0f, 1e-4f);
+}
+
+// ==========================================================================
+// Scale keyframes
+// ==========================================================================
+
+TEST(LinearAnimation, DefaultConstructionHasNoScaleKeyframes)
+{
+    LinearAnimation anim;
+    EXPECT_TRUE(anim.scaleKeyframes().empty());
+}
+
+TEST(LinearAnimation, SetScaleKeyframes)
+{
+    LinearAnimation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {1.0f, Vec3{2.0f, 2.0f, 2.0f}},
+    });
+    EXPECT_EQ(anim.scaleKeyframes().size(), 2u);
+}
+
+TEST(LinearAnimation, ScaleOnlyDuration)
+{
+    LinearAnimation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {3.0f, Vec3{2.0f, 2.0f, 2.0f}},
+    });
+    EXPECT_FLOAT_EQ(anim.duration(), 3.0f);
+}
+
+TEST(LinearAnimation, ScaleOnlySingleKeyframe)
+{
+    LinearAnimation anim;
+    anim.scaleKeyframes({{0.0f, Vec3{3.0f, 4.0f, 5.0f}}});
+
+    Mat4 m = anim.sample(0.0f);
+    EXPECT_NEAR((m[0, 0]), 3.0f, 1e-5f);
+    EXPECT_NEAR((m[1, 1]), 4.0f, 1e-5f);
+    EXPECT_NEAR((m[2, 2]), 5.0f, 1e-5f);
+}
+
+TEST(LinearAnimation, ScaleInterpolationMidpoint)
+{
+    LinearAnimation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {2.0f, Vec3{3.0f, 5.0f, 7.0f}},
+    });
+
+    Mat4 m = anim.sample(1.0f);
+    EXPECT_NEAR((m[0, 0]), 2.0f, 1e-4f);
+    EXPECT_NEAR((m[1, 1]), 3.0f, 1e-4f);
+    EXPECT_NEAR((m[2, 2]), 4.0f, 1e-4f);
+}
+
+TEST(LinearAnimation, ScaleAtEndpoint)
+{
+    LinearAnimation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {1.0f, Vec3{2.0f, 3.0f, 4.0f}},
+    });
+
+    // At t=0.999 (just before loop wraps), should be nearly at the end values
+    Mat4 m = anim.sample(0.999f);
+    EXPECT_NEAR((m[0, 0]), 2.0f, 0.01f);
+    EXPECT_NEAR((m[1, 1]), 3.0f, 0.01f);
+    EXPECT_NEAR((m[2, 2]), 4.0f, 0.01f);
+}
+
+TEST(LinearAnimation, NoScaleKeyframesDefaultsToIdentityScale)
+{
+    LinearAnimation anim;
+    anim.translationKeyframes({{0.0f, Vec3{5.0f, 0.0f, 0.0f}}});
+
+    Mat4 m = anim.sample(0.0f);
+    // Scale diagonal should be 1.0 (identity scale)
+    EXPECT_NEAR((m[0, 0]), 1.0f, 1e-5f);
+    EXPECT_NEAR((m[1, 1]), 1.0f, 1e-5f);
+    EXPECT_NEAR((m[2, 2]), 1.0f, 1e-5f);
+    // Translation still applied
+    EXPECT_NEAR((m[0, 3]), 5.0f, 1e-5f);
+}
+
+TEST(LinearAnimation, CombinedTranslationAndScale)
+{
+    LinearAnimation anim;
+    anim.translationKeyframes({{0.0f, Vec3{10.0f, 0.0f, 0.0f}}});
+    anim.scaleKeyframes({{0.0f, Vec3{2.0f, 2.0f, 2.0f}}});
+
+    Mat4 m = anim.sample(0.0f);
+    // T * R * S: translation in column 3, scale on diagonal
+    EXPECT_NEAR((m[0, 3]), 10.0f, 1e-5f);
+    EXPECT_NEAR((m[0, 0]), 2.0f, 1e-5f);
+    EXPECT_NEAR((m[1, 1]), 2.0f, 1e-5f);
+    EXPECT_NEAR((m[2, 2]), 2.0f, 1e-5f);
+}
+
+TEST(LinearAnimation, ScaleDurationExtendsOverallDuration)
+{
+    LinearAnimation anim;
+    anim.rotationKeyframes({
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+    });
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {5.0f, Vec3{2.0f, 2.0f, 2.0f}},
+    });
+    EXPECT_FLOAT_EQ(anim.duration(), 5.0f);
 }

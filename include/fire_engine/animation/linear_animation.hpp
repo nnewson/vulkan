@@ -27,6 +27,12 @@ public:
         Vec3 position{};
     };
 
+    struct ScaleKeyframe
+    {
+        float time{0.0f};
+        Vec3 scale{1.0f, 1.0f, 1.0f};
+    };
+
     LinearAnimation() = default;
     ~LinearAnimation() = default;
 
@@ -53,6 +59,15 @@ public:
         translationKeyframes_ = std::move(kf);
     }
 
+    [[nodiscard]] const std::vector<ScaleKeyframe>& scaleKeyframes() const noexcept
+    {
+        return scaleKeyframes_;
+    }
+    void scaleKeyframes(std::vector<ScaleKeyframe> kf) noexcept
+    {
+        scaleKeyframes_ = std::move(kf);
+    }
+
     [[nodiscard]] float duration() const noexcept;
     // Explicitly override the loop duration. Used by the glTF loader so every
     // LinearAnimation participating in the same glTF animation loops in lockstep
@@ -69,6 +84,7 @@ public:
 private:
     std::vector<RotationKeyframe> rotationKeyframes_;
     std::vector<TranslationKeyframe> translationKeyframes_;
+    std::vector<ScaleKeyframe> scaleKeyframes_;
     float duration_{-1.0f};
 };
 

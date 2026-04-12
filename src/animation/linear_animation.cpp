@@ -101,6 +101,25 @@ Vec3 sampleTranslation(const std::vector<LinearAnimation::TranslationKeyframe>& 
     return kf[i].position + (kf[i + 1].position - kf[i].position) * alpha;
 }
 
+Vec3 sampleScale(const std::vector<LinearAnimation::ScaleKeyframe>& kf, float t) noexcept
+{
+    if (kf.empty())
+    {
+        return {1.0f, 1.0f, 1.0f};
+    }
+    if (kf.size() == 1)
+    {
+        return kf[0].scale;
+    }
+
+    auto [i, alpha] = findBracket(kf, t);
+    if (alpha == 0.0f)
+    {
+        return kf[i].scale;
+    }
+    return kf[i].scale + (kf[i + 1].scale - kf[i].scale) * alpha;
+}
+
 } // namespace
 
 float LinearAnimation::duration() const noexcept
@@ -111,12 +130,13 @@ float LinearAnimation::duration() const noexcept
     }
     float rotDur = rotationKeyframes_.empty() ? 0.0f : rotationKeyframes_.back().time;
     float transDur = translationKeyframes_.empty() ? 0.0f : translationKeyframes_.back().time;
-    return std::max(rotDur, transDur);
+    float scaleDur = scaleKeyframes_.empty() ? 0.0f : scaleKeyframes_.back().time;
+    return std::max({rotDur, transDur, scaleDur});
 }
 
 Mat4 LinearAnimation::sample(float t) const noexcept
 {
-    if (rotationKeyframes_.empty() && translationKeyframes_.empty())
+    if (rotationKeyframes_.empty() && translationKeyframes_.empty() && scaleKeyframes_.empty())
     {
         return Mat4::identity();
     }
@@ -125,8 +145,9 @@ Mat4 LinearAnimation::sample(float t) const noexcept
 
     Quaternion rotation = sampleRotation(rotationKeyframes_, looped);
     Vec3 position = sampleTranslation(translationKeyframes_, looped);
+    Vec3 scl = sampleScale(scaleKeyframes_, looped);
 
-    return Mat4::translate(position) * rotation.toMat4();
+    return Mat4::translate(position) * rotation.toMat4() * Mat4::scale(scl);
 }
 
 } // namespace fire_engine

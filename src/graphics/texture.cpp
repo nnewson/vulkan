@@ -1,7 +1,6 @@
 #include <fire_engine/graphics/texture.hpp>
 
 #include <cstring>
-#include <stdexcept>
 
 #include <fire_engine/render/device.hpp>
 
@@ -15,8 +14,8 @@ Texture Texture::load_from_file(const std::string& path, const Device& device,
     return load_from_data(img.data(), img.width(), img.height(), device, cmdPool);
 }
 
-Texture Texture::load_from_data(const uint8_t* pixels, int width, int height,
-                                const Device& device, vk::CommandPool cmdPool)
+Texture Texture::load_from_data(const uint8_t* pixels, int width, int height, const Device& device,
+                                vk::CommandPool cmdPool)
 {
     Texture tex;
     vk::DeviceSize imageSize =
@@ -58,9 +57,9 @@ void Texture::createTextureImage(Texture& tex, const Device& device, int width, 
     tex.image_ = vk::raii::Image(device.device(), imgCi);
 
     auto imgReq = tex.image_.getMemoryRequirements();
-    vk::MemoryAllocateInfo imgAi(imgReq.size,
-                                 device.findMemoryType(imgReq.memoryTypeBits,
-                                                       vk::MemoryPropertyFlagBits::eDeviceLocal));
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device.findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
     tex.memory_ = vk::raii::DeviceMemory(device.device(), imgAi);
     tex.image_.bindMemory(*tex.memory_, 0);
 }
@@ -118,8 +117,7 @@ void Texture::createImageViewAndSampler(Texture& tex, const Device& device)
         {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
         vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat,
         vk::SamplerAddressMode::eRepeat, 0.0f, vk::True, props.limits.maxSamplerAnisotropy,
-        vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f, vk::BorderColor::eIntOpaqueBlack,
-        vk::False);
+        vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f, vk::BorderColor::eIntOpaqueBlack, vk::False);
     tex.sampler_ = vk::raii::Sampler(device.device(), samplerCi);
 }
 

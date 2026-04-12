@@ -6,6 +6,7 @@
 #include <stdexcept>
 
 #include <fastgltf/core.hpp>
+#include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
@@ -53,6 +54,18 @@ void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
         node.transform().rotation(quaternionToEuler(trs->rotation.x(), trs->rotation.y(),
                                                     trs->rotation.z(), trs->rotation.w()));
         node.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
+    }
+    else if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&gltfNode.transform))
+    {
+        fastgltf::math::fvec3 scale;
+        fastgltf::math::fquat rotation;
+        fastgltf::math::fvec3 translation;
+        fastgltf::math::decomposeTransformMatrix(*mat, scale, rotation, translation);
+
+        node.transform().position({translation.x(), translation.y(), translation.z()});
+        node.transform().rotation(
+            quaternionToEuler(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
+        node.transform().scale({scale.x(), scale.y(), scale.z()});
     }
 }
 
@@ -544,6 +557,32 @@ GltfLoader::loadTranslationKeyframes(const fastgltf::Asset& asset,
     return kf;
 }
 
+std::vector<LinearAnimation::ScaleKeyframe>
+GltfLoader::loadScaleKeyframes(const fastgltf::Asset& asset,
+                               const fastgltf::AnimationSampler& sampler)
+{
+    const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
+    const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
+
+    std::vector<float> times(inputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<float>(asset, inputAccessor,
+                                              [&](float t, std::size_t idx) { times[idx] = t; });
+
+    std::vector<fastgltf::math::fvec3> scales(outputAccessor.count);
+    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+        asset, outputAccessor,
+        [&](fastgltf::math::fvec3 s, std::size_t idx) { scales[idx] = s; });
+
+    std::vector<LinearAnimation::ScaleKeyframe> kf;
+    std::size_t count = std::min(times.size(), scales.size());
+    kf.reserve(count);
+    for (std::size_t i = 0; i < count; ++i)
+    {
+        kf.push_back({times[i], Vec3{scales[i].x(), scales[i].y(), scales[i].z()}});
+    }
+    return kf;
+}
+
 void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                Animator& animator)
 {
@@ -568,6 +607,10 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
             else if (channel.path == fastgltf::AnimationPath::Translation)
             {
                 la.translationKeyframes(loadTranslationKeyframes(asset, sampler));
+            }
+            else if (channel.path == fastgltf::AnimationPath::Scale)
+            {
+                la.scaleKeyframes(loadScaleKeyframes(asset, sampler));
             }
         }
     }
