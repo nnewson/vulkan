@@ -18,17 +18,29 @@ CameraState Input::update(const Window& window, float deltaTime)
     Vec3 delta{};
 
     if (keyboard_.w())
+    {
         delta.z(delta.z() - speed_ * deltaTime);
+    }
     if (keyboard_.s())
+    {
         delta.z(delta.z() + speed_ * deltaTime);
+    }
     if (keyboard_.a())
+    {
         delta.x(delta.x() - speed_ * deltaTime);
+    }
     if (keyboard_.d())
+    {
         delta.x(delta.x() + speed_ * deltaTime);
+    }
     if (keyboard_.q())
+    {
         delta.y(delta.y() + speed_ * deltaTime);
+    }
     if (keyboard_.e())
+    {
         delta.y(delta.y() - speed_ * deltaTime);
+    }
 
     CameraState state;
     state.deltaPosition(delta);

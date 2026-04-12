@@ -52,9 +52,15 @@ public:
     {
         Mat4 r;
         for (int c = 0; c < 4; ++c)
+        {
             for (int row = 0; row < 4; ++row)
+            {
                 for (int k = 0; k < 4; ++k)
+                {
                     r.m_[c * 4 + row] += m_[k * 4 + row] * rhs.m_[c * 4 + k];
+                }
+            }
+        }
         return r;
     }
 
@@ -68,8 +74,12 @@ public:
     constexpr bool operator==(const Mat4& rhs) const noexcept
     {
         for (int i = 0; i < 16; ++i)
+        {
             if (m_[i] != rhs.m_[i])
+            {
                 return false;
+            }
+        }
         return true;
     }
 

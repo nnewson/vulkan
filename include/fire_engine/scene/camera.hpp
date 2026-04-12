@@ -102,9 +102,13 @@ private:
     {
         constexpr float maxPitch = 1.5f;
         if (p > maxPitch)
+        {
             return maxPitch;
+        }
         if (p < -maxPitch)
+        {
             return -maxPitch;
+        }
         return p;
     }
 

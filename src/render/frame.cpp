@@ -27,7 +27,9 @@ void Frame::createCommandBuffers()
     auto bufs = device_->allocateCommandBuffers(ai);
     cmdBufs_.reserve(bufs.size());
     for (auto& b : bufs)
+    {
         cmdBufs_.push_back(std::move(b));
+    }
 }
 
 void Frame::createSyncObjects()
@@ -61,7 +63,9 @@ void Frame::createRenderFinishedSemaphores(size_t count)
     renderDone_.clear();
     renderDone_.reserve(count);
     for (size_t i = 0; i < count; ++i)
+    {
         renderDone_.emplace_back(*device_, sci);
+    }
 }
 
 } // namespace fire_engine

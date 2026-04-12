@@ -120,7 +120,9 @@ uint32_t Texture::findMemoryType(const vk::raii::PhysicalDevice& physDevice, uin
     for (uint32_t i = 0; i < mem.memoryTypeCount; ++i)
     {
         if ((filter & (1 << i)) && (mem.memoryTypes[i].propertyFlags & props) == props)
+        {
             return i;
+        }
     }
     throw std::runtime_error("failed to find suitable memory type for texture");
 }

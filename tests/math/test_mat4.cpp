@@ -20,9 +20,13 @@ static void expectIdentity(const Mat4& m)
         for (int row = 0; row < 4; ++row)
         {
             if (row == col)
+            {
                 EXPECT_FLOAT_EQ((m[row, col]), 1.0f) << "row=" << row << " col=" << col;
+            }
             else
+            {
                 EXPECT_FLOAT_EQ((m[row, col]), 0.0f) << "row=" << row << " col=" << col;
+            }
         }
     }
 }
@@ -413,14 +417,18 @@ TEST(Mat4LookAt, PreservesOrthonormality)
         // Row length should be ~1
         float len2 = 0.0f;
         for (int c = 0; c < 3; ++c)
+        {
             len2 += v[r, c] * v[r, c];
+        }
         EXPECT_NEAR(len2, 1.0f, kEps) << "row " << r << " not unit length";
     }
 
     // Dot product of row 0 and row 1 should be ~0
     float dot01 = 0.0f;
     for (int c = 0; c < 3; ++c)
+    {
         dot01 += v[0, c] * v[1, c];
+    }
     EXPECT_NEAR(dot01, 0.0f, kEps);
 }
 
@@ -739,7 +747,9 @@ TEST(Mat4EdgeCases, RotateXThenRotateYNotCommutative)
         for (int row = 0; row < 4; ++row)
         {
             if (std::abs(xy[row, col] - yx[row, col]) > kEps)
+            {
                 equal = false;
+            }
         }
     }
     EXPECT_FALSE(equal);

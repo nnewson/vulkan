@@ -125,7 +125,9 @@ void Object::createDescriptorSets(const Device& device, const Pipeline& pipeline
         binding.descSets.clear();
         binding.descSets.reserve(sets.size());
         for (auto& s : sets)
+        {
             binding.descSets.push_back(std::move(s));
+        }
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {

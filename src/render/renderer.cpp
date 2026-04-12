@@ -33,7 +33,9 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
         return;
     }
     if (acquireResult != vk::Result::eSuccess && acquireResult != vk::Result::eSuboptimalKHR)
+    {
         throw std::runtime_error("failed to acquire swap chain image");
+    }
 
     dev.resetFences(frame_.inFlightFence(currentFrame_));
 

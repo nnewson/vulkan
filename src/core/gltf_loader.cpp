@@ -63,13 +63,17 @@ std::string GltfLoader::descendantMeshName(const fastgltf::Asset& asset,
     {
         const auto& name = asset.meshes[gltfNode.meshIndex.value()].name;
         if (!name.empty())
+        {
             return std::string(name);
+        }
     }
     for (auto childIndex : gltfNode.children)
     {
         auto result = descendantMeshName(asset, asset.nodes[childIndex]);
         if (!result.empty())
+        {
             return result;
+        }
     }
     return {};
 }
@@ -77,10 +81,14 @@ std::string GltfLoader::descendantMeshName(const fastgltf::Asset& asset,
 std::string GltfLoader::nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode)
 {
     if (!gltfNode.name.empty())
+    {
         return std::string(gltfNode.name);
+    }
     auto meshName = descendantMeshName(asset, gltfNode);
     if (!meshName.empty())
+    {
         return meshName;
+    }
     return "Node";
 }
 
@@ -116,7 +124,9 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
 
     std::size_t totalPrimitives = 0;
     for (const auto& m : asset.meshes)
+    {
         totalPrimitives += m.primitives.size();
+    }
     assets.resizeGeometries(totalPrimitives);
 }
 
@@ -288,7 +298,9 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
 {
     auto& geometry = assets.geometry(geoIdx);
     if (geometry.loaded())
+    {
         return;
+    }
 
     const auto* posAttr = primitive.findAttribute("POSITION");
     const auto* normAttr = primitive.findAttribute("NORMAL");
@@ -367,7 +379,9 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
 {
     std::size_t geoStartIdx = 0;
     for (std::size_t m = 0; m < meshIndex; ++m)
+    {
         geoStartIdx += asset.meshes[m].primitives.size();
+    }
 
     Object object;
 
@@ -465,7 +479,9 @@ float GltfLoader::computeSharedDuration(const fastgltf::Asset& asset, std::size_
             }
         }
         if (!touchesNode)
+        {
             continue;
+        }
 
         for (const auto& channel : anim.channels)
         {
@@ -541,7 +557,9 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
         for (const auto& channel : anim.channels)
         {
             if (!channel.nodeIndex.has_value() || channel.nodeIndex.value() != nodeIndex)
+            {
                 continue;
+            }
 
             const auto& sampler = anim.samplers[channel.samplerIndex];
 

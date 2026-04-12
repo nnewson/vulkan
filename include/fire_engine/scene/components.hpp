@@ -20,13 +20,21 @@ using Components = std::variant<Empty, Animator, Camera, Mesh>;
         {
             using T = std::decay_t<decltype(c)>;
             if constexpr (std::is_same_v<T, Empty>)
+            {
                 return "Empty";
+            }
             else if constexpr (std::is_same_v<T, Animator>)
+            {
                 return "Animator";
+            }
             else if constexpr (std::is_same_v<T, Camera>)
+            {
                 return "Camera";
+            }
             else if constexpr (std::is_same_v<T, Mesh>)
+            {
                 return "Mesh";
+            }
         },
         component);
 }

@@ -87,14 +87,20 @@ bool Device::isDeviceSuitable(const vk::raii::PhysicalDevice& d)
 {
     auto [gf, pf] = findQueueFamilies(d);
     if (!gf.has_value() || !pf.has_value())
+    {
         return false;
+    }
 
     auto avail = d.enumerateDeviceExtensionProperties();
     std::set<std::string> required(deviceExtensions.begin(), deviceExtensions.end());
     for (auto& e : avail)
+    {
         required.erase(e.extensionName);
+    }
     if (!required.empty())
+    {
         return false;
+    }
 
     auto fmts = d.getSurfaceFormatsKHR(*surface_);
     auto modes = d.getSurfacePresentModesKHR(*surface_);
@@ -109,11 +115,17 @@ Device::findQueueFamilies(const vk::raii::PhysicalDevice& d)
     for (uint32_t i = 0; i < families.size(); ++i)
     {
         if (families[i].queueFlags & vk::QueueFlagBits::eGraphics)
+        {
             gf = i;
+        }
         if (d.getSurfaceSupportKHR(i, *surface_))
+        {
             pf = i;
+        }
         if (gf && pf)
+        {
             break;
+        }
     }
     return {gf, pf};
 }
@@ -146,8 +158,12 @@ uint32_t Device::findMemoryType(uint32_t filter, vk::MemoryPropertyFlags props) 
 {
     auto mem = physDevice_.getMemoryProperties();
     for (uint32_t i = 0; i < mem.memoryTypeCount; ++i)
+    {
         if ((filter & (1 << i)) && (mem.memoryTypes[i].propertyFlags & props) == props)
+        {
             return i;
+        }
+    }
     throw std::runtime_error("failed to find suitable memory type");
 }
 

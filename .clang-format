@@ -8,3 +8,4 @@ PackConstructorInitializers: Never
 BreakTemplateDeclarations: Yes
 AllowShortFunctionsOnASingleLine: None
 PointerAlignment: Left
+InsertBraces: True

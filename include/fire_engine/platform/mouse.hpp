@@ -42,9 +42,13 @@ public:
     void capture(const Window& window)
     {
         if (captured_)
+        {
             return;
+        }
         if (glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS)
+        {
             return;
+        }
 
         enable(window);
     }

@@ -68,7 +68,9 @@ void Swapchain::createSwapchain(const Device& device, const Window& window)
 
     uint32_t imgCount = caps.minImageCount + 1;
     if (caps.maxImageCount > 0)
+    {
         imgCount = std::min(imgCount, caps.maxImageCount);
+    }
 
     uint32_t families[] = {device.graphicsFamily(), device.presentFamily()};
     bool concurrent = device.graphicsFamily() != device.presentFamily();
@@ -91,16 +93,22 @@ void Swapchain::createImageViews()
     views_.clear();
     views_.reserve(images_.size());
     for (size_t i = 0; i < images_.size(); ++i)
+    {
         views_.push_back(createImageView(images_[i], format_, vk::ImageAspectFlagBits::eColor));
+    }
 }
 
 vk::SurfaceFormatKHR Swapchain::chooseSwapFormat(const Device& device)
 {
     auto fmts = device.physicalDevice().getSurfaceFormatsKHR(*device.surface());
     for (auto& f : fmts)
+    {
         if (f.format == vk::Format::eB8G8R8A8Srgb &&
             f.colorSpace == vk::ColorSpaceKHR::eSrgbNonlinear)
+        {
             return f;
+        }
+    }
     return fmts[0];
 }
 
@@ -108,8 +116,12 @@ vk::PresentModeKHR Swapchain::chooseSwapPresentMode(const Device& device)
 {
     auto modes = device.physicalDevice().getSurfacePresentModesKHR(*device.surface());
     for (auto& m : modes)
+    {
         if (m == vk::PresentModeKHR::eMailbox)
+        {
             return m;
+        }
+    }
     return vk::PresentModeKHR::eFifo;
 }
 
@@ -117,7 +129,9 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
                                          const vk::SurfaceCapabilitiesKHR& caps)
 {
     if (caps.currentExtent.width != std::numeric_limits<uint32_t>::max())
+    {
         return caps.currentExtent;
+    }
     auto [w, h] = window.framebufferSize();
     vk::Extent2D ext(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
     ext.width = std::clamp(ext.width, caps.minImageExtent.width, caps.maxImageExtent.width);
