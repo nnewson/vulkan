@@ -1,3 +1,4 @@
+#include <iostream>
 #include <set>
 #include <string>
 
@@ -28,8 +29,8 @@ Device::Device(const Window& window)
 
 void Device::createInstance()
 {
-    vk::ApplicationInfo appInfo("Vulkan Cube", VK_MAKE_VERSION(1, 0, 0), "No Engine",
-                                VK_MAKE_VERSION(1, 0, 0), VK_API_VERSION_1_0);
+    constexpr vk::ApplicationInfo appInfo("FireEngine", VK_MAKE_VERSION(1, 0, 0), "No Engine",
+                                          VK_MAKE_VERSION(1, 0, 0), vk::ApiVersion14);
 
     auto exts = Window::requiredVulkanExtensions();
     exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
@@ -37,7 +38,25 @@ void Device::createInstance()
 
     std::vector<const char*> layers;
     if (enableValidation)
+    {
         layers = validationLayers;
+
+        auto layersAvailable = context_.enumerateInstanceLayerProperties();
+        std::cout << "Available layers:\n";
+        for (const auto& layer : layersAvailable)
+        {
+            std::cout << '\t' << layer.layerName << '\n';
+        }
+        std::cout << '\n';
+
+        auto extentions = context_.enumerateInstanceExtensionProperties();
+        std::cout << "Available extensions:\n";
+        for (const auto& ext : extentions)
+        {
+            std::cout << '\t' << ext.extensionName << '\n';
+        }
+        std::cout << '\n';
+    }
 
     vk::InstanceCreateInfo ci(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo,
                               layers, exts);
