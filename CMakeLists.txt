@@ -25,6 +25,7 @@ add_library(fireengine SHARED
     src/graphics/geometry.cpp
     src/graphics/image.cpp
     src/graphics/object.cpp
+    src/graphics/skin.cpp
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp
@@ -102,6 +103,7 @@ add_executable(test_fire_engine
     tests/graphics/test_colour3.cpp
     tests/graphics/test_image.cpp
     tests/graphics/test_vertex.cpp
+    tests/graphics/test_skin.cpp
     tests/graphics/test_assets.cpp
     tests/graphics/test_material.cpp
     tests/graphics/test_geometry.cpp

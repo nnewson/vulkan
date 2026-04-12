@@ -14,6 +14,7 @@ class Material;
 class Renderer;
 class Device;
 class Pipeline;
+class Skin;
 struct RenderContext;
 struct MaterialUBO;
 
@@ -31,6 +32,17 @@ public:
     void addGeometry(const Geometry& geometry);
     void load(const Renderer& renderer);
 
+    void skin(Skin* s) noexcept
+    {
+        skin_ = s;
+    }
+    [[nodiscard]] const Skin* skin() const noexcept
+    {
+        return skin_;
+    }
+
+    void updateSkin();
+
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world);
 
@@ -43,14 +55,21 @@ private:
         std::vector<vk::raii::DeviceMemory> materialMems;
         std::vector<void*> materialMapped;
 
+        std::vector<vk::raii::Buffer> skinBufs;
+        std::vector<vk::raii::DeviceMemory> skinMems;
+        std::vector<void*> skinMapped;
+
         std::vector<vk::raii::DescriptorSet> descSets;
     };
 
     void createUniformBuffers(const Device& device);
     void createMaterialBuffers(const Device& device, GeometryBindings& bindings);
+    void createSkinBuffers(const Device& device, GeometryBindings& bindings);
     void createDescriptorPool(const Device& device);
     void createDescriptorSets(const Device& device, const Pipeline& pipeline);
     static MaterialUBO toMaterialUBO(const Material& mat);
+
+    Skin* skin_{nullptr};
 
     std::vector<vk::raii::Buffer> uniformBufs_;
     std::vector<vk::raii::DeviceMemory> uniformMems_;

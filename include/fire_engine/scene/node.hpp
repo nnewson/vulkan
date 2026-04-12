@@ -63,15 +63,21 @@ public:
         return children_;
     }
 
+    [[nodiscard]] const Mat4& composedWorld() const noexcept
+    {
+        return composedWorld_;
+    }
+
     Node& addChild(std::unique_ptr<Node> child);
 
-    void update(const CameraState& input_state, const Mat4& parentWorld);
+    void update(const CameraState& input_state, const Mat4& parentComposedWorld);
     void render(const RenderContext& ctx, const Mat4& parentWorld);
 
 private:
     std::string name_;
     Transform transform_;
     Components component_;
+    Mat4 composedWorld_{Mat4::identity()};
     Node* parent_{nullptr};
     std::vector<std::unique_ptr<Node>> children_;
 };

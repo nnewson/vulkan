@@ -18,16 +18,21 @@ Node& Node::addChild(std::unique_ptr<Node> child)
     return *children_.back();
 }
 
-void Node::update(const CameraState& input_state, const Mat4& parentWorld)
+void Node::update(const CameraState& input_state, const Mat4& parentComposedWorld)
 {
-    transform_.update(parentWorld);
+    transform_.update(parentComposedWorld);
 
     std::visit([&input_state, this](auto& component) { component.update(input_state, transform_); },
                component_);
 
+    // Composed world includes component effects (e.g. Animator's model matrix)
+    Mat4 componentMatrix = std::visit([](const auto& component) -> Mat4
+                                      { return component.modelMatrix(); }, component_);
+    composedWorld_ = parentComposedWorld * transform_.local() * componentMatrix;
+
     for (auto& child : children_)
     {
-        child->update(input_state, transform_.world());
+        child->update(input_state, composedWorld_);
     }
 }
 

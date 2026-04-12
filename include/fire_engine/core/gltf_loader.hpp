@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <filesystem>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -23,6 +24,7 @@ class Node;
 class Object;
 class Renderer;
 class SceneGraph;
+class Skin;
 class Texture;
 
 class GltfLoader
@@ -32,6 +34,8 @@ public:
 
     static void loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
                           Assets& assets);
+
+    using NodeMap = std::unordered_map<std::size_t, Node*>;
 
 private:
     // Asset parsing and setup
@@ -55,10 +59,17 @@ private:
 
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                       Node& node, const std::string& baseDir,
-                                      const Renderer& renderer, Assets& assets);
+                                      const Renderer& renderer, Assets& assets, NodeMap& nodeMap);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-                         const std::string& baseDir, const Renderer& renderer, Assets& assets);
+                         const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                         NodeMap& nodeMap);
+
+    // Skin loading
+    static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
+                         const NodeMap& nodeMap, Assets& assets);
+
+    static void applySkins(const fastgltf::Asset& asset, const NodeMap& nodeMap, Assets& assets);
 
     // Mesh loading
     [[nodiscard]]

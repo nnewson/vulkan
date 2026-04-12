@@ -6,6 +6,8 @@
 namespace fire_engine
 {
 
+class Skin;
+
 class Mesh : public Component
 {
 public:
@@ -16,6 +18,11 @@ public:
     Mesh& operator=(const Mesh&) = delete;
     Mesh(Mesh&&) noexcept = default;
     Mesh& operator=(Mesh&&) noexcept = default;
+
+    void skin(Skin* s) noexcept
+    {
+        object_.skin(s);
+    }
 
     void update(const CameraState& input_state, const Transform& transform) override;
 

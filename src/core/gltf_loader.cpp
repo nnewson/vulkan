@@ -15,6 +15,7 @@
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/object.hpp>
+#include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
@@ -141,6 +142,7 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
         totalPrimitives += m.primitives.size();
     }
     assets.resizeGeometries(totalPrimitives);
+    assets.resizeSkins(asset.skins.size());
 }
 
 // ---------------------------------------------------------------------------
@@ -163,26 +165,32 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
     }
 
     const auto& gltfScene = asset.scenes[sceneIndex];
+    NodeMap nodeMap;
     for (auto nodeIndex : gltfScene.nodeIndices)
     {
         auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
         auto& rootRef = scene.addNode(std::move(rootNode));
+        nodeMap[nodeIndex] = &rootRef;
 
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(),
-                                  renderer, assets);
+                                  renderer, assets, nodeMap);
         }
         else
         {
-            loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), renderer, assets);
+            loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), renderer, assets,
+                     nodeMap);
         }
     }
+
+    // Resolve skins after the full scene graph is built
+    applySkins(asset, nodeMap, assets);
 }
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                        Node& node, const std::string& baseDir,
-                                       const Renderer& renderer, Assets& assets)
+                                       const Renderer& renderer, Assets& assets, NodeMap& nodeMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -204,12 +212,13 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
 
     for (auto childIndex : gltfNode.children)
     {
-        loadNode(asset, childIndex, node, baseDir, renderer, assets);
+        loadNode(asset, childIndex, node, baseDir, renderer, assets, nodeMap);
     }
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir, const Renderer& renderer, Assets& assets)
+                          const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                          NodeMap& nodeMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -225,19 +234,15 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
     {
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
         auto& childRef = node.addChild(std::move(childNode));
+        nodeMap[childIndex] = &childRef;
 
         if (nodeHasAnimation(asset, childIndex))
         {
-            // TODO: glTF spec says animated channels *replace* the corresponding static
-            // TRS component. We currently apply the full static TRS here and then let
-            // the Animator compose its sampled matrix on top, which double-applies if an
-            // asset has both a non-identity static translation/rotation and an animation
-            // on the same component. Fix by skipping animated channels when applying.
-            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets);
+            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap);
         }
         else
         {
-            loadNode(asset, childIndex, childRef, baseDir, renderer, assets);
+            loadNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap);
         }
     }
 }
@@ -262,8 +267,7 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
             {
                 std::string texPath = texturePath.empty() ? "default.png" : texturePath;
                 auto& device = renderer.device();
-                tex =
-                    Texture::load_from_file(texPath, device, renderer.frame().commandPool());
+                tex = Texture::load_from_file(texPath, device, renderer.frame().commandPool());
             }
             return &tex;
         }
@@ -273,8 +277,7 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
     if (defaultTex.view() == vk::ImageView{})
     {
         auto& device = renderer.device();
-        defaultTex =
-            Texture::load_from_file("default.png", device, renderer.frame().commandPool());
+        defaultTex = Texture::load_from_file("default.png", device, renderer.frame().commandPool());
     }
     return &defaultTex;
 }
@@ -316,6 +319,8 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
     const auto* posAttr = primitive.findAttribute("POSITION");
     const auto* normAttr = primitive.findAttribute("NORMAL");
     const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
+    const auto* jointsAttr = primitive.findAttribute("JOINTS_0");
+    const auto* weightsAttr = primitive.findAttribute("WEIGHTS_0");
 
     if (posAttr == primitive.attributes.end())
     {
@@ -348,6 +353,27 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
             [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords[idx] = uv; });
     }
 
+    // Joint indices — may be uint8 or uint16 in glTF, stored as uint32
+    std::vector<std::array<uint32_t, 4>> joints;
+    if (jointsAttr != primitive.attributes.end())
+    {
+        const auto& jointsAccessor = asset.accessors[jointsAttr->accessorIndex];
+        joints.resize(jointsAccessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::u16vec4>(
+            asset, jointsAccessor, [&](fastgltf::math::u16vec4 j, std::size_t idx)
+            { joints[idx] = {j.x(), j.y(), j.z(), j.w()}; });
+    }
+
+    std::vector<fastgltf::math::fvec4> weights;
+    if (weightsAttr != primitive.attributes.end())
+    {
+        const auto& weightsAccessor = asset.accessors[weightsAttr->accessorIndex];
+        weights.resize(weightsAccessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
+            asset, weightsAccessor,
+            [&](fastgltf::math::fvec4 w, std::size_t idx) { weights[idx] = w; });
+    }
+
     Colour3 vertexColour = matPtr->diffuse();
 
     std::vector<Vertex> verts;
@@ -360,7 +386,24 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
         float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
 
-        verts.push_back(Vertex{pos, vertexColour, norm, u, v});
+        uint32_t j0 = 0, j1 = 0, j2 = 0, j3 = 0;
+        float w0 = 0.0f, w1 = 0.0f, w2 = 0.0f, w3 = 0.0f;
+        if (i < joints.size())
+        {
+            j0 = joints[i][0];
+            j1 = joints[i][1];
+            j2 = joints[i][2];
+            j3 = joints[i][3];
+        }
+        if (i < weights.size())
+        {
+            w0 = weights[i].x();
+            w1 = weights[i].y();
+            w2 = weights[i].z();
+            w3 = weights[i].w();
+        }
+
+        verts.push_back(Vertex{pos, vertexColour, norm, u, v, j0, j1, j2, j3, w0, w1, w2, w3});
     }
     geometry.vertices(std::move(verts));
 
@@ -570,8 +613,7 @@ GltfLoader::loadScaleKeyframes(const fastgltf::Asset& asset,
 
     std::vector<fastgltf::math::fvec3> scales(outputAccessor.count);
     fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-        asset, outputAccessor,
-        [&](fastgltf::math::fvec3 s, std::size_t idx) { scales[idx] = s; });
+        asset, outputAccessor, [&](fastgltf::math::fvec3 s, std::size_t idx) { scales[idx] = s; });
 
     std::vector<LinearAnimation::ScaleKeyframe> kf;
     std::size_t count = std::min(times.size(), scales.size());
@@ -616,6 +658,79 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
     }
 
     la.duration(sharedDuration);
+}
+
+// ---------------------------------------------------------------------------
+// Skin loading helpers
+// ---------------------------------------------------------------------------
+
+void GltfLoader::loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
+                          const NodeMap& nodeMap, Assets& assets)
+{
+    const auto& gltfSkin = asset.skins[skinIndex];
+    auto& skin = assets.skin(skinIndex);
+
+    if (!gltfSkin.name.empty())
+    {
+        skin.name(std::string(gltfSkin.name));
+    }
+
+    // Read inverse bind matrices (one per joint)
+    std::vector<Mat4> inverseBindMatrices(gltfSkin.joints.size(), Mat4::identity());
+    if (gltfSkin.inverseBindMatrices.has_value())
+    {
+        const auto& accessor = asset.accessors[gltfSkin.inverseBindMatrices.value()];
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fmat4x4>(
+            asset, accessor,
+            [&](const fastgltf::math::fmat4x4& m, std::size_t idx)
+            {
+                Mat4 mat;
+                for (int col = 0; col < 4; ++col)
+                {
+                    for (int row = 0; row < 4; ++row)
+                    {
+                        mat[row, col] = m.col(col)[row];
+                    }
+                }
+                inverseBindMatrices[idx] = mat;
+            });
+    }
+
+    for (std::size_t i = 0; i < gltfSkin.joints.size(); ++i)
+    {
+        auto jointNodeIndex = gltfSkin.joints[i];
+        auto it = nodeMap.find(jointNodeIndex);
+        if (it == nodeMap.end())
+        {
+            throw std::runtime_error("Skin joint references unknown node index " +
+                                     std::to_string(jointNodeIndex));
+        }
+        skin.addJoint(it->second, inverseBindMatrices[i]);
+    }
+}
+
+void GltfLoader::applySkins(const fastgltf::Asset& asset, const NodeMap& nodeMap, Assets& assets)
+{
+    for (const auto& [nodeIndex, nodePtr] : nodeMap)
+    {
+        const auto& gltfNode = asset.nodes[nodeIndex];
+        if (!gltfNode.skinIndex.has_value())
+        {
+            continue;
+        }
+
+        auto skinIndex = gltfNode.skinIndex.value();
+        if (assets.skin(skinIndex).empty())
+        {
+            loadSkin(asset, skinIndex, nodeMap, assets);
+        }
+
+        auto* comp = std::get_if<Mesh>(&nodePtr->component());
+        if (comp != nullptr)
+        {
+            comp->skin(&assets.skin(skinIndex));
+        }
+    }
 }
 
 } // namespace fire_engine

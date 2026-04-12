@@ -12,6 +12,7 @@ Mesh::Mesh(Object object)
 
 void Mesh::update(const CameraState& /*input_state*/, const Transform& /*transform*/)
 {
+    object_.updateSkin();
 }
 
 Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)

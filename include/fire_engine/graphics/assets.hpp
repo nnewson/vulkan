@@ -5,6 +5,7 @@
 
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
+#include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
 
 namespace fire_engine
@@ -36,6 +37,11 @@ public:
         geometries_.resize(count);
     }
 
+    void resizeSkins(std::size_t count)
+    {
+        skins_.resize(count);
+    }
+
     [[nodiscard]] Texture& texture(std::size_t index) noexcept
     {
         return textures_[index];
@@ -63,6 +69,15 @@ public:
         return geometries_[index];
     }
 
+    [[nodiscard]] Skin& skin(std::size_t index) noexcept
+    {
+        return skins_[index];
+    }
+    [[nodiscard]] const Skin& skin(std::size_t index) const noexcept
+    {
+        return skins_[index];
+    }
+
     [[nodiscard]] std::size_t textureCount() const noexcept
     {
         return textures_.size();
@@ -75,11 +90,16 @@ public:
     {
         return geometries_.size();
     }
+    [[nodiscard]] std::size_t skinCount() const noexcept
+    {
+        return skins_.size();
+    }
 
 private:
     std::vector<Texture> textures_;
     std::vector<Material> materials_;
     std::vector<Geometry> geometries_;
+    std::vector<Skin> skins_;
 };
 
 } // namespace fire_engine

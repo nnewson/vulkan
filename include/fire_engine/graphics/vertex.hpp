@@ -30,6 +30,17 @@ public:
     {
     }
 
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, float texU, float texV, uint32_t j0,
+           uint32_t j1, uint32_t j2, uint32_t j3, float w0, float w1, float w2, float w3) noexcept
+        : position_(position),
+          colour_(colour),
+          normal_(normal),
+          texCoord_{texU, texV},
+          joints_{j0, j1, j2, j3},
+          weights_{w0, w1, w2, w3}
+    {
+    }
+
     [[nodiscard]] Vec3 position() const noexcept
     {
         return position_;
@@ -75,6 +86,30 @@ public:
         texCoord_[1] = v;
     }
 
+    [[nodiscard]] const uint32_t* joints() const noexcept
+    {
+        return joints_;
+    }
+    void joints(uint32_t j0, uint32_t j1, uint32_t j2, uint32_t j3) noexcept
+    {
+        joints_[0] = j0;
+        joints_[1] = j1;
+        joints_[2] = j2;
+        joints_[3] = j3;
+    }
+
+    [[nodiscard]] const float* weights() const noexcept
+    {
+        return weights_;
+    }
+    void weights(float w0, float w1, float w2, float w3) noexcept
+    {
+        weights_[0] = w0;
+        weights_[1] = w1;
+        weights_[2] = w2;
+        weights_[3] = w3;
+    }
+
     [[nodiscard]]
     bool operator==(const Vertex& other) const noexcept
     {
@@ -88,13 +123,15 @@ public:
         return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
     }
 
-    static std::array<vk::VertexInputAttributeDescription, 4> attrDescs()
+    static std::array<vk::VertexInputAttributeDescription, 6> attrDescs()
     {
         return {{
             {0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, position_)},
             {1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, colour_)},
             {2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal_)},
             {3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord_)},
+            {4, 0, vk::Format::eR32G32B32A32Uint, offsetof(Vertex, joints_)},
+            {5, 0, vk::Format::eR32G32B32A32Sfloat, offsetof(Vertex, weights_)},
         }};
     }
 
@@ -103,6 +140,8 @@ private:
     Colour3 colour_{};
     Vec3 normal_{};
     float texCoord_[2]{0.0f, 0.0f};
+    uint32_t joints_[4]{0, 0, 0, 0};
+    float weights_[4]{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 } // namespace fire_engine

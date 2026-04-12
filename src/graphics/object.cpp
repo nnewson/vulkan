@@ -3,6 +3,7 @@
 
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
+#include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/render/device.hpp>
@@ -30,6 +31,7 @@ void Object::load(const Renderer& renderer)
     for (auto& binding : bindings_)
     {
         createMaterialBuffers(device, binding);
+        createSkinBuffers(device, binding);
     }
 
     createDescriptorPool(device);
@@ -104,13 +106,40 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     return ubo;
 }
 
+void Object::createSkinBuffers(const Device& device, GeometryBindings& binding)
+{
+    vk::DeviceSize skinSize = sizeof(SkinUBO);
+    binding.skinBufs.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.skinMems.reserve(MAX_FRAMES_IN_FLIGHT);
+    binding.skinMapped.resize(MAX_FRAMES_IN_FLIGHT);
+
+    // Initialise with identity matrices
+    SkinUBO skinUbo{};
+    for (std::size_t j = 0; j < MAX_JOINTS; ++j)
+    {
+        skinUbo.joints[j] = Mat4::identity();
+    }
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        auto [sBuf, sMem] = device.createBuffer(skinSize, vk::BufferUsageFlagBits::eUniformBuffer,
+                                                vk::MemoryPropertyFlagBits::eHostVisible |
+                                                    vk::MemoryPropertyFlagBits::eHostCoherent);
+        binding.skinMapped[i] = sMem.mapMemory(0, skinSize);
+        binding.skinBufs.push_back(std::move(sBuf));
+        binding.skinMems.push_back(std::move(sMem));
+
+        memcpy(binding.skinMapped[i], &skinUbo, sizeof(skinUbo));
+    }
+}
+
 void Object::createDescriptorPool(const Device& device)
 {
     auto numGeometries = static_cast<uint32_t>(bindings_.size());
     uint32_t totalSets = numGeometries * MAX_FRAMES_IN_FLIGHT;
 
     std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
-        {vk::DescriptorType::eUniformBuffer, totalSets * 2},
+        {vk::DescriptorType::eUniformBuffer, totalSets * 3},
         {vk::DescriptorType::eCombinedImageSampler, totalSets},
     }};
     vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
@@ -141,17 +170,28 @@ void Object::createDescriptorSets(const Device& device, const Pipeline& pipeline
             vk::DescriptorBufferInfo matBufInfo(*binding.materialBufs[i], 0, sizeof(MaterialUBO));
             vk::DescriptorImageInfo texInfo(mat.texture().sampler(), mat.texture().view(),
                                             vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorBufferInfo skinBufInfo(*binding.skinBufs[i], 0, sizeof(SkinUBO));
 
-            std::array<vk::WriteDescriptorSet, 3> writes = {{
+            std::array<vk::WriteDescriptorSet, 4> writes = {{
                 {*binding.descSets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
                  &uboBufInfo},
                 {*binding.descSets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
                  &matBufInfo},
                 {*binding.descSets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler,
                  &texInfo},
+                {*binding.descSets[i], 3, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                 &skinBufInfo},
             }};
             device.device().updateDescriptorSets(writes, {});
         }
+    }
+}
+
+void Object::updateSkin()
+{
+    if (skin_ != nullptr && !skin_->empty())
+    {
+        skin_->updateJointMatrices();
     }
 }
 
@@ -169,7 +209,23 @@ Mat4 Object::render(const RenderContext& ctx, const Mat4& world)
     ubo.cameraPos[1] = ctx.cameraPosition.y();
     ubo.cameraPos[2] = ctx.cameraPosition.z();
     ubo.cameraPos[3] = 0.0f;
+    ubo.hasSkin = (skin_ != nullptr && !skin_->empty()) ? 1 : 0;
     memcpy(uniformMapped_[ctx.currentFrame], &ubo, sizeof(ubo));
+
+    // Upload cached joint matrices if skinned
+    if (ubo.hasSkin == 1)
+    {
+        const auto& jointMatrices = skin_->cachedJointMatrices();
+        SkinUBO skinUbo{};
+        for (std::size_t j = 0; j < jointMatrices.size() && j < MAX_JOINTS; ++j)
+        {
+            skinUbo.joints[j] = jointMatrices[j];
+        }
+        for (auto& binding : bindings_)
+        {
+            memcpy(binding.skinMapped[ctx.currentFrame], &skinUbo, sizeof(skinUbo));
+        }
+    }
 
     // Record draw commands for each geometry
     auto cmd = ctx.commandBuffer;

@@ -22,6 +22,12 @@ public:
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
 
+    [[nodiscard]]
+    Mat4 modelMatrix() const noexcept override
+    {
+        return modelMatrix_;
+    }
+
     [[nodiscard]] LinearAnimation& animation() noexcept
     {
         return animation_;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/render/constants.hpp>
 
 namespace fire_engine
 {
@@ -11,6 +12,10 @@ struct UniformBufferObject
     Mat4 view;
     Mat4 proj;
     alignas(16) float cameraPos[4];
+    alignas(4) int hasSkin{0};
+    int _pad1{0};
+    int _pad2{0};
+    int _pad3{0};
 };
 
 struct MaterialUBO
@@ -33,6 +38,9 @@ struct MaterialUBO
     float _pad0;
 };
 
-constexpr int MAX_FRAMES_IN_FLIGHT = 2;
+struct SkinUBO
+{
+    Mat4 joints[MAX_JOINTS];
+};
 
 } // namespace fire_engine

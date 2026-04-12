@@ -23,6 +23,12 @@ public:
 
     [[nodiscard]]
     virtual Mat4 render(const RenderContext& ctx, const Mat4& world) = 0;
+
+    [[nodiscard]]
+    virtual Mat4 modelMatrix() const noexcept
+    {
+        return Mat4::identity();
+    }
 };
 
 } // namespace fire_engine
