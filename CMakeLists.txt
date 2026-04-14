@@ -32,7 +32,9 @@ add_library(fireengine SHARED
     src/render/device.cpp
     src/render/frame.cpp
     src/render/pipeline.cpp
+    src/render/render_context.cpp
     src/render/renderer.cpp
+    src/render/resources.cpp
     src/render/swapchain.cpp
     src/scene/animator.cpp
     src/scene/camera.cpp
@@ -107,6 +109,10 @@ add_executable(test_fire_engine
     tests/graphics/test_assets.cpp
     tests/graphics/test_material.cpp
     tests/graphics/test_geometry.cpp
+    tests/graphics/test_gpu_handle.cpp
+    tests/graphics/test_draw_command.cpp
+    tests/graphics/test_frame_info.cpp
+    tests/graphics/test_texture.cpp
     tests/render/test_ubo.cpp
     tests/core/test_shader_loader.cpp
     tests/core/test_system.cpp

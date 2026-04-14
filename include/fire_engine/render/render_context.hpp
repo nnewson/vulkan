@@ -1,9 +1,12 @@
 #pragma once
 
 #include <cstdint>
+#include <vector>
 
 #include <vulkan/vulkan.hpp>
 
+#include <fire_engine/graphics/draw_command.hpp>
+#include <fire_engine/graphics/frame_info.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -24,6 +27,9 @@ struct RenderContext
     uint32_t currentFrame;
     Vec3 cameraPosition;
     Vec3 cameraTarget;
+    std::vector<DrawCommand>* drawCommands{nullptr};
+
+    [[nodiscard]] FrameInfo frameInfo() const noexcept;
 };
 
 } // namespace fire_engine

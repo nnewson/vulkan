@@ -48,10 +48,14 @@ void FireEngine::loadScene()
     camera_ = &camera;
 
     // Load glTF scene
-    // GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, *renderer_, assets_);
-    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, *renderer_, assets_);
-    // GltfLoader::loadScene("RiggedSimple/RiggedSimple.gltf", scene_, *renderer_, assets_);
-    GltfLoader::loadScene("AnimatedMorphCube/AnimatedMorphCube.gltf", scene_, *renderer_, assets_);
+    // GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, renderer_->resources(),
+    //                      assets_);
+    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, renderer_->resources(),
+    // assets_);
+    GltfLoader::loadScene("RiggedSimple/RiggedSimple.gltf", scene_, renderer_->resources(),
+                          assets_);
+    // GltfLoader::loadScene("AnimatedMorphCube/AnimatedMorphCube.gltf", scene_,
+    //                      renderer_->resources(), assets_);
 
     std::print("{}\n", scene_);
 }

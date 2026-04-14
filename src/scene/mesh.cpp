@@ -35,7 +35,12 @@ void Mesh::update(const CameraState& input_state, const Transform& /*transform*/
 
 Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)
 {
-    return object_.render(ctx, world);
+    auto commands = object_.render(ctx.frameInfo(), world);
+    if (ctx.drawCommands != nullptr)
+    {
+        ctx.drawCommands->insert(ctx.drawCommands->end(), commands.begin(), commands.end());
+    }
+    return world;
 }
 
 } // namespace fire_engine

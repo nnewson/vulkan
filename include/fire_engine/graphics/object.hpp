@@ -1,21 +1,21 @@
 #pragma once
 
+#include <array>
 #include <vector>
 
-#include <vulkan/vulkan_raii.hpp>
-
+#include <fire_engine/graphics/draw_command.hpp>
+#include <fire_engine/graphics/frame_info.hpp>
+#include <fire_engine/graphics/gpu_handle.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/render/constants.hpp>
 
 namespace fire_engine
 {
 
 class Geometry;
 class Material;
-class Renderer;
-class Device;
-class Pipeline;
+class Resources;
 class Skin;
-struct RenderContext;
 struct MaterialUBO;
 
 class Object
@@ -30,7 +30,7 @@ public:
     Object& operator=(Object&&) noexcept = default;
 
     void addGeometry(const Geometry& geometry);
-    void load(const Renderer& renderer);
+    void load(Resources& resources);
 
     void skin(Skin* s) noexcept
     {
@@ -49,48 +49,27 @@ public:
     }
 
     [[nodiscard]]
-    Mat4 render(const RenderContext& ctx, const Mat4& world);
+    std::vector<DrawCommand> render(const FrameInfo& frame, const Mat4& world);
 
 private:
     struct GeometryBindings
     {
         const Geometry* geometry{nullptr};
 
-        std::vector<vk::raii::Buffer> materialBufs;
-        std::vector<vk::raii::DeviceMemory> materialMems;
-        std::vector<void*> materialMapped;
-
-        std::vector<vk::raii::Buffer> skinBufs;
-        std::vector<vk::raii::DeviceMemory> skinMems;
-        std::vector<void*> skinMapped;
-
-        std::vector<vk::raii::Buffer> morphUboBufs;
-        std::vector<vk::raii::DeviceMemory> morphUboMems;
-        std::vector<void*> morphUboMapped;
-
-        vk::raii::Buffer morphSsbo{nullptr};
-        vk::raii::DeviceMemory morphSsboMem{nullptr};
-
-        std::vector<vk::raii::DescriptorSet> descSets;
+        std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> materialMapped{};
+        std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> skinMapped{};
+        std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> morphUboMapped{};
+        std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> descSets{
+            NullDescriptorSet, NullDescriptorSet};
     };
 
-    void createUniformBuffers(const Device& device);
-    void createMaterialBuffers(const Device& device, GeometryBindings& bindings);
-    void createSkinBuffers(const Device& device, GeometryBindings& bindings);
-    void createMorphBuffers(const Device& device, GeometryBindings& bindings);
-    void createDescriptorPool(const Device& device);
-    void createDescriptorSets(const Device& device, const Pipeline& pipeline);
     static MaterialUBO toMaterialUBO(const Material& mat);
 
     Skin* skin_{nullptr};
     std::vector<float> morphWeights_;
 
-    std::vector<vk::raii::Buffer> uniformBufs_;
-    std::vector<vk::raii::DeviceMemory> uniformMems_;
-    std::vector<void*> uniformMapped_;
+    std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> uniformMapped_{};
 
-    // Pool declared before bindings so descriptor sets are destroyed first
-    vk::raii::DescriptorPool descPool_{nullptr};
     std::vector<GeometryBindings> bindings_;
 };
 

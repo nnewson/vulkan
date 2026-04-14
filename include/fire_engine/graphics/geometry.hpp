@@ -3,16 +3,14 @@
 #include <cstdint>
 #include <vector>
 
-#include <vulkan/vulkan_raii.hpp>
-
+#include <fire_engine/graphics/gpu_handle.hpp>
 #include <fire_engine/graphics/vertex.hpp>
 
 namespace fire_engine
 {
 
 class Material;
-class Renderer;
-class Device;
+class Resources;
 
 class Geometry
 {
@@ -25,11 +23,11 @@ public:
     Geometry(Geometry&&) noexcept = default;
     Geometry& operator=(Geometry&&) noexcept = default;
 
-    void load(const Renderer& renderer);
+    void load(Resources& resources);
 
     [[nodiscard]] bool loaded() const noexcept
     {
-        return vkDevice_ != nullptr;
+        return vertexBuffer_ != NullBuffer;
     }
 
     [[nodiscard]] const std::vector<Vertex>& vertices() const noexcept
@@ -59,14 +57,14 @@ public:
         material_ = m;
     }
 
-    [[nodiscard]] vk::Buffer vertexBuffer() const noexcept
+    [[nodiscard]] BufferHandle vertexBuffer() const noexcept
     {
-        return *vertexBuf_;
+        return vertexBuffer_;
     }
 
-    [[nodiscard]] vk::Buffer indexBuffer() const noexcept
+    [[nodiscard]] BufferHandle indexBuffer() const noexcept
     {
-        return *indexBuf_;
+        return indexBuffer_;
     }
 
     [[nodiscard]] uint32_t indexCount() const noexcept
@@ -98,8 +96,6 @@ public:
     }
 
 private:
-    const vk::raii::Device* vkDevice_{nullptr};
-
     std::vector<Vertex> vertices_;
     std::vector<uint16_t> indices_;
     const Material* material_{nullptr};
@@ -107,10 +103,8 @@ private:
     std::vector<std::vector<Vec3>> morphPositions_;
     std::vector<std::vector<Vec3>> morphNormals_;
 
-    vk::raii::Buffer vertexBuf_{nullptr};
-    vk::raii::DeviceMemory vertexMem_{nullptr};
-    vk::raii::Buffer indexBuf_{nullptr};
-    vk::raii::DeviceMemory indexMem_{nullptr};
+    BufferHandle vertexBuffer_{NullBuffer};
+    BufferHandle indexBuffer_{NullBuffer};
 };
 
 } // namespace fire_engine

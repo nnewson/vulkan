@@ -1,5 +1,6 @@
-#include "fire_engine/render/renderer.hpp"
 #include <fire_engine/core/gltf_loader.hpp>
+
+#include <fire_engine/render/resources.hpp>
 
 #include <cmath>
 #include <filesystem>
@@ -164,7 +165,7 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
 // Scene and node loading
 // ---------------------------------------------------------------------------
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
+void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
                            Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
@@ -191,11 +192,11 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(),
-                                  renderer, assets, nodeMap, animMap);
+                                  resources, assets, nodeMap, animMap);
         }
         else
         {
-            loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), renderer, assets,
+            loadNode(asset, nodeIndex, rootRef, gltfPath.parent_path().string(), resources, assets,
                      nodeMap, animMap);
         }
     }
@@ -206,7 +207,7 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, const Ren
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                        Node& node, const std::string& baseDir,
-                                       const Renderer& renderer, Assets& assets, NodeMap& nodeMap, AnimationMap& animMap)
+                                       Resources& resources, Assets& assets, NodeMap& nodeMap, AnimationMap& animMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -264,7 +265,7 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
                                                          : std::string(gltfMesh.name);
             auto meshNode = std::make_unique<Node>(std::move(meshName));
             auto& meshRef = node.addChild(std::move(meshNode));
-            auto object = loadMesh(asset, gltfMesh, baseDir, renderer, assets,
+            auto object = loadMesh(asset, gltfMesh, baseDir, resources, assets,
                                    gltfNode.meshIndex.value());
             meshRef.component().emplace<Mesh>(std::move(object));
 
@@ -281,7 +282,7 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         // Only weight animation -- mesh goes directly on this node
         const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
         auto object =
-            loadMesh(asset, gltfMesh, baseDir, renderer, assets, gltfNode.meshIndex.value());
+            loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
         auto& mesh = std::get<Mesh>(node.component());
 
@@ -301,12 +302,12 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
 
     for (auto childIndex : gltfNode.children)
     {
-        loadNode(asset, childIndex, node, baseDir, renderer, assets, nodeMap, animMap);
+        loadNode(asset, childIndex, node, baseDir, resources, assets, nodeMap, animMap);
     }
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                          const std::string& baseDir, Resources& resources, Assets& assets,
                           NodeMap& nodeMap, AnimationMap& animMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
@@ -314,7 +315,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
     if (gltfNode.meshIndex.has_value())
     {
-        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, renderer,
+        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, resources,
                                assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
     }
@@ -327,12 +328,12 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
         if (nodeHasAnimation(asset, childIndex))
         {
-            configureAnimatedNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap,
+            configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
                                   animMap);
         }
         else
         {
-            loadNode(asset, childIndex, childRef, baseDir, renderer, assets, nodeMap, animMap);
+            loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, animMap);
         }
     }
 }
@@ -343,7 +344,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
 const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
                                           const fastgltf::Primitive& primitive,
-                                          const std::string& texturePath, const Renderer& renderer,
+                                          const std::string& texturePath, Resources& resources,
                                           Assets& assets)
 {
     if (primitive.materialIndex.has_value())
@@ -353,21 +354,19 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
         {
             auto texIndex = gltfMat.pbrData.baseColorTexture.value().textureIndex;
             auto& tex = assets.texture(texIndex);
-            if (tex.view() == vk::ImageView{})
+            if (!tex.loaded())
             {
                 std::string texPath = texturePath.empty() ? "default.png" : texturePath;
-                auto& device = renderer.device();
-                tex = Texture::load_from_file(texPath, device, renderer.frame().commandPool());
+                tex = Texture::load_from_file(texPath, resources);
             }
             return &tex;
         }
     }
 
     auto& defaultTex = assets.texture(0);
-    if (defaultTex.view() == vk::ImageView{})
+    if (!defaultTex.loaded())
     {
-        auto& device = renderer.device();
-        defaultTex = Texture::load_from_file("default.png", device, renderer.frame().commandPool());
+        defaultTex = Texture::load_from_file("default.png", resources);
     }
     return &defaultTex;
 }
@@ -397,7 +396,7 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
 }
 
 void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                              const Material* matPtr, const Renderer& renderer, Assets& assets,
+                              const Material* matPtr, Resources& resources, Assets& assets,
                               std::size_t geoIdx)
 {
     auto& geometry = assets.geometry(geoIdx);
@@ -554,11 +553,11 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         geometry.morphNormals(std::move(morphNormals));
     }
 
-    geometry.load(renderer);
+    geometry.load(resources);
 }
 
 Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                            const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                            const std::string& baseDir, Resources& resources, Assets& assets,
                             std::size_t meshIndex)
 {
     std::size_t geoStartIdx = 0;
@@ -574,15 +573,15 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         const auto& primitive = mesh.primitives[primIdx];
         auto [materialData, texturePath] = loadMaterial(asset, primitive, baseDir);
 
-        const Texture* texPtr = resolveTexture(asset, primitive, texturePath, renderer, assets);
+        const Texture* texPtr = resolveTexture(asset, primitive, texturePath, resources, assets);
         Material* matPtr = resolveMaterial(asset, primitive, materialData, texPtr, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
-        loadGeometry(asset, primitive, matPtr, renderer, assets, geoIdx);
+        loadGeometry(asset, primitive, matPtr, resources, assets, geoIdx);
         object.addGeometry(assets.geometry(geoIdx));
     }
 
-    object.load(renderer);
+    object.load(resources);
     return object;
 }
 

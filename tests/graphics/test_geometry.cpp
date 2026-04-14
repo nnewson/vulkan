@@ -187,6 +187,35 @@ TEST(GeometryMorph, MorphTargetCountReflectsPositions)
     EXPECT_EQ(geo.morphTargetCount(), 3u);
 }
 
+// ---------------------------------------------------------------------------
+// Buffer handle accessors (before load)
+// ---------------------------------------------------------------------------
+
+TEST(Geometry, DefaultVertexBufferIsNull)
+{
+    Geometry geo;
+    EXPECT_EQ(geo.vertexBuffer(), NullBuffer);
+}
+
+TEST(Geometry, DefaultIndexBufferIsNull)
+{
+    Geometry geo;
+    EXPECT_EQ(geo.indexBuffer(), NullBuffer);
+}
+
+TEST(Geometry, MoveTransfersBufferHandles)
+{
+    Geometry original;
+    // Before load, handles are NullBuffer — verify move preserves that
+    Geometry moved(std::move(original));
+    EXPECT_EQ(moved.vertexBuffer(), NullBuffer);
+    EXPECT_EQ(moved.indexBuffer(), NullBuffer);
+}
+
+// ---------------------------------------------------------------------------
+// Morph target move
+// ---------------------------------------------------------------------------
+
 TEST(GeometryMorph, MoveRetainsMorphData)
 {
     Geometry original;

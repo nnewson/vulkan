@@ -1,5 +1,7 @@
+#include <cstddef>
+
 #include <fire_engine/core/shader_loader.hpp>
-#include <fire_engine/graphics/geometry.hpp>
+#include <fire_engine/graphics/vertex.hpp>
 #include <fire_engine/render/pipeline.hpp>
 
 namespace fire_engine
@@ -71,8 +73,15 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
     vk::raii::ShaderModule fragMod{nullptr};
     auto stages = createShaderStages(vertMod, fragMod);
 
-    auto bindDesc = Vertex::bindingDesc();
-    auto attrDesc = Vertex::attrDescs();
+    vk::VertexInputBindingDescription bindDesc(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
+    std::array<vk::VertexInputAttributeDescription, 6> attrDesc = {{
+        {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, position_))},
+        {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, colour_))},
+        {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, normal_))},
+        {3, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(offsetof(Vertex, texCoord_))},
+        {4, 0, vk::Format::eR32G32B32A32Uint, static_cast<uint32_t>(offsetof(Vertex, joints_))},
+        {5, 0, vk::Format::eR32G32B32A32Sfloat, static_cast<uint32_t>(offsetof(Vertex, weights_))},
+    }};
     vk::PipelineVertexInputStateCreateInfo vertInput({}, bindDesc, attrDesc);
 
     vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);

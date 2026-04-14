@@ -3,6 +3,7 @@
 #include <tuple>
 
 #include <fire_engine/render/render_context.hpp>
+#include <fire_engine/render/swapchain.hpp>
 #include <fire_engine/render/ubo.hpp>
 #include <fire_engine/scene/scene_graph.hpp>
 
@@ -13,7 +14,8 @@ Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
       pipeline_(device_, swapchain_),
-      frame_(device_, swapchain_)
+      frame_(device_, swapchain_),
+      resources_(device_, pipeline_)
 {
     swapchain_.createDepthResources(device_);
     swapchain_.createFramebuffers(pipeline_.renderPass());
@@ -33,9 +35,22 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
     beginRenderPass(cmd, *imageIndex);
 
+    std::vector<DrawCommand> drawCommands;
     RenderContext ctx{device_, swapchain_,    frame_,         pipeline_,
-                      cmd,     currentFrame_, cameraPosition, cameraTarget};
+                      cmd,     currentFrame_, cameraPosition, cameraTarget,
+                      &drawCommands};
     scene.render(ctx);
+
+    // Record draw commands collected during scene traversal
+    for (const auto& dc : drawCommands)
+    {
+        cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer), {vk::DeviceSize{0}});
+        cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
+        vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_.pipelineLayout(), 0, ds,
+                               {});
+        cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
+    }
 
     cmd.endRenderPass();
     cmd.end();

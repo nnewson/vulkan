@@ -22,7 +22,7 @@ class LinearAnimation;
 class Material;
 class Node;
 class Object;
-class Renderer;
+class Resources;
 class SceneGraph;
 class Skin;
 class Texture;
@@ -32,8 +32,8 @@ class GltfLoader
 public:
     GltfLoader() = delete;
 
-    static void loadScene(const std::string& path, SceneGraph& scene, const Renderer& renderer,
-                          Assets& assets);
+    static void loadScene(const std::string& path, SceneGraph& scene,
+                          Resources& resources, Assets& assets);
 
     using NodeMap = std::unordered_map<std::size_t, Node*>;
     using AnimationMap = std::unordered_map<std::size_t, std::size_t>;
@@ -60,11 +60,11 @@ private:
 
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                       Node& node, const std::string& baseDir,
-                                      const Renderer& renderer, Assets& assets, NodeMap& nodeMap,
-                                       AnimationMap& animMap);
+                                      Resources& resources, Assets& assets,
+                                      NodeMap& nodeMap, AnimationMap& animMap);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-                         const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                         const std::string& baseDir, Resources& resources, Assets& assets,
                          NodeMap& nodeMap, AnimationMap& animMap);
 
     // Skin loading
@@ -76,13 +76,13 @@ private:
     // Mesh loading
     [[nodiscard]]
     static Object loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                           const std::string& baseDir, const Renderer& renderer, Assets& assets,
+                           const std::string& baseDir, Resources& resources, Assets& assets,
                            std::size_t meshIndex);
 
     [[nodiscard]]
     static const Texture*
     resolveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                   const std::string& texturePath, const Renderer& renderer, Assets& assets);
+                   const std::string& texturePath, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static Material* resolveMaterial(const fastgltf::Asset& asset,
@@ -90,7 +90,7 @@ private:
                                      const Texture* texPtr, Assets& assets);
 
     static void loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                             const Material* matPtr, const Renderer& renderer, Assets& assets,
+                             const Material* matPtr, Resources& resources, Assets& assets,
                              std::size_t geoIdx);
 
     [[nodiscard]]

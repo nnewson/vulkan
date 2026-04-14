@@ -1,9 +1,6 @@
 #pragma once
 
-#include <array>
-#include <cstddef>
-
-#include <vulkan/vulkan.hpp>
+#include <cstdint>
 
 #include <fire_engine/graphics/colour3.hpp>
 #include <fire_engine/math/vec3.hpp>
@@ -118,22 +115,7 @@ public:
                texCoord_[1] == other.texCoord_[1];
     }
 
-    static vk::VertexInputBindingDescription bindingDesc()
-    {
-        return {0, sizeof(Vertex), vk::VertexInputRate::eVertex};
-    }
-
-    static std::array<vk::VertexInputAttributeDescription, 6> attrDescs()
-    {
-        return {{
-            {0, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, position_)},
-            {1, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, colour_)},
-            {2, 0, vk::Format::eR32G32B32Sfloat, offsetof(Vertex, normal_)},
-            {3, 0, vk::Format::eR32G32Sfloat, offsetof(Vertex, texCoord_)},
-            {4, 0, vk::Format::eR32G32B32A32Uint, offsetof(Vertex, joints_)},
-            {5, 0, vk::Format::eR32G32B32A32Sfloat, offsetof(Vertex, weights_)},
-        }};
-    }
+    friend class Pipeline;
 
 private:
     Vec3 position_{};

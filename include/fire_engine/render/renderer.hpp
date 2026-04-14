@@ -6,6 +6,7 @@
 #include <fire_engine/render/device.hpp>
 #include <fire_engine/render/frame.hpp>
 #include <fire_engine/render/pipeline.hpp>
+#include <fire_engine/render/resources.hpp>
 #include <fire_engine/render/swapchain.hpp>
 
 namespace fire_engine
@@ -61,6 +62,16 @@ public:
         return frame_;
     }
 
+    [[nodiscard]] Resources& resources() noexcept
+    {
+        return resources_;
+    }
+
+    [[nodiscard]] const Resources& resources() const noexcept
+    {
+        return resources_;
+    }
+
 private:
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
@@ -71,6 +82,7 @@ private:
     Swapchain swapchain_;
     Pipeline pipeline_;
     Frame frame_;
+    Resources resources_;
     uint32_t currentFrame_{0};
 };
 
