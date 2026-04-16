@@ -1,4 +1,4 @@
-# fire_engine
+# Fire Engine
 
 A Vulkan-based 3D renderer written in C++23, built on macOS with MoltenVK.
 
@@ -113,11 +113,13 @@ cd build && ./fireEngineApp
 ## Dependencies
 
 Managed via vcpkg:
+
 - `vulkan-headers` — Vulkan API headers
 - `fastgltf` — glTF 2.0 parser
 - `stb` — image loading (stb_image)
 - `gtest` — Google Test framework
 
 Also requires:
+
 - System GLFW 3.3+
 - Vulkan SDK (for `glslc` shader compiler)
