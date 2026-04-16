@@ -2,26 +2,27 @@
 
 #include <cmath>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
+#include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/math/vec3.hpp>
 
-using fire_engine::LinearAnimation;
+using fire_engine::Animation;
 using fire_engine::Mat4;
 using fire_engine::Vec3;
 
-TEST(LinearAnimation, DefaultConstructionHasNoKeyframes)
+TEST(Animation, DefaultConstructionHasNoKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     EXPECT_TRUE(anim.rotationKeyframes().empty());
     EXPECT_TRUE(anim.translationKeyframes().empty());
     EXPECT_TRUE(anim.scaleKeyframes().empty());
     EXPECT_FLOAT_EQ(anim.duration(), 0.0f);
 }
 
-TEST(LinearAnimation, SetKeyframesAndDuration)
+TEST(Animation, SetKeyframesAndDuration)
 {
-    LinearAnimation anim;
-    std::vector<LinearAnimation::RotationKeyframe> kf = {
+    Animation anim;
+    std::vector<Animation::RotationKeyframe> kf = {
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {1.0f, 0.0f, 0.7071f, 0.0f, 0.7071f},
         {2.0f, 0.0f, 1.0f, 0.0f, 0.0f},
@@ -31,9 +32,9 @@ TEST(LinearAnimation, SetKeyframesAndDuration)
     EXPECT_FLOAT_EQ(anim.duration(), 2.0f);
 }
 
-TEST(LinearAnimation, SampleEmptyReturnsIdentity)
+TEST(Animation, SampleEmptyReturnsIdentity)
 {
-    LinearAnimation anim;
+    Animation anim;
     Mat4 result = anim.sample(0.5f);
     Mat4 identity = Mat4::identity();
     for (int r = 0; r < 4; ++r)
@@ -45,9 +46,9 @@ TEST(LinearAnimation, SampleEmptyReturnsIdentity)
     }
 }
 
-TEST(LinearAnimation, SampleSingleKeyframeReturnsConstant)
+TEST(Animation, SampleSingleKeyframeReturnsConstant)
 {
-    LinearAnimation anim;
+    Animation anim;
     // Identity quaternion
     anim.rotationKeyframes({{0.0f, 0.0f, 0.0f, 0.0f, 1.0f}});
 
@@ -62,9 +63,9 @@ TEST(LinearAnimation, SampleSingleKeyframeReturnsConstant)
     }
 }
 
-TEST(LinearAnimation, SampleAtExactKeyframeTime)
+TEST(Animation, SampleAtExactKeyframeTime)
 {
-    LinearAnimation anim;
+    Animation anim;
     // Keyframe at t=0: identity quaternion (no rotation)
     // Keyframe at t=1: 90 degrees around Y axis -> quat (0, sin(45), 0, cos(45))
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
@@ -90,9 +91,9 @@ TEST(LinearAnimation, SampleAtExactKeyframeTime)
     EXPECT_NEAR((atEnd[1, 1]), 1.0f, 2e-2f);
 }
 
-TEST(LinearAnimation, SampleInterpolatesBetweenKeyframes)
+TEST(Animation, SampleInterpolatesBetweenKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
     float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
     anim.rotationKeyframes({
@@ -111,9 +112,9 @@ TEST(LinearAnimation, SampleInterpolatesBetweenKeyframes)
     EXPECT_NEAR((mid[2, 2]), cos45, 1e-4f);
 }
 
-TEST(LinearAnimation, SampleLoops)
+TEST(Animation, SampleLoops)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {2.0f, 0.0f, 1.0f, 0.0f, 0.0f},
@@ -131,9 +132,9 @@ TEST(LinearAnimation, SampleLoops)
     }
 }
 
-TEST(LinearAnimation, SampleAndDurationAreNoexcept)
+TEST(Animation, SampleAndDurationAreNoexcept)
 {
-    LinearAnimation anim;
+    Animation anim;
     EXPECT_TRUE(noexcept(anim.sample(0.0f)));
     EXPECT_TRUE(noexcept(anim.duration()));
 }
@@ -142,9 +143,9 @@ TEST(LinearAnimation, SampleAndDurationAreNoexcept)
 // Translation sampling
 // ==========================================================================
 
-TEST(LinearAnimation, EmptyTranslationSamplesToZeroOffset)
+TEST(Animation, EmptyTranslationSamplesToZeroOffset)
 {
-    LinearAnimation anim;
+    Animation anim;
     // Give it a single rotation keyframe so sample() doesn't short-circuit to identity
     anim.rotationKeyframes({{0.0f, 0.0f, 0.0f, 0.0f, 1.0f}});
     Mat4 m = anim.sample(0.5f);
@@ -154,9 +155,9 @@ TEST(LinearAnimation, EmptyTranslationSamplesToZeroOffset)
     EXPECT_NEAR((m[2, 3]), 0.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, SingleTranslationKeyframeIsConstant)
+TEST(Animation, SingleTranslationKeyframeIsConstant)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.translationKeyframes({{0.0f, Vec3{1.0f, 2.0f, 3.0f}}});
     Mat4 m = anim.sample(42.0f);
     EXPECT_NEAR((m[0, 3]), 1.0f, 1e-5f);
@@ -164,9 +165,9 @@ TEST(LinearAnimation, SingleTranslationKeyframeIsConstant)
     EXPECT_NEAR((m[2, 3]), 3.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, TranslationInterpolatesLinearly)
+TEST(Animation, TranslationInterpolatesLinearly)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.translationKeyframes({
         {0.0f, Vec3{0.0f, 0.0f, 0.0f}},
         {2.0f, Vec3{2.0f, 4.0f, 6.0f}},
@@ -181,9 +182,9 @@ TEST(LinearAnimation, TranslationInterpolatesLinearly)
 // Duration = max across channels
 // ==========================================================================
 
-TEST(LinearAnimation, DurationIsMaxAcrossChannels)
+TEST(Animation, DurationIsMaxAcrossChannels)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {1.0f, 0.0f, 0.0f, 0.0f, 1.0f},
@@ -199,9 +200,9 @@ TEST(LinearAnimation, DurationIsMaxAcrossChannels)
 // Composite T * R
 // ==========================================================================
 
-TEST(LinearAnimation, CompositeTranslationAndRotationMidpoint)
+TEST(Animation, CompositeTranslationAndRotationMidpoint)
 {
-    LinearAnimation anim;
+    Animation anim;
 
     // Rotation: 0° -> 90° about Y over 2s
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
@@ -237,9 +238,9 @@ TEST(LinearAnimation, CompositeTranslationAndRotationMidpoint)
 // Channels with different durations clamp independently
 // ==========================================================================
 
-TEST(LinearAnimation, ExplicitDurationOverridesComputedMax)
+TEST(Animation, ExplicitDurationOverridesComputedMax)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {1.0f, 0.0f, 0.0f, 0.0f, 1.0f},
@@ -250,9 +251,9 @@ TEST(LinearAnimation, ExplicitDurationOverridesComputedMax)
     EXPECT_FLOAT_EQ(anim.duration(), 5.0f);
 }
 
-TEST(LinearAnimation, SampleLoopsOnExplicitDurationAndClampsShortChannel)
+TEST(Animation, SampleLoopsOnExplicitDurationAndClampsShortChannel)
 {
-    LinearAnimation anim;
+    Animation anim;
     // Rotation ends at t=1.0 — 0° to 90° about Y.
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
     float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
@@ -277,9 +278,9 @@ TEST(LinearAnimation, SampleLoopsOnExplicitDurationAndClampsShortChannel)
     EXPECT_NEAR((wrapped[0, 2]), s45, 1e-4f);
 }
 
-TEST(LinearAnimation, RotationClampsToFirstKeyframeWhenSampledBeforeItsStart)
+TEST(Animation, RotationClampsToFirstKeyframeWhenSampledBeforeItsStart)
 {
-    LinearAnimation anim;
+    Animation anim;
     // Rotation channel starts at t=1.0 with identity, goes to 90° about Y at t=2.0 —
     // mirrors BoxAnimated where the rotation window starts mid-animation.
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
@@ -305,9 +306,9 @@ TEST(LinearAnimation, RotationClampsToFirstKeyframeWhenSampledBeforeItsStart)
     EXPECT_NEAR((m[2, 0]), 0.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, ShorterChannelClampsWhileLongerInterpolates)
+TEST(Animation, ShorterChannelClampsWhileLongerInterpolates)
 {
-    LinearAnimation anim;
+    Animation anim;
 
     // Rotation ends at t=1: 0° -> 90° about Y
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
@@ -343,15 +344,15 @@ TEST(LinearAnimation, ShorterChannelClampsWhileLongerInterpolates)
 // Scale keyframes
 // ==========================================================================
 
-TEST(LinearAnimation, DefaultConstructionHasNoScaleKeyframes)
+TEST(Animation, DefaultConstructionHasNoScaleKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     EXPECT_TRUE(anim.scaleKeyframes().empty());
 }
 
-TEST(LinearAnimation, SetScaleKeyframes)
+TEST(Animation, SetScaleKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.scaleKeyframes({
         {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
         {1.0f, Vec3{2.0f, 2.0f, 2.0f}},
@@ -359,9 +360,9 @@ TEST(LinearAnimation, SetScaleKeyframes)
     EXPECT_EQ(anim.scaleKeyframes().size(), 2u);
 }
 
-TEST(LinearAnimation, ScaleOnlyDuration)
+TEST(Animation, ScaleOnlyDuration)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.scaleKeyframes({
         {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
         {3.0f, Vec3{2.0f, 2.0f, 2.0f}},
@@ -369,9 +370,9 @@ TEST(LinearAnimation, ScaleOnlyDuration)
     EXPECT_FLOAT_EQ(anim.duration(), 3.0f);
 }
 
-TEST(LinearAnimation, ScaleOnlySingleKeyframe)
+TEST(Animation, ScaleOnlySingleKeyframe)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.scaleKeyframes({{0.0f, Vec3{3.0f, 4.0f, 5.0f}}});
 
     Mat4 m = anim.sample(0.0f);
@@ -380,9 +381,9 @@ TEST(LinearAnimation, ScaleOnlySingleKeyframe)
     EXPECT_NEAR((m[2, 2]), 5.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, ScaleInterpolationMidpoint)
+TEST(Animation, ScaleInterpolationMidpoint)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.scaleKeyframes({
         {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
         {2.0f, Vec3{3.0f, 5.0f, 7.0f}},
@@ -394,9 +395,9 @@ TEST(LinearAnimation, ScaleInterpolationMidpoint)
     EXPECT_NEAR((m[2, 2]), 4.0f, 1e-4f);
 }
 
-TEST(LinearAnimation, ScaleAtEndpoint)
+TEST(Animation, ScaleAtEndpoint)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.scaleKeyframes({
         {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
         {1.0f, Vec3{2.0f, 3.0f, 4.0f}},
@@ -409,9 +410,9 @@ TEST(LinearAnimation, ScaleAtEndpoint)
     EXPECT_NEAR((m[2, 2]), 4.0f, 0.01f);
 }
 
-TEST(LinearAnimation, NoScaleKeyframesDefaultsToIdentityScale)
+TEST(Animation, NoScaleKeyframesDefaultsToIdentityScale)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.translationKeyframes({{0.0f, Vec3{5.0f, 0.0f, 0.0f}}});
 
     Mat4 m = anim.sample(0.0f);
@@ -423,9 +424,9 @@ TEST(LinearAnimation, NoScaleKeyframesDefaultsToIdentityScale)
     EXPECT_NEAR((m[0, 3]), 5.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, CombinedTranslationAndScale)
+TEST(Animation, CombinedTranslationAndScale)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.translationKeyframes({{0.0f, Vec3{10.0f, 0.0f, 0.0f}}});
     anim.scaleKeyframes({{0.0f, Vec3{2.0f, 2.0f, 2.0f}}});
 
@@ -437,9 +438,9 @@ TEST(LinearAnimation, CombinedTranslationAndScale)
     EXPECT_NEAR((m[2, 2]), 2.0f, 1e-5f);
 }
 
-TEST(LinearAnimation, ScaleDurationExtendsOverallDuration)
+TEST(Animation, ScaleDurationExtendsOverallDuration)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.rotationKeyframes({
         {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
         {1.0f, 0.0f, 0.0f, 0.0f, 1.0f},
@@ -457,14 +458,14 @@ TEST(LinearAnimation, ScaleDurationExtendsOverallDuration)
 
 TEST(WeightKeyframe, DefaultConstructionHasNoWeightKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     EXPECT_TRUE(anim.weightKeyframes().empty());
 }
 
 TEST(WeightKeyframe, SetWeightKeyframes)
 {
-    LinearAnimation anim;
-    std::vector<LinearAnimation::WeightKeyframe> kf = {
+    Animation anim;
+    std::vector<Animation::WeightKeyframe> kf = {
         {0.0f, {0.0f, 0.0f}},
         {1.0f, {1.0f, 0.5f}},
         {2.0f, {0.0f, 1.0f}},
@@ -475,7 +476,7 @@ TEST(WeightKeyframe, SetWeightKeyframes)
 
 TEST(WeightKeyframe, WeightKeyframesContributeToDuration)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f}},
         {3.0f, {1.0f}},
@@ -485,7 +486,7 @@ TEST(WeightKeyframe, WeightKeyframesContributeToDuration)
 
 TEST(WeightKeyframe, DurationUsesMaxOfAllChannels)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f}},
         {2.0f, {1.0f}},
@@ -499,7 +500,7 @@ TEST(WeightKeyframe, DurationUsesMaxOfAllChannels)
 
 TEST(SampleWeights, EmptyKeyframesReturnsZeros)
 {
-    LinearAnimation anim;
+    Animation anim;
     auto w = anim.sampleWeights(0.5f, 2);
     EXPECT_EQ(w.size(), 2u);
     EXPECT_FLOAT_EQ(w[0], 0.0f);
@@ -508,7 +509,7 @@ TEST(SampleWeights, EmptyKeyframesReturnsZeros)
 
 TEST(SampleWeights, ZeroTargetsReturnsEmpty)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({{0.0f, {1.0f}}});
     auto w = anim.sampleWeights(0.0f, 0);
     EXPECT_TRUE(w.empty());
@@ -516,7 +517,7 @@ TEST(SampleWeights, ZeroTargetsReturnsEmpty)
 
 TEST(SampleWeights, SingleKeyframeReturnsConstant)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({{0.0f, {0.7f, 0.3f}}});
     anim.duration(1.0f);
     auto w = anim.sampleWeights(0.5f, 2);
@@ -526,7 +527,7 @@ TEST(SampleWeights, SingleKeyframeReturnsConstant)
 
 TEST(SampleWeights, InterpolatesBetweenKeyframes)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f, 1.0f}},
         {2.0f, {1.0f, 0.0f}},
@@ -540,7 +541,7 @@ TEST(SampleWeights, InterpolatesBetweenKeyframes)
 
 TEST(SampleWeights, InterpolatesAtQuarter)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f}},
         {4.0f, {1.0f}},
@@ -553,7 +554,7 @@ TEST(SampleWeights, InterpolatesAtQuarter)
 
 TEST(SampleWeights, ClampsAtExactKeyframe)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f, 0.0f}},
         {1.0f, {0.8f, 0.2f}},
@@ -568,7 +569,7 @@ TEST(SampleWeights, ClampsAtExactKeyframe)
 
 TEST(SampleWeights, PadsExtraTargetsWithZero)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({{0.0f, {0.5f}}});
     anim.duration(1.0f);
     // Request 3 targets but keyframes only have 1 weight
@@ -581,7 +582,7 @@ TEST(SampleWeights, PadsExtraTargetsWithZero)
 
 TEST(SampleWeights, LoopsAnimation)
 {
-    LinearAnimation anim;
+    Animation anim;
     anim.weightKeyframes({
         {0.0f, {0.0f}},
         {2.0f, {1.0f}},
@@ -591,4 +592,136 @@ TEST(SampleWeights, LoopsAnimation)
     // t=3.0 loops to t=1.0 -> midpoint
     auto w = anim.sampleWeights(3.0f, 1);
     EXPECT_NEAR(w[0], 0.5f, 1e-5f);
+}
+
+// ==========================================================================
+// Step interpolation
+// ==========================================================================
+
+TEST(Animation, StepTranslationHoldsPreviousKey)
+{
+    Animation anim;
+    anim.translationKeyframes({
+        {0.0f, Vec3{0.0f, 0.0f, 0.0f}},
+        {1.0f, Vec3{10.0f, 0.0f, 0.0f}},
+    });
+    anim.translationInterpolation(Animation::Interpolation::Step);
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+    // Step at alpha > 0 holds left key (0,0,0) -> translation column stays zero.
+    EXPECT_NEAR((mid[0, 3]), 0.0f, 1e-5f);
+}
+
+TEST(Animation, StepScaleHoldsPreviousKey)
+{
+    Animation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {1.0f, Vec3{3.0f, 3.0f, 3.0f}},
+    });
+    anim.scaleInterpolation(Animation::Interpolation::Step);
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+    EXPECT_NEAR((mid[0, 0]), 1.0f, 1e-5f);
+}
+
+TEST(Animation, StepRotationHoldsPreviousKey)
+{
+    Animation anim;
+    float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
+    float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
+    anim.rotationKeyframes({
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, s45, 0.0f, c45},
+    });
+    anim.rotationInterpolation(Animation::Interpolation::Step);
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+    // Step held identity rotation -> upper-left 3x3 is identity.
+    EXPECT_NEAR((mid[0, 0]), 1.0f, 1e-5f);
+    EXPECT_NEAR((mid[2, 2]), 1.0f, 1e-5f);
+    EXPECT_NEAR((mid[0, 2]), 0.0f, 1e-5f);
+}
+
+TEST(SampleWeights, StepHoldsPreviousKey)
+{
+    Animation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {1.0f, {1.0f}},
+    });
+    anim.weightInterpolation(Animation::Interpolation::Step);
+    anim.duration(1.0f);
+
+    auto w = anim.sampleWeights(0.5f, 1);
+    EXPECT_NEAR(w[0], 0.0f, 1e-5f);
+}
+
+// ==========================================================================
+// CubicSpline interpolation
+// ==========================================================================
+
+TEST(Animation, CubicSplineTranslationMatchesHermiteAtMidpoint)
+{
+    Animation anim;
+    anim.translationKeyframes({
+        {0.0f, Vec3{0.0f, 0.0f, 0.0f}},
+        {1.0f, Vec3{2.0f, 0.0f, 0.0f}},
+    });
+    anim.translationInterpolation(Animation::Interpolation::CubicSpline);
+    // dt=1. Hermite with p0=0,p1=2,m0=1,m1=1 at a=0.5 -> x = 1.0
+    anim.translationTangents(
+        {Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}},
+        {Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}});
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+    EXPECT_NEAR((mid[0, 3]), 1.0f, 1e-5f);
+}
+
+TEST(Animation, CubicSplineTranslationMatchesEndpoints)
+{
+    Animation anim;
+    anim.translationKeyframes({
+        {0.0f, Vec3{0.0f, 0.0f, 0.0f}},
+        {1.0f, Vec3{2.0f, 0.0f, 0.0f}},
+    });
+    anim.translationInterpolation(Animation::Interpolation::CubicSpline);
+    anim.translationTangents(
+        {Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}},
+        {Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}});
+    // Use a larger duration so t=1.0 is not wrapped back to 0 by loopTime.
+    anim.duration(2.0f);
+
+    Mat4 start = anim.sample(0.0f);
+    Mat4 end = anim.sample(1.0f);
+    EXPECT_NEAR((start[0, 3]), 0.0f, 1e-5f);
+    EXPECT_NEAR((end[0, 3]), 2.0f, 1e-5f);
+}
+
+TEST(Animation, CubicSplineRotationProducesUnitQuaternion)
+{
+    Animation anim;
+    float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
+    float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
+    anim.rotationKeyframes({
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, s45, 0.0f, c45},
+    });
+    anim.rotationInterpolation(Animation::Interpolation::CubicSpline);
+    anim.rotationTangents({fire_engine::Quaternion{0.0f, 0.0f, 0.0f, 0.0f},
+                           fire_engine::Quaternion{0.0f, 0.0f, 0.0f, 0.0f}},
+                          {fire_engine::Quaternion{0.0f, 0.0f, 0.0f, 0.0f},
+                           fire_engine::Quaternion{0.0f, 0.0f, 0.0f, 0.0f}});
+    anim.duration(1.0f);
+
+    // Hermite with zero tangents at midpoint -> 0.5*q0 + 0.5*q1, then normalised.
+    // The rotation matrix's top-left column should be a unit vector.
+    Mat4 mid = anim.sample(0.5f);
+    float col0Len = std::sqrt((mid[0, 0]) * (mid[0, 0]) + (mid[1, 0]) * (mid[1, 0])
+                              + (mid[2, 0]) * (mid[2, 0]));
+    EXPECT_NEAR(col0Len, 1.0f, 1e-4f);
 }

@@ -25,18 +25,19 @@ FireEngine::~FireEngine()
     System::destroy();
 }
 
-void FireEngine::run(size_t width, size_t height, std::string_view app_name)
+void FireEngine::run(size_t width, size_t height, std::string_view app_name,
+                     std::string_view scene_path)
 {
     window_ = std::make_unique<Window>(width, height, app_name);
     input_.enable(*window_);
 
     renderer_ = std::make_unique<Renderer>(*window_);
 
-    loadScene();
+    loadScene(scene_path);
     mainLoop();
 }
 
-void FireEngine::loadScene()
+void FireEngine::loadScene(std::string_view scene_path)
 {
     // Camera
     auto cameraNode = std::make_unique<Node>("Camera");
@@ -47,15 +48,10 @@ void FireEngine::loadScene()
     scene_.addNode(std::move(cameraNode));
     camera_ = &camera;
 
-    // Load glTF scene
-    // GltfLoader::loadScene("AnimatedCube/AnimatedCube.gltf", scene_, renderer_->resources(),
-    //                      assets_);
-    // GltfLoader::loadScene("BoxAnimated/BoxAnimated.gltf", scene_, renderer_->resources(),
-    // assets_);
-    GltfLoader::loadScene("RiggedSimple/RiggedSimple.gltf", scene_, renderer_->resources(),
-                          assets_);
-    // GltfLoader::loadScene("AnimatedMorphCube/AnimatedMorphCube.gltf", scene_,
-    //                      renderer_->resources(), assets_);
+    // Load glTF scene (CLI arg overrides default)
+    constexpr std::string_view default_scene = "RiggedSimple/RiggedSimple.gltf";
+    std::string_view path = scene_path.empty() ? default_scene : scene_path;
+    GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_);
 
     std::print("{}\n", scene_);
 }

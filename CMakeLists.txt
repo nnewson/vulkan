@@ -17,7 +17,7 @@ find_package(fastgltf CONFIG REQUIRED)
 # --- Library ------------------------------------------------------------
 
 add_library(fireengine SHARED
-    src/animation/linear_animation.cpp
+    src/animation/animation.cpp
     src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
     src/core/system.cpp
@@ -123,7 +123,7 @@ add_executable(test_fire_engine
     tests/scene/test_node.cpp
     tests/scene/test_scene_graph.cpp
     tests/scene/test_formatter.cpp
-    tests/animation/test_linear_animation.cpp
+    tests/animation/test_animation.cpp
     tests/scene/test_transform.cpp
 )
 target_link_libraries(test_fire_engine PRIVATE fireengine GTest::gtest_main)

@@ -12,7 +12,7 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
 #include <fire_engine/graphics/assets.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
@@ -69,6 +69,37 @@ void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
         node.transform().rotation(
             quaternionToEuler(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
         node.transform().scale({scale.x(), scale.y(), scale.z()});
+    }
+}
+
+void GltfLoader::applyRestTRS(const fastgltf::Node& gltfNode, Animation& anim)
+{
+    fastgltf::math::fvec3 t{0.0f, 0.0f, 0.0f};
+    fastgltf::math::fquat r{0.0f, 0.0f, 0.0f, 1.0f};
+    fastgltf::math::fvec3 s{1.0f, 1.0f, 1.0f};
+
+    if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
+    {
+        t = trs->translation;
+        r = trs->rotation;
+        s = trs->scale;
+    }
+    else if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&gltfNode.transform))
+    {
+        fastgltf::math::decomposeTransformMatrix(*mat, s, r, t);
+    }
+
+    if (anim.translationKeyframes().empty())
+    {
+        anim.translationKeyframes({{0.0f, {t.x(), t.y(), t.z()}}});
+    }
+    if (anim.rotationKeyframes().empty())
+    {
+        anim.rotationKeyframes({{0.0f, r.x(), r.y(), r.z(), r.w()}});
+    }
+    if (anim.scaleKeyframes().empty())
+    {
+        anim.scaleKeyframes({{0.0f, {s.x(), s.y(), s.z()}}});
     }
 }
 
@@ -146,7 +177,7 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
     assets.resizeGeometries(totalPrimitives);
     assets.resizeSkins(asset.skins.size());
 
-    // Count unique animated nodes for LinearAnimation slots
+    // Count unique animated nodes for Animation slots
     std::unordered_set<std::size_t> animatedNodes;
     for (const auto& anim : asset.animations)
     {
@@ -210,7 +241,6 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
                                        Resources& resources, Assets& assets, NodeMap& nodeMap, AnimationMap& animMap)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
-    applyTRS(gltfNode, node);
 
     // Determine morph target count from the mesh (if any)
     std::size_t numMorphTargets = 0;
@@ -247,10 +277,19 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         }
     }
 
+    // Only apply rest TRS when animation won't drive it. glTF animation channels
+    // replace (not compose with) the node's base TRS, so applying rest on top of
+    // the animator's sampled matrix double-transforms the node.
+    if (!hasTransformAnim)
+    {
+        applyTRS(gltfNode, node);
+    }
+
     auto animIndex = animMap.size();
     animMap[nodeIndex] = animIndex;
     auto& la = assets.animation(animIndex);
     loadAnimation(asset, nodeIndex, la, numMorphTargets);
+    applyRestTRS(gltfNode, la);
 
     if (hasTransformAnim)
     {
@@ -302,7 +341,19 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
 
     for (auto childIndex : gltfNode.children)
     {
-        loadNode(asset, childIndex, node, baseDir, resources, assets, nodeMap, animMap);
+        auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
+        auto& childRef = node.addChild(std::move(childNode));
+        nodeMap[childIndex] = &childRef;
+
+        if (nodeHasAnimation(asset, childIndex))
+        {
+            configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
+                                  animMap);
+        }
+        else
+        {
+            loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, animMap);
+        }
     }
 }
 
@@ -678,10 +729,37 @@ float GltfLoader::computeSharedDuration(const fastgltf::Asset& asset, std::size_
     return sharedDuration;
 }
 
-std::vector<LinearAnimation::RotationKeyframe>
-GltfLoader::loadRotationKeyframes(const fastgltf::Asset& asset,
-                                  const fastgltf::AnimationSampler& sampler)
+Animation::Interpolation GltfLoader::mapInterpolation(fastgltf::AnimationInterpolation m)
 {
+    switch (m)
+    {
+        case fastgltf::AnimationInterpolation::Step:
+            return Animation::Interpolation::Step;
+        case fastgltf::AnimationInterpolation::CubicSpline:
+            return Animation::Interpolation::CubicSpline;
+        case fastgltf::AnimationInterpolation::Linear:
+        default:
+            return Animation::Interpolation::Linear;
+    }
+}
+
+namespace
+{
+
+// glTF CUBICSPLINE output layout: per keyframe, three elements packed as
+// [in_tangent, value, out_tangent]. For non-CubicSpline modes there is a single
+// value per keyframe. Returns the stride (3 for CubicSpline, 1 otherwise).
+constexpr std::size_t outputStride(Animation::Interpolation m) noexcept
+{
+    return m == Animation::Interpolation::CubicSpline ? 3 : 1;
+}
+
+} // namespace
+
+void GltfLoader::loadRotationChannel(const fastgltf::Asset& asset,
+                                     const fastgltf::AnimationSampler& sampler, Animation& anim)
+{
+    const auto interp = mapInterpolation(sampler.interpolation);
     const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
     const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
 
@@ -693,20 +771,45 @@ GltfLoader::loadRotationKeyframes(const fastgltf::Asset& asset,
     fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
         asset, outputAccessor, [&](fastgltf::math::fvec4 q, std::size_t idx) { quats[idx] = q; });
 
-    std::vector<LinearAnimation::RotationKeyframe> kf;
-    std::size_t count = std::min(times.size(), quats.size());
-    kf.reserve(count);
-    for (std::size_t i = 0; i < count; ++i)
+    const std::size_t stride = outputStride(interp);
+    const std::size_t valueOffset = (interp == Animation::Interpolation::CubicSpline) ? 1 : 0;
+
+    std::vector<Animation::RotationKeyframe> kf;
+    kf.reserve(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
     {
-        kf.push_back({times[i], quats[i].x(), quats[i].y(), quats[i].z(), quats[i].w()});
+        std::size_t vi = i * stride + valueOffset;
+        if (vi >= quats.size()) break;
+        kf.push_back({times[i], quats[vi].x(), quats[vi].y(), quats[vi].z(), quats[vi].w()});
     }
-    return kf;
+
+    anim.rotationKeyframes(std::move(kf));
+    anim.rotationInterpolation(interp);
+
+    if (interp == Animation::Interpolation::CubicSpline)
+    {
+        std::vector<Quaternion> in;
+        std::vector<Quaternion> out;
+        in.reserve(times.size());
+        out.reserve(times.size());
+        for (std::size_t i = 0; i < times.size(); ++i)
+        {
+            std::size_t inIdx = i * 3;
+            std::size_t outIdx = i * 3 + 2;
+            if (outIdx >= quats.size()) break;
+            in.push_back(Quaternion{quats[inIdx].x(), quats[inIdx].y(), quats[inIdx].z(),
+                                    quats[inIdx].w()});
+            out.push_back(Quaternion{quats[outIdx].x(), quats[outIdx].y(), quats[outIdx].z(),
+                                     quats[outIdx].w()});
+        }
+        anim.rotationTangents(std::move(in), std::move(out));
+    }
 }
 
-std::vector<LinearAnimation::TranslationKeyframe>
-GltfLoader::loadTranslationKeyframes(const fastgltf::Asset& asset,
-                                     const fastgltf::AnimationSampler& sampler)
+void GltfLoader::loadTranslationChannel(const fastgltf::Asset& asset,
+                                        const fastgltf::AnimationSampler& sampler, Animation& anim)
 {
+    const auto interp = mapInterpolation(sampler.interpolation);
     const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
     const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
 
@@ -719,20 +822,45 @@ GltfLoader::loadTranslationKeyframes(const fastgltf::Asset& asset,
         asset, outputAccessor,
         [&](fastgltf::math::fvec3 p, std::size_t idx) { positions[idx] = p; });
 
-    std::vector<LinearAnimation::TranslationKeyframe> kf;
-    std::size_t count = std::min(times.size(), positions.size());
-    kf.reserve(count);
-    for (std::size_t i = 0; i < count; ++i)
+    const std::size_t stride = outputStride(interp);
+    const std::size_t valueOffset = (interp == Animation::Interpolation::CubicSpline) ? 1 : 0;
+
+    std::vector<Animation::TranslationKeyframe> kf;
+    kf.reserve(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
     {
-        kf.push_back({times[i], Vec3{positions[i].x(), positions[i].y(), positions[i].z()}});
+        std::size_t vi = i * stride + valueOffset;
+        if (vi >= positions.size()) break;
+        kf.push_back(
+            {times[i], Vec3{positions[vi].x(), positions[vi].y(), positions[vi].z()}});
     }
-    return kf;
+
+    anim.translationKeyframes(std::move(kf));
+    anim.translationInterpolation(interp);
+
+    if (interp == Animation::Interpolation::CubicSpline)
+    {
+        std::vector<Vec3> in;
+        std::vector<Vec3> out;
+        in.reserve(times.size());
+        out.reserve(times.size());
+        for (std::size_t i = 0; i < times.size(); ++i)
+        {
+            std::size_t inIdx = i * 3;
+            std::size_t outIdx = i * 3 + 2;
+            if (outIdx >= positions.size()) break;
+            in.push_back(Vec3{positions[inIdx].x(), positions[inIdx].y(), positions[inIdx].z()});
+            out.push_back(
+                Vec3{positions[outIdx].x(), positions[outIdx].y(), positions[outIdx].z()});
+        }
+        anim.translationTangents(std::move(in), std::move(out));
+    }
 }
 
-std::vector<LinearAnimation::ScaleKeyframe>
-GltfLoader::loadScaleKeyframes(const fastgltf::Asset& asset,
-                               const fastgltf::AnimationSampler& sampler)
+void GltfLoader::loadScaleChannel(const fastgltf::Asset& asset,
+                                  const fastgltf::AnimationSampler& sampler, Animation& anim)
 {
+    const auto interp = mapInterpolation(sampler.interpolation);
     const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
     const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
 
@@ -744,21 +872,44 @@ GltfLoader::loadScaleKeyframes(const fastgltf::Asset& asset,
     fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
         asset, outputAccessor, [&](fastgltf::math::fvec3 s, std::size_t idx) { scales[idx] = s; });
 
-    std::vector<LinearAnimation::ScaleKeyframe> kf;
-    std::size_t count = std::min(times.size(), scales.size());
-    kf.reserve(count);
-    for (std::size_t i = 0; i < count; ++i)
+    const std::size_t stride = outputStride(interp);
+    const std::size_t valueOffset = (interp == Animation::Interpolation::CubicSpline) ? 1 : 0;
+
+    std::vector<Animation::ScaleKeyframe> kf;
+    kf.reserve(times.size());
+    for (std::size_t i = 0; i < times.size(); ++i)
     {
-        kf.push_back({times[i], Vec3{scales[i].x(), scales[i].y(), scales[i].z()}});
+        std::size_t vi = i * stride + valueOffset;
+        if (vi >= scales.size()) break;
+        kf.push_back({times[i], Vec3{scales[vi].x(), scales[vi].y(), scales[vi].z()}});
     }
-    return kf;
+
+    anim.scaleKeyframes(std::move(kf));
+    anim.scaleInterpolation(interp);
+
+    if (interp == Animation::Interpolation::CubicSpline)
+    {
+        std::vector<Vec3> in;
+        std::vector<Vec3> out;
+        in.reserve(times.size());
+        out.reserve(times.size());
+        for (std::size_t i = 0; i < times.size(); ++i)
+        {
+            std::size_t inIdx = i * 3;
+            std::size_t outIdx = i * 3 + 2;
+            if (outIdx >= scales.size()) break;
+            in.push_back(Vec3{scales[inIdx].x(), scales[inIdx].y(), scales[inIdx].z()});
+            out.push_back(Vec3{scales[outIdx].x(), scales[outIdx].y(), scales[outIdx].z()});
+        }
+        anim.scaleTangents(std::move(in), std::move(out));
+    }
 }
 
-std::vector<LinearAnimation::WeightKeyframe>
-GltfLoader::loadWeightKeyframes(const fastgltf::Asset& asset,
-                                const fastgltf::AnimationSampler& sampler,
-                                std::size_t numTargets)
+void GltfLoader::loadWeightChannel(const fastgltf::Asset& asset,
+                                   const fastgltf::AnimationSampler& sampler, Animation& anim,
+                                   std::size_t numTargets)
 {
+    const auto interp = mapInterpolation(sampler.interpolation);
     const auto& inputAccessor = asset.accessors[sampler.inputAccessor];
     const auto& outputAccessor = asset.accessors[sampler.outputAccessor];
 
@@ -766,21 +917,26 @@ GltfLoader::loadWeightKeyframes(const fastgltf::Asset& asset,
     fastgltf::iterateAccessorWithIndex<float>(asset, inputAccessor,
                                               [&](float t, std::size_t idx) { times[idx] = t; });
 
-    // Output is a flat array of scalars: numKeyframes * numTargets weights
+    // Output is a flat array of scalars. Linear/Step: numKeyframes * numTargets.
+    // CubicSpline: numKeyframes * 3 * numTargets (in_tan, value, out_tan per key).
     std::vector<float> allWeights(outputAccessor.count);
     fastgltf::iterateAccessorWithIndex<float>(
         asset, outputAccessor, [&](float w, std::size_t idx) { allWeights[idx] = w; });
 
-    std::vector<LinearAnimation::WeightKeyframe> kf;
+    const std::size_t stride = outputStride(interp);
+    const std::size_t valueOffset = (interp == Animation::Interpolation::CubicSpline) ? 1 : 0;
+
+    std::vector<Animation::WeightKeyframe> kf;
     kf.reserve(times.size());
     for (std::size_t i = 0; i < times.size(); ++i)
     {
-        LinearAnimation::WeightKeyframe wkf;
+        Animation::WeightKeyframe wkf;
         wkf.time = times[i];
         wkf.weights.resize(numTargets, 0.0f);
+        std::size_t base = (i * stride + valueOffset) * numTargets;
         for (std::size_t w = 0; w < numTargets; ++w)
         {
-            std::size_t idx = i * numTargets + w;
+            std::size_t idx = base + w;
             if (idx < allWeights.size())
             {
                 wkf.weights[w] = allWeights[idx];
@@ -788,11 +944,36 @@ GltfLoader::loadWeightKeyframes(const fastgltf::Asset& asset,
         }
         kf.push_back(std::move(wkf));
     }
-    return kf;
+
+    anim.weightKeyframes(std::move(kf));
+    anim.weightInterpolation(interp);
+
+    if (interp == Animation::Interpolation::CubicSpline)
+    {
+        std::vector<std::vector<float>> in;
+        std::vector<std::vector<float>> out;
+        in.reserve(times.size());
+        out.reserve(times.size());
+        for (std::size_t i = 0; i < times.size(); ++i)
+        {
+            std::vector<float> inV(numTargets, 0.0f);
+            std::vector<float> outV(numTargets, 0.0f);
+            std::size_t inBase = (i * 3) * numTargets;
+            std::size_t outBase = (i * 3 + 2) * numTargets;
+            for (std::size_t w = 0; w < numTargets; ++w)
+            {
+                if (inBase + w < allWeights.size()) inV[w] = allWeights[inBase + w];
+                if (outBase + w < allWeights.size()) outV[w] = allWeights[outBase + w];
+            }
+            in.push_back(std::move(inV));
+            out.push_back(std::move(outV));
+        }
+        anim.weightTangents(std::move(in), std::move(out));
+    }
 }
 
 void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                               LinearAnimation& la, std::size_t numMorphTargets)
+                               Animation& la, std::size_t numMorphTargets)
 {
     float sharedDuration = computeSharedDuration(asset, nodeIndex);
 
@@ -809,19 +990,19 @@ void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t nodeInd
 
             if (channel.path == fastgltf::AnimationPath::Rotation)
             {
-                la.rotationKeyframes(loadRotationKeyframes(asset, sampler));
+                loadRotationChannel(asset, sampler, la);
             }
             else if (channel.path == fastgltf::AnimationPath::Translation)
             {
-                la.translationKeyframes(loadTranslationKeyframes(asset, sampler));
+                loadTranslationChannel(asset, sampler, la);
             }
             else if (channel.path == fastgltf::AnimationPath::Scale)
             {
-                la.scaleKeyframes(loadScaleKeyframes(asset, sampler));
+                loadScaleChannel(asset, sampler, la);
             }
             else if (channel.path == fastgltf::AnimationPath::Weights && numMorphTargets > 0)
             {
-                la.weightKeyframes(loadWeightKeyframes(asset, sampler, numMorphTargets));
+                loadWeightChannel(asset, sampler, la, numMorphTargets);
             }
         }
     }

@@ -9,7 +9,7 @@
 
 #include <fastgltf/core.hpp>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -18,7 +18,7 @@ namespace fire_engine
 class Animator;
 class Assets;
 class Geometry;
-class LinearAnimation;
+class Animation;
 class Material;
 class Node;
 class Object;
@@ -99,32 +99,32 @@ private:
                                                          const std::string& baseDir);
 
     // Animation
+    static void applyRestTRS(const fastgltf::Node& gltfNode, Animation& anim);
+
     [[nodiscard]]
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);
 
     static void loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                              LinearAnimation& anim, std::size_t numMorphTargets = 0);
+                              Animation& anim, std::size_t numMorphTargets = 0);
 
     [[nodiscard]]
     static float computeSharedDuration(const fastgltf::Asset& asset, std::size_t nodeIndex);
 
     [[nodiscard]]
-    static std::vector<LinearAnimation::RotationKeyframe>
-    loadRotationKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler);
+    static Animation::Interpolation mapInterpolation(fastgltf::AnimationInterpolation m);
 
-    [[nodiscard]]
-    static std::vector<LinearAnimation::TranslationKeyframe>
-    loadTranslationKeyframes(const fastgltf::Asset& asset,
-                             const fastgltf::AnimationSampler& sampler);
+    static void loadRotationChannel(const fastgltf::Asset& asset,
+                                    const fastgltf::AnimationSampler& sampler, Animation& anim);
 
-    [[nodiscard]]
-    static std::vector<LinearAnimation::ScaleKeyframe>
-    loadScaleKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler);
+    static void loadTranslationChannel(const fastgltf::Asset& asset,
+                                       const fastgltf::AnimationSampler& sampler, Animation& anim);
 
-    [[nodiscard]]
-    static std::vector<LinearAnimation::WeightKeyframe>
-    loadWeightKeyframes(const fastgltf::Asset& asset, const fastgltf::AnimationSampler& sampler,
-                        std::size_t numTargets);
+    static void loadScaleChannel(const fastgltf::Asset& asset,
+                                 const fastgltf::AnimationSampler& sampler, Animation& anim);
+
+    static void loadWeightChannel(const fastgltf::Asset& asset,
+                                  const fastgltf::AnimationSampler& sampler, Animation& anim,
+                                  std::size_t numTargets);
 };
 
 } // namespace fire_engine

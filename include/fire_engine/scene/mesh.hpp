@@ -8,7 +8,7 @@
 namespace fire_engine
 {
 
-class LinearAnimation;
+class Animation;
 class Skin;
 
 class Mesh : public Component
@@ -27,7 +27,7 @@ public:
         object_.skin(s);
     }
 
-    void morphAnimation(LinearAnimation* anim) noexcept
+    void morphAnimation(Animation* anim) noexcept
     {
         morphAnimation_ = anim;
     }
@@ -44,7 +44,7 @@ public:
 
 private:
     Object object_;
-    LinearAnimation* morphAnimation_{nullptr};
+    Animation* morphAnimation_{nullptr};
     std::vector<float> morphWeights_;
     double startTime_{0.0};
     bool morphInitialized_{false};

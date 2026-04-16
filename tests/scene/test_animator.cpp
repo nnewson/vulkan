@@ -2,13 +2,13 @@
 
 #include <cmath>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
 
 #include <gtest/gtest.h>
 
 using fire_engine::Animator;
 using fire_engine::CameraState;
-using fire_engine::LinearAnimation;
+using fire_engine::Animation;
 using fire_engine::Mat4;
 using fire_engine::Transform;
 
@@ -51,7 +51,7 @@ TEST(Animator, UpdateWithNullAnimationProducesIdentity)
 TEST(Animator, UpdateWithNoKeyframesProducesIdentity)
 {
     Animator a;
-    LinearAnimation anim;
+    Animation anim;
     a.animation(&anim);
 
     CameraState state;
@@ -76,7 +76,7 @@ TEST(Animator, UpdateWithNoKeyframesProducesIdentity)
 TEST(Animator, UpdateSamplesAnimationAtElapsedTime)
 {
     Animator a;
-    LinearAnimation anim;
+    Animation anim;
 
     // 90 degrees around Y over 2 seconds
     float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
@@ -113,7 +113,7 @@ TEST(Animator, UpdateSamplesAnimationAtElapsedTime)
 TEST(Animator, RenderAppliesWorldMatrix)
 {
     Animator a;
-    LinearAnimation anim;
+    Animation anim;
     a.animation(&anim);
 
     CameraState state;

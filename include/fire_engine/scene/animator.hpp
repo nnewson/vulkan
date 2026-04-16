@@ -5,7 +5,7 @@
 namespace fire_engine
 {
 
-class LinearAnimation;
+class Animation;
 
 class Animator : public Component
 {
@@ -29,23 +29,23 @@ public:
         return modelMatrix_;
     }
 
-    void animation(LinearAnimation* anim) noexcept
+    void animation(Animation* anim) noexcept
     {
         animation_ = anim;
     }
 
-    [[nodiscard]] LinearAnimation* animation() noexcept
+    [[nodiscard]] Animation* animation() noexcept
     {
         return animation_;
     }
 
-    [[nodiscard]] const LinearAnimation* animation() const noexcept
+    [[nodiscard]] const Animation* animation() const noexcept
     {
         return animation_;
     }
 
 private:
-    LinearAnimation* animation_{nullptr};
+    Animation* animation_{nullptr};
     Mat4 modelMatrix_{Mat4::identity()};
     double startTime_{0.0};
     bool initialized_{false};

@@ -22,7 +22,8 @@ public:
     explicit FireEngine();
     ~FireEngine();
 
-    void run(size_t width, size_t height, std::string_view app_name);
+    void run(size_t width, size_t height, std::string_view app_name,
+             std::string_view scene_path = "");
 
 private:
     std::unique_ptr<Window> window_;
@@ -32,7 +33,7 @@ private:
     Assets assets_;
     Camera* camera_{nullptr};
 
-    void loadScene();
+    void loadScene(std::string_view scene_path);
     void mainLoop();
 };
 

@@ -1,6 +1,6 @@
 #include <fire_engine/scene/mesh.hpp>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
 #include <fire_engine/render/render_context.hpp>
 
 namespace fire_engine

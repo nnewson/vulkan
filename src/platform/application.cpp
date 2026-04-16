@@ -5,15 +5,17 @@
 
 #include <cstdlib>
 #include <iostream>
+#include <string_view>
 
 using namespace fire_engine;
 
-int main()
+int main(int argc, char* argv[])
 {
+    std::string_view scene_path = (argc >= 2) ? argv[1] : "";
     try
     {
         FireEngine app;
-        app.run(800, 600, "FireEngine Demo");
+        app.run(800, 600, "FireEngine Demo", scene_path);
     }
     catch (const std::exception& e)
     {

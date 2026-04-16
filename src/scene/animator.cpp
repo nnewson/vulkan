@@ -1,6 +1,6 @@
 #include <fire_engine/scene/animator.hpp>
 
-#include <fire_engine/animation/linear_animation.hpp>
+#include <fire_engine/animation/animation.hpp>
 
 namespace fire_engine
 {
