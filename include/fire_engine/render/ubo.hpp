@@ -35,7 +35,7 @@ struct MaterialUBO
     float clearcoatRoughness;
     float anisotropy;
     float anisotropyRotation;
-    float _pad0;
+    int hasTexture{0};
 };
 
 struct SkinUBO

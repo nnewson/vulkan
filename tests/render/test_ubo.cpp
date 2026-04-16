@@ -70,6 +70,19 @@ TEST(UBO, MaterialUBOSize)
     EXPECT_EQ(sizeof(MaterialUBO) % 16, 0u);
 }
 
+TEST(UBO, MaterialUBOHasTextureDefaultsToZero)
+{
+    MaterialUBO ubo{};
+    EXPECT_EQ(ubo.hasTexture, 0);
+}
+
+TEST(UBO, MaterialUBOHasTextureCanBeSet)
+{
+    MaterialUBO ubo{};
+    ubo.hasTexture = 1;
+    EXPECT_EQ(ubo.hasTexture, 1);
+}
+
 TEST(UBO, MorphUBOSize)
 {
     EXPECT_EQ(sizeof(MorphUBO) % 16, 0u);

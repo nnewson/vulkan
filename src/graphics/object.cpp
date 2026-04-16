@@ -132,8 +132,16 @@ void Object::load(Resources& resources)
             geoInfo.morphSsboSize = ssboSize;
         }
 
-        // Texture handle
-        geoInfo.texture = binding.geometry->material().texture().handle();
+        // Texture handle — use a 1x1 white dummy when material has no texture
+        if (binding.geometry->material().hasTexture())
+        {
+            geoInfo.texture = binding.geometry->material().texture().handle();
+        }
+        else
+        {
+            static const uint8_t white[] = {255, 255, 255, 255};
+            geoInfo.texture = resources.createTexture(white, 1, 1);
+        }
 
         req.geometries.push_back(geoInfo);
     }
@@ -171,6 +179,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.clearcoatRoughness = mat.clearcoatRoughness();
     ubo.anisotropy = mat.anisotropy();
     ubo.anisotropyRotation = mat.anisotropyRotation();
+    ubo.hasTexture = mat.hasTexture() ? 1 : 0;
     return ubo;
 }
 

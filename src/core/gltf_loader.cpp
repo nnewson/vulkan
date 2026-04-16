@@ -401,25 +401,19 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
     if (primitive.materialIndex.has_value())
     {
         const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
-        if (gltfMat.pbrData.baseColorTexture.has_value())
+        if (gltfMat.pbrData.baseColorTexture.has_value() && !texturePath.empty())
         {
             auto texIndex = gltfMat.pbrData.baseColorTexture.value().textureIndex;
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                std::string texPath = texturePath.empty() ? "default.png" : texturePath;
-                tex = Texture::load_from_file(texPath, resources);
+                tex = Texture::load_from_file(texturePath, resources);
             }
             return &tex;
         }
     }
 
-    auto& defaultTex = assets.texture(0);
-    if (!defaultTex.loaded())
-    {
-        defaultTex = Texture::load_from_file("default.png", resources);
-    }
-    return &defaultTex;
+    return nullptr;
 }
 
 Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
@@ -433,13 +427,16 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
         if (!mat.hasTexture())
         {
             mat = materialData;
-            mat.texture(texPtr);
+            if (texPtr != nullptr)
+            {
+                mat.texture(texPtr);
+            }
         }
         return &mat;
     }
 
     auto& mat = assets.material(0);
-    if (!mat.hasTexture())
+    if (!mat.hasTexture() && texPtr != nullptr)
     {
         mat.texture(texPtr);
     }

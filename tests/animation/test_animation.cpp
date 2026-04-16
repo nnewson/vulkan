@@ -702,6 +702,45 @@ TEST(Animation, CubicSplineTranslationMatchesEndpoints)
     EXPECT_NEAR((end[0, 3]), 2.0f, 1e-5f);
 }
 
+TEST(Animation, CubicSplineScaleMatchesHermiteAtMidpoint)
+{
+    Animation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {1.0f, Vec3{3.0f, 3.0f, 3.0f}},
+    });
+    anim.scaleInterpolation(Animation::Interpolation::CubicSpline);
+    // dt=1. Hermite with p0=1,p1=3,m0=1,m1=1 at a=0.5 -> 2.0
+    anim.scaleTangents(
+        {Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}},
+        {Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}});
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+    EXPECT_NEAR((mid[0, 0]), 2.0f, 1e-5f);
+    EXPECT_NEAR((mid[1, 1]), 2.0f, 1e-5f);
+    EXPECT_NEAR((mid[2, 2]), 2.0f, 1e-5f);
+}
+
+TEST(Animation, CubicSplineScaleMatchesEndpoints)
+{
+    Animation anim;
+    anim.scaleKeyframes({
+        {0.0f, Vec3{1.0f, 1.0f, 1.0f}},
+        {1.0f, Vec3{3.0f, 3.0f, 3.0f}},
+    });
+    anim.scaleInterpolation(Animation::Interpolation::CubicSpline);
+    anim.scaleTangents(
+        {Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}},
+        {Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}});
+    anim.duration(2.0f);
+
+    Mat4 start = anim.sample(0.0f);
+    Mat4 end = anim.sample(1.0f);
+    EXPECT_NEAR((start[0, 0]), 1.0f, 1e-5f);
+    EXPECT_NEAR((end[0, 0]), 3.0f, 1e-5f);
+}
+
 TEST(Animation, CubicSplineRotationProducesUnitQuaternion)
 {
     Animation anim;
@@ -724,4 +763,88 @@ TEST(Animation, CubicSplineRotationProducesUnitQuaternion)
     float col0Len = std::sqrt((mid[0, 0]) * (mid[0, 0]) + (mid[1, 0]) * (mid[1, 0])
                               + (mid[2, 0]) * (mid[2, 0]));
     EXPECT_NEAR(col0Len, 1.0f, 1e-4f);
+}
+
+// ==========================================================================
+// CubicSpline weight interpolation
+// ==========================================================================
+
+TEST(SampleWeights, CubicSplineMatchesHermiteAtMidpoint)
+{
+    Animation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {1.0f, {2.0f}},
+    });
+    anim.weightInterpolation(Animation::Interpolation::CubicSpline);
+    // dt=1. Hermite with p0=0,p1=2,m0=1,m1=1 at a=0.5 -> 1.0
+    anim.weightTangents(
+        {{1.0f}, {1.0f}},
+        {{1.0f}, {1.0f}});
+    anim.duration(1.0f);
+
+    auto w = anim.sampleWeights(0.5f, 1);
+    EXPECT_NEAR(w[0], 1.0f, 1e-5f);
+}
+
+TEST(SampleWeights, CubicSplineMatchesEndpoints)
+{
+    Animation anim;
+    anim.weightKeyframes({
+        {0.0f, {0.0f}},
+        {1.0f, {2.0f}},
+    });
+    anim.weightInterpolation(Animation::Interpolation::CubicSpline);
+    anim.weightTangents(
+        {{5.0f}, {5.0f}},
+        {{5.0f}, {5.0f}});
+    anim.duration(2.0f);
+
+    auto w0 = anim.sampleWeights(0.0f, 1);
+    auto w1 = anim.sampleWeights(1.0f, 1);
+    EXPECT_NEAR(w0[0], 0.0f, 1e-5f);
+    EXPECT_NEAR(w1[0], 2.0f, 1e-5f);
+}
+
+// ==========================================================================
+// Mixed interpolation modes on the same Animation
+// ==========================================================================
+
+TEST(Animation, MixedStepRotationWithLinearTranslation)
+{
+    Animation anim;
+    float s45 = std::sin(static_cast<float>(M_PI) / 4.0f);
+    float c45 = std::cos(static_cast<float>(M_PI) / 4.0f);
+    anim.rotationKeyframes({
+        {0.0f, 0.0f, 0.0f, 0.0f, 1.0f},
+        {1.0f, 0.0f, s45, 0.0f, c45},
+    });
+    anim.rotationInterpolation(Animation::Interpolation::Step);
+
+    anim.translationKeyframes({
+        {0.0f, Vec3{0.0f, 0.0f, 0.0f}},
+        {1.0f, Vec3{4.0f, 0.0f, 0.0f}},
+    });
+    anim.translationInterpolation(Animation::Interpolation::Linear);
+    anim.duration(1.0f);
+
+    Mat4 mid = anim.sample(0.5f);
+
+    // Rotation: Step holds identity at midpoint
+    EXPECT_NEAR((mid[0, 0]), 1.0f, 1e-5f);
+    EXPECT_NEAR((mid[2, 2]), 1.0f, 1e-5f);
+    EXPECT_NEAR((mid[0, 2]), 0.0f, 1e-5f);
+
+    // Translation: Linear interpolates to (2, 0, 0)
+    EXPECT_NEAR((mid[0, 3]), 2.0f, 1e-5f);
+    EXPECT_NEAR((mid[1, 3]), 0.0f, 1e-5f);
+}
+
+TEST(Animation, PerChannelInterpolationDefaultsToLinear)
+{
+    Animation anim;
+    EXPECT_EQ(anim.rotationInterpolation(), Animation::Interpolation::Linear);
+    EXPECT_EQ(anim.translationInterpolation(), Animation::Interpolation::Linear);
+    EXPECT_EQ(anim.scaleInterpolation(), Animation::Interpolation::Linear);
+    EXPECT_EQ(anim.weightInterpolation(), Animation::Interpolation::Linear);
 }
