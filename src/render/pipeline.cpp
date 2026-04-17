@@ -7,15 +7,15 @@
 namespace fire_engine
 {
 
-Pipeline::Pipeline(const Device& device, const Swapchain& swapchain)
+Pipeline::Pipeline(const Device& device, const Swapchain& swapchain, const PipelineConfig& config)
     : device_(&device.device())
 {
-    createRenderPass(swapchain);
-    createDescriptorSetLayout();
-    createGraphicsPipeline(swapchain);
+    createDescriptorSetLayout(config.bindings);
+    createGraphicsPipeline(swapchain, config);
 }
 
-void Pipeline::createRenderPass(const Swapchain& swapchain)
+vk::raii::RenderPass Pipeline::createForwardRenderPass(const Device& device,
+                                                       const Swapchain& swapchain)
 {
     vk::AttachmentDescription colorAtt(
         {}, swapchain.format(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
@@ -46,12 +46,15 @@ void Pipeline::createRenderPass(const Swapchain& swapchain)
 
     std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
     vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
-    renderPass_ = vk::raii::RenderPass(*device_, ci);
+    return vk::raii::RenderPass(device.device(), ci);
 }
 
-void Pipeline::createDescriptorSetLayout()
+PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
 {
-    std::array<vk::DescriptorSetLayoutBinding, 6> bindings = {{
+    PipelineConfig config;
+    config.vertShaderPath = "shader.vert.spv";
+    config.fragShaderPath = "shader.frag.spv";
+    config.bindings = {
         {0, vk::DescriptorType::eUniformBuffer, 1,
          vk::ShaderStageFlagBits::eVertex | vk::ShaderStageFlagBits::eFragment},
         {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
@@ -59,19 +62,24 @@ void Pipeline::createDescriptorSetLayout()
         {3, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
         {4, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
         {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex},
-    }};
+    };
+    config.renderPass = renderPass;
+    return config;
+}
 
+void Pipeline::createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
+{
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
     descSetLayout_ = vk::raii::DescriptorSetLayout(*device_, ci);
 }
 
-void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
+void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const PipelineConfig& config)
 {
     auto extent = swapchain.extent();
 
     vk::raii::ShaderModule vertMod{nullptr};
     vk::raii::ShaderModule fragMod{nullptr};
-    auto stages = createShaderStages(vertMod, fragMod);
+    auto stages = createShaderStages(config, vertMod, fragMod);
 
     vk::VertexInputBindingDescription bindDesc(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
     std::array<vk::VertexInputAttributeDescription, 6> attrDesc = {{
@@ -110,16 +118,17 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain)
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
                                        &raster, &ms, &depthStencil, &colorBlend, nullptr,
-                                       *pipelineLayout_, *renderPass_, 0);
+                                       *pipelineLayout_, config.renderPass, 0);
 
     pipeline_ = vk::raii::Pipeline(*device_, nullptr, pci);
 }
 
 std::array<vk::PipelineShaderStageCreateInfo, 2>
-Pipeline::createShaderStages(vk::raii::ShaderModule& vertMod, vk::raii::ShaderModule& fragMod) const
+Pipeline::createShaderStages(const PipelineConfig& config, vk::raii::ShaderModule& vertMod,
+                             vk::raii::ShaderModule& fragMod) const
 {
-    auto vertCode = ShaderLoader::load_from_file("shader.vert.spv");
-    auto fragCode = ShaderLoader::load_from_file("shader.frag.spv");
+    auto vertCode = ShaderLoader::load_from_file(config.vertShaderPath);
+    auto fragCode = ShaderLoader::load_from_file(config.fragShaderPath);
     vk::ShaderModuleCreateInfo vertCi({}, vertCode.size(),
                                       reinterpret_cast<const uint32_t*>(vertCode.data()));
     vk::ShaderModuleCreateInfo fragCi({}, fragCode.size(),

@@ -123,3 +123,7 @@ Also requires:
 
 - System GLFW 3.3+
 - Vulkan SDK (for `glslc` shader compiler)
+
+## Assets
+
+All assets used are from the Khronos glTF Sample Models [repository](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main).

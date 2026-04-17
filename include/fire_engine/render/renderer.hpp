@@ -80,6 +80,7 @@ private:
 
     Device device_;
     Swapchain swapchain_;
+    vk::raii::RenderPass forwardRenderPass_;
     Pipeline pipeline_;
     Frame frame_;
     Resources resources_;

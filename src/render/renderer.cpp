@@ -14,12 +14,13 @@ namespace fire_engine
 Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
-      pipeline_(device_, swapchain_),
+      forwardRenderPass_(Pipeline::createForwardRenderPass(device_, swapchain_)),
+      pipeline_(device_, swapchain_, Pipeline::forwardConfig(*forwardRenderPass_)),
       frame_(device_, swapchain_),
       resources_(device_, pipeline_)
 {
     swapchain_.createDepthResources(device_);
-    swapchain_.createFramebuffers(pipeline_.renderPass());
+    swapchain_.createFramebuffers(*forwardRenderPass_);
     forwardPipeline_ = resources_.registerPipeline(pipeline_.pipeline(), pipeline_.pipelineLayout());
 }
 
@@ -99,7 +100,7 @@ void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(pipeline_.renderPass(), swapchain_.framebuffer(imageIndex),
+    vk::RenderPassBeginInfo rpBegin(*forwardRenderPass_, swapchain_.framebuffer(imageIndex),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
@@ -142,7 +143,7 @@ void Renderer::recreateSwapchain(const Window& display)
 
     frame_.destroyRenderFinishedSemaphores();
 
-    swapchain_.recreate(device_, display, pipeline_.renderPass());
+    swapchain_.recreate(device_, display, *forwardRenderPass_);
 
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
 }
