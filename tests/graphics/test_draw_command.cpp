@@ -34,6 +34,12 @@ TEST(DrawCommand, DefaultDescriptorSetIsNull)
     EXPECT_EQ(cmd.descriptorSet, NullDescriptorSet);
 }
 
+TEST(DrawCommand, DefaultPipelineIsNull)
+{
+    DrawCommand cmd;
+    EXPECT_EQ(cmd.pipeline, NullPipeline);
+}
+
 // ---------------------------------------------------------------------------
 // Member assignment
 // ---------------------------------------------------------------------------
@@ -66,17 +72,26 @@ TEST(DrawCommand, AssignDescriptorSet)
     EXPECT_EQ(static_cast<uint32_t>(cmd.descriptorSet), 2u);
 }
 
+TEST(DrawCommand, AssignPipeline)
+{
+    DrawCommand cmd;
+    cmd.pipeline = PipelineHandle{7};
+    EXPECT_EQ(static_cast<uint32_t>(cmd.pipeline), 7u);
+}
+
 // ---------------------------------------------------------------------------
 // Aggregate initialization
 // ---------------------------------------------------------------------------
 
 TEST(DrawCommand, AggregateInit)
 {
-    DrawCommand cmd{BufferHandle{1}, BufferHandle{2}, 24, DescriptorSetHandle{3}};
+    DrawCommand cmd{BufferHandle{1}, BufferHandle{2}, 24, DescriptorSetHandle{3},
+                    PipelineHandle{4}};
     EXPECT_EQ(static_cast<uint32_t>(cmd.vertexBuffer), 1u);
     EXPECT_EQ(static_cast<uint32_t>(cmd.indexBuffer), 2u);
     EXPECT_EQ(cmd.indexCount, 24u);
     EXPECT_EQ(static_cast<uint32_t>(cmd.descriptorSet), 3u);
+    EXPECT_EQ(static_cast<uint32_t>(cmd.pipeline), 4u);
 }
 
 // ---------------------------------------------------------------------------
@@ -114,10 +129,12 @@ TEST(DrawCommand, ReserveAndEmplaceBack)
 
 TEST(DrawCommand, CopyPreservesAllFields)
 {
-    DrawCommand original{BufferHandle{1}, BufferHandle{2}, 36, DescriptorSetHandle{4}};
+    DrawCommand original{BufferHandle{1}, BufferHandle{2}, 36, DescriptorSetHandle{4},
+                         PipelineHandle{5}};
     DrawCommand copy = original;
     EXPECT_EQ(copy.vertexBuffer, original.vertexBuffer);
     EXPECT_EQ(copy.indexBuffer, original.indexBuffer);
     EXPECT_EQ(copy.indexCount, original.indexCount);
     EXPECT_EQ(copy.descriptorSet, original.descriptorSet);
+    EXPECT_EQ(copy.pipeline, original.pipeline);
 }

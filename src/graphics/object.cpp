@@ -251,6 +251,7 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
         cmd.indexBuffer = binding.geometry->indexBuffer();
         cmd.indexCount = binding.geometry->indexCount();
         cmd.descriptorSet = binding.descSets[frame.currentFrame];
+        cmd.pipeline = frame.pipeline;
         commands.push_back(cmd);
     }
     return commands;

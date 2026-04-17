@@ -26,6 +26,11 @@ TEST(GpuHandle, NullDescriptorSetIsMaxUint32)
     EXPECT_EQ(static_cast<uint32_t>(NullDescriptorSet), std::numeric_limits<uint32_t>::max());
 }
 
+TEST(GpuHandle, NullPipelineIsMaxUint32)
+{
+    EXPECT_EQ(static_cast<uint32_t>(NullPipeline), std::numeric_limits<uint32_t>::max());
+}
+
 // ---------------------------------------------------------------------------
 // Constexpr verification
 // ---------------------------------------------------------------------------
@@ -43,6 +48,11 @@ TEST(GpuHandle, NullTextureIsConstexpr)
 TEST(GpuHandle, NullDescriptorSetIsConstexpr)
 {
     static_assert(NullDescriptorSet == DescriptorSetHandle{std::numeric_limits<uint32_t>::max()});
+}
+
+TEST(GpuHandle, NullPipelineIsConstexpr)
+{
+    static_assert(NullPipeline == PipelineHandle{std::numeric_limits<uint32_t>::max()});
 }
 
 // ---------------------------------------------------------------------------
@@ -77,6 +87,20 @@ TEST(GpuHandle, DescriptorSetHandleEqualityWithSameValue)
     EXPECT_EQ(a, b);
 }
 
+TEST(GpuHandle, PipelineHandleEqualityWithSameValue)
+{
+    auto a = PipelineHandle{9};
+    auto b = PipelineHandle{9};
+    EXPECT_EQ(a, b);
+}
+
+TEST(GpuHandle, PipelineHandleInequalityWithDifferentValues)
+{
+    auto a = PipelineHandle{0};
+    auto b = PipelineHandle{1};
+    EXPECT_NE(a, b);
+}
+
 // ---------------------------------------------------------------------------
 // Null vs valid handles
 // ---------------------------------------------------------------------------
@@ -99,6 +123,12 @@ TEST(GpuHandle, ValidDescriptorSetHandleNotEqualToNull)
     EXPECT_NE(valid, NullDescriptorSet);
 }
 
+TEST(GpuHandle, ValidPipelineHandleNotEqualToNull)
+{
+    auto valid = PipelineHandle{0};
+    EXPECT_NE(valid, NullPipeline);
+}
+
 // ---------------------------------------------------------------------------
 // Type safety — handles are distinct types
 // ---------------------------------------------------------------------------
@@ -108,6 +138,9 @@ TEST(GpuHandle, HandleTypesAreDistinct)
     EXPECT_FALSE((std::is_same_v<BufferHandle, TextureHandle>));
     EXPECT_FALSE((std::is_same_v<BufferHandle, DescriptorSetHandle>));
     EXPECT_FALSE((std::is_same_v<TextureHandle, DescriptorSetHandle>));
+    EXPECT_FALSE((std::is_same_v<BufferHandle, PipelineHandle>));
+    EXPECT_FALSE((std::is_same_v<TextureHandle, PipelineHandle>));
+    EXPECT_FALSE((std::is_same_v<DescriptorSetHandle, PipelineHandle>));
 }
 
 // ---------------------------------------------------------------------------
@@ -132,6 +165,13 @@ TEST(GpuHandle, DescriptorSetHandleRoundTrip)
 {
     uint32_t id = 789;
     auto handle = DescriptorSetHandle{id};
+    EXPECT_EQ(static_cast<uint32_t>(handle), id);
+}
+
+TEST(GpuHandle, PipelineHandleRoundTrip)
+{
+    uint32_t id = 1011;
+    auto handle = PipelineHandle{id};
     EXPECT_EQ(static_cast<uint32_t>(handle), id);
 }
 

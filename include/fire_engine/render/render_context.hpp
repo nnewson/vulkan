@@ -28,6 +28,7 @@ struct RenderContext
     Vec3 cameraPosition;
     Vec3 cameraTarget;
     std::vector<DrawCommand>* drawCommands{nullptr};
+    PipelineHandle pipelineHandle{NullPipeline};
 
     [[nodiscard]] FrameInfo frameInfo() const noexcept;
 };

@@ -83,6 +83,7 @@ private:
     Pipeline pipeline_;
     Frame frame_;
     Resources resources_;
+    PipelineHandle forwardPipeline_{NullPipeline};
     uint32_t currentFrame_{0};
 };
 

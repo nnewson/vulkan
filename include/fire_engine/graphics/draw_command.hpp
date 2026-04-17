@@ -13,6 +13,7 @@ struct DrawCommand
     BufferHandle indexBuffer{NullBuffer};
     uint32_t indexCount{0};
     DescriptorSetHandle descriptorSet{NullDescriptorSet};
+    PipelineHandle pipeline{NullPipeline};
 };
 
 } // namespace fire_engine

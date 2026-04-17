@@ -79,12 +79,23 @@ public:
     [[nodiscard]] ObjectDescriptorResult
     createObjectDescriptors(const ObjectDescriptorRequest& req);
 
+    // --- Pipeline registry ---
+    // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
+    // handles so Renderer can resolve PipelineHandle values stamped on
+    // DrawCommands to the Vulkan pipeline/layout pair to bind.
+
+    [[nodiscard]] PipelineHandle registerPipeline(vk::Pipeline pipeline,
+                                                  vk::PipelineLayout layout);
+
     // --- Vulkan accessors (for Renderer command recording) ---
 
     [[nodiscard]] vk::Buffer vulkanBuffer(BufferHandle handle) const noexcept;
     [[nodiscard]] vk::ImageView vulkanImageView(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
+    [[nodiscard]] vk::Pipeline vulkanPipeline(PipelineHandle handle) const noexcept;
+    [[nodiscard]] vk::PipelineLayout
+    vulkanPipelineLayout(PipelineHandle handle) const noexcept;
 
 private:
     BufferHandle storeBuffer(vk::raii::Buffer buf, vk::raii::DeviceMemory mem);
@@ -119,6 +130,13 @@ private:
 
     // Flat lookup for descriptor set handles
     std::vector<vk::DescriptorSet> descriptorSetTable_;
+
+    struct PipelineEntry
+    {
+        vk::Pipeline pipeline{};
+        vk::PipelineLayout layout{};
+    };
+    std::vector<PipelineEntry> pipelines_;
 };
 
 } // namespace fire_engine

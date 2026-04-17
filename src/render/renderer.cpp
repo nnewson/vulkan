@@ -1,5 +1,6 @@
 #include <fire_engine/render/renderer.hpp>
 
+#include <limits>
 #include <tuple>
 
 #include <fire_engine/render/render_context.hpp>
@@ -19,6 +20,7 @@ Renderer::Renderer(const Window& window)
 {
     swapchain_.createDepthResources(device_);
     swapchain_.createFramebuffers(pipeline_.renderPass());
+    forwardPipeline_ = resources_.registerPipeline(pipeline_.pipeline(), pipeline_.pipelineLayout());
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -36,19 +38,28 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     beginRenderPass(cmd, *imageIndex);
 
     std::vector<DrawCommand> drawCommands;
-    RenderContext ctx{device_, swapchain_,    frame_,         pipeline_,
-                      cmd,     currentFrame_, cameraPosition, cameraTarget,
-                      &drawCommands};
+    RenderContext ctx{device_,       swapchain_,     frame_,        pipeline_,
+                      cmd,           currentFrame_,  cameraPosition, cameraTarget,
+                      &drawCommands, forwardPipeline_};
     scene.render(ctx);
 
-    // Record draw commands collected during scene traversal
+    // Record draw commands collected during scene traversal. Pipeline is
+    // bound via the DrawCommand-carried PipelineHandle so that future passes
+    // with different pipelines can interleave without changing this loop.
+    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
     for (const auto& dc : drawCommands)
     {
+        if (dc.pipeline != lastBoundPipeline)
+        {
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                             resources_.vulkanPipeline(dc.pipeline));
+            lastBoundPipeline = dc.pipeline;
+        }
         cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer), {vk::DeviceSize{0}});
         cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
         vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
-        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, pipeline_.pipelineLayout(), 0, ds,
-                               {});
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
         cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
     }
 
@@ -92,7 +103,6 @@ void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
-    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, pipeline_.pipeline());
 }
 
 void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex)

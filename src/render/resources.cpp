@@ -279,6 +279,15 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     return result;
 }
 
+// --- Pipeline registry ---
+
+PipelineHandle Resources::registerPipeline(vk::Pipeline pipeline, vk::PipelineLayout layout)
+{
+    auto id = static_cast<uint32_t>(pipelines_.size());
+    pipelines_.push_back({pipeline, layout});
+    return PipelineHandle{id};
+}
+
 // --- Vulkan accessors ---
 
 vk::Buffer Resources::vulkanBuffer(BufferHandle handle) const noexcept
@@ -299,6 +308,16 @@ vk::Sampler Resources::vulkanSampler(TextureHandle handle) const noexcept
 vk::DescriptorSet Resources::vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept
 {
     return descriptorSetTable_[static_cast<uint32_t>(handle)];
+}
+
+vk::Pipeline Resources::vulkanPipeline(PipelineHandle handle) const noexcept
+{
+    return pipelines_[static_cast<uint32_t>(handle)].pipeline;
+}
+
+vk::PipelineLayout Resources::vulkanPipelineLayout(PipelineHandle handle) const noexcept
+{
+    return pipelines_[static_cast<uint32_t>(handle)].layout;
 }
 
 } // namespace fire_engine

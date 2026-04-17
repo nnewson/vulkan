@@ -42,6 +42,12 @@ TEST(FrameInfo, DefaultCameraTargetIsOrigin)
     EXPECT_FLOAT_EQ(info.cameraTarget.z(), 0.0f);
 }
 
+TEST(FrameInfo, DefaultPipelineIsNull)
+{
+    FrameInfo info;
+    EXPECT_EQ(info.pipeline, NullPipeline);
+}
+
 // ---------------------------------------------------------------------------
 // Aggregate initialization
 // ---------------------------------------------------------------------------
