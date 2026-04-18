@@ -7,7 +7,6 @@
 using fire_engine::Node;
 using fire_engine::SceneGraph;
 using fire_engine::Transform;
-using fire_engine::Vec3;
 
 // ==========================================================================
 // Transform Formatter
@@ -17,17 +16,18 @@ TEST(TransformFormatter, DefaultTransform)
 {
     Transform t;
     auto result = std::format("{}", t);
-    EXPECT_EQ(result, "pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)");
+    EXPECT_EQ(result, "pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)");
 }
 
 TEST(TransformFormatter, CustomValues)
 {
     Transform t;
     t.position({1.0f, 2.0f, 3.0f});
-    t.rotation({0.5f, 1.0f, 1.5f});
+    t.rotation(fire_engine::Quaternion{0.5f, 1.0f, 1.5f, 2.0f});
     t.scale({2.0f, 2.0f, 2.0f});
     auto result = std::format("{}", t);
-    EXPECT_EQ(result, "pos(1.00, 2.00, 3.00) rot(0.50, 1.00, 1.50) scale(2.00, 2.00, 2.00)");
+    EXPECT_EQ(result,
+              "pos(1.00, 2.00, 3.00) rot(0.50, 1.00, 1.50, 2.00) scale(2.00, 2.00, 2.00)");
 }
 
 // ==========================================================================
@@ -40,7 +40,7 @@ TEST(NodeFormatter, SingleNode)
     auto result = std::format("{}", node);
     EXPECT_EQ(
         result,
-        "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)");
+        "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)");
 }
 
 TEST(NodeFormatter, NodeWithChildren)
@@ -50,9 +50,9 @@ TEST(NodeFormatter, NodeWithChildren)
     parent.addChild(std::move(child));
 
     auto result = std::format("{}", parent);
-    std::string expected = "Parent [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) "
+    std::string expected = "Parent [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) "
                            "scale(1.00, 1.00, 1.00)\n"
-                           "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) "
+                           "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) "
                            "scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
 }
@@ -67,9 +67,9 @@ TEST(NodeFormatter, NestedChildren)
 
     auto result = std::format("{}", root);
     std::string expected =
-        "Root [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)\n"
-        "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)\n"
-        "    Grandchild [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) "
+        "Root [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "    Grandchild [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) "
         "scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
 }
@@ -93,7 +93,7 @@ TEST(SceneGraphFormatter, SingleRootNode)
     auto result = std::format("{}", scene);
     std::string expected =
         "SceneGraph:\n"
-        "  Root [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)";
+        "  Root [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
 }
 
@@ -110,8 +110,8 @@ TEST(SceneGraphFormatter, MultipleRootsWithChildren)
     auto result = std::format("{}", scene);
     std::string expected =
         "SceneGraph:\n"
-        "  Root1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)\n"
-        "    Child1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)\n"
-        "  Root2 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00) scale(1.00, 1.00, 1.00)";
+        "  Root1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "    Child1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "  Root2 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
 }

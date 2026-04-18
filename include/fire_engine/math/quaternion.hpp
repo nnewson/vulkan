@@ -4,6 +4,7 @@
 
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
 {
@@ -166,6 +167,25 @@ public:
             wa * a.z_ + wb * bCorrected.z_,
             wa * a.w_ + wb * bCorrected.w_,
         };
+    }
+
+    [[nodiscard]]
+    Vec3 toEulerXYZ() const noexcept
+    {
+        // Extrinsic XYZ (equivalently intrinsic ZYX) Tait-Bryan decomposition.
+        float sy = 2.0f * (w_ * y_ - z_ * x_);
+        if (sy > 1.0f)
+        {
+            sy = 1.0f;
+        }
+        if (sy < -1.0f)
+        {
+            sy = -1.0f;
+        }
+        float rotX = std::atan2(2.0f * (w_ * x_ + y_ * z_), 1.0f - 2.0f * (x_ * x_ + y_ * y_));
+        float rotY = std::asin(sy);
+        float rotZ = std::atan2(2.0f * (w_ * z_ + x_ * y_), 1.0f - 2.0f * (y_ * y_ + z_ * z_));
+        return {rotX, rotY, rotZ};
     }
 
     [[nodiscard]]

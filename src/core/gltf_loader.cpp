@@ -2,7 +2,6 @@
 
 #include <fire_engine/render/resources.hpp>
 
-#include <cmath>
 #include <filesystem>
 #include <stdexcept>
 #include <unordered_set>
@@ -31,31 +30,14 @@ namespace fire_engine
 // Node helpers (formerly anonymous namespace)
 // ---------------------------------------------------------------------------
 
-Vec3 GltfLoader::quaternionToEuler(float qx, float qy, float qz, float qw)
-{
-    float sinr_cosp = 2.0f * (qw * qx + qy * qz);
-    float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
-    float roll = std::atan2(sinr_cosp, cosr_cosp);
-
-    float sinp = 2.0f * (qw * qy - qz * qx);
-    float pitch =
-        (std::abs(sinp) >= 1.0f) ? std::copysign(3.14159265f / 2.0f, sinp) : std::asin(sinp);
-
-    float siny_cosp = 2.0f * (qw * qz + qx * qy);
-    float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
-    float yaw = std::atan2(siny_cosp, cosy_cosp);
-
-    return {pitch, yaw, roll};
-}
-
 void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
 {
     if (auto* trs = std::get_if<fastgltf::TRS>(&gltfNode.transform))
     {
         node.transform().position(
             {trs->translation.x(), trs->translation.y(), trs->translation.z()});
-        node.transform().rotation(quaternionToEuler(trs->rotation.x(), trs->rotation.y(),
-                                                    trs->rotation.z(), trs->rotation.w()));
+        node.transform().rotation(
+            {trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()});
         node.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
     }
     else if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&gltfNode.transform))
@@ -67,7 +49,7 @@ void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
 
         node.transform().position({translation.x(), translation.y(), translation.z()});
         node.transform().rotation(
-            quaternionToEuler(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
+            {rotation.x(), rotation.y(), rotation.z(), rotation.w()});
         node.transform().scale({scale.x(), scale.y(), scale.z()});
     }
 }

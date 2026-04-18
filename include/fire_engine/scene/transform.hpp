@@ -3,6 +3,7 @@
 #include <format>
 
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -28,11 +29,11 @@ public:
         position_ = pos;
     }
 
-    [[nodiscard]] Vec3 rotation() const noexcept
+    [[nodiscard]] Quaternion rotation() const noexcept
     {
         return rotation_;
     }
-    void rotation(Vec3 rot) noexcept
+    void rotation(Quaternion rot) noexcept
     {
         rotation_ = rot;
     }
@@ -59,7 +60,7 @@ public:
 
 private:
     Vec3 position_{};
-    Vec3 rotation_{};
+    Quaternion rotation_{Quaternion::identity()};
     Vec3 scale_{1.0f, 1.0f, 1.0f};
     Mat4 local_{Mat4::identity()};
     Mat4 world_{Mat4::identity()};
@@ -81,8 +82,10 @@ struct std::formatter<fire_engine::Transform>
         auto r = t.rotation();
         auto s = t.scale();
         return std::format_to(ctx.out(),
-                              "pos({:.2f}, {:.2f}, {:.2f}) rot({:.2f}, {:.2f}, {:.2f}) "
+                              "pos({:.2f}, {:.2f}, {:.2f}) "
+                              "rot({:.2f}, {:.2f}, {:.2f}, {:.2f}) "
                               "scale({:.2f}, {:.2f}, {:.2f})",
-                              p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), s.x(), s.y(), s.z());
+                              p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), r.w(), s.x(), s.y(),
+                              s.z());
     }
 };

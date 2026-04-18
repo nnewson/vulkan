@@ -6,9 +6,11 @@
 
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/math/vec3.hpp>
 
 using fire_engine::Mat4;
 using fire_engine::Quaternion;
+using fire_engine::Vec3;
 
 // ---- Helpers ----
 
@@ -237,4 +239,57 @@ TEST(QuaternionToMat4, NinetyDegreeYRotation)
     EXPECT_NEAR((m[1, 3]), 0.0f, kEps);
     EXPECT_NEAR((m[2, 3]), 0.0f, kEps);
     EXPECT_NEAR((m[3, 3]), 1.0f, kEps);
+}
+
+// ==========================================================================
+// toEulerXYZ — extrinsic XYZ Euler extraction
+// ==========================================================================
+
+TEST(QuaternionToEulerXYZ, IdentityReturnsZero)
+{
+    Vec3 e = Quaternion::identity().toEulerXYZ();
+    EXPECT_NEAR(e.x(), 0.0f, kEps);
+    EXPECT_NEAR(e.y(), 0.0f, kEps);
+    EXPECT_NEAR(e.z(), 0.0f, kEps);
+}
+
+TEST(QuaternionToEulerXYZ, PureXAxisRotation)
+{
+    float angle = fire_engine::pi / 3.0f;
+    Quaternion q = axisAngle(1.0f, 0.0f, 0.0f, angle);
+    Vec3 e = q.toEulerXYZ();
+    EXPECT_NEAR(e.x(), angle, kEps);
+    EXPECT_NEAR(e.y(), 0.0f, kEps);
+    EXPECT_NEAR(e.z(), 0.0f, kEps);
+}
+
+TEST(QuaternionToEulerXYZ, PureYAxisRotation)
+{
+    float angle = fire_engine::pi / 4.0f;
+    Quaternion q = axisAngle(0.0f, 1.0f, 0.0f, angle);
+    Vec3 e = q.toEulerXYZ();
+    EXPECT_NEAR(e.x(), 0.0f, kEps);
+    EXPECT_NEAR(e.y(), angle, kEps);
+    EXPECT_NEAR(e.z(), 0.0f, kEps);
+}
+
+TEST(QuaternionToEulerXYZ, PureZAxisRotation)
+{
+    float angle = fire_engine::pi / 6.0f;
+    Quaternion q = axisAngle(0.0f, 0.0f, 1.0f, angle);
+    Vec3 e = q.toEulerXYZ();
+    EXPECT_NEAR(e.x(), 0.0f, kEps);
+    EXPECT_NEAR(e.y(), 0.0f, kEps);
+    EXPECT_NEAR(e.z(), angle, kEps);
+}
+
+TEST(QuaternionToEulerXYZ, DecalBlendRotationExtractsXAxis)
+{
+    // AlphaBlendModeTest DecalBlend: qx=-0.47186, qy=0, qz=0, qw=0.88167
+    Quaternion q{-0.47185850f, 0.0f, 0.0f, 0.88167441f};
+    Vec3 e = q.toEulerXYZ();
+    // Should be a pure X rotation of ~-56.3 degrees.
+    EXPECT_NEAR(e.x(), -0.98279f, 1e-4f);
+    EXPECT_NEAR(e.y(), 0.0f, kEps);
+    EXPECT_NEAR(e.z(), 0.0f, kEps);
 }

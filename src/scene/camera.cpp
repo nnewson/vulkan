@@ -10,7 +10,7 @@ void Camera::update(const CameraState& input_state, const Transform& transform)
     localPitch_ = clampPitch(localPitch_ + input_state.deltaPitch());
 
     Vec3 tp = transform.position();
-    Vec3 tr = transform.rotation();
+    Vec3 tr = transform.rotation().toEulerXYZ();
 
     worldPosition_ = localPosition_ + tp;
     worldYaw_ = localYaw_ + tr.y();

@@ -10,7 +10,6 @@
 #include <fastgltf/core.hpp>
 
 #include <fire_engine/animation/animation.hpp>
-#include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
 {
@@ -46,9 +45,6 @@ private:
     static void presizeAssets(const fastgltf::Asset& asset, Assets& assets);
 
     // Node helpers
-    [[nodiscard]]
-    static Vec3 quaternionToEuler(float qx, float qy, float qz, float qw);
-
     static void applyTRS(const fastgltf::Node& gltfNode, Node& node);
 
     [[nodiscard]]

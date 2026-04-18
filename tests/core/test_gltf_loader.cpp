@@ -1,6 +1,7 @@
 #include <cmath>
 
 #include <fastgltf/math.hpp>
+#include <fastgltf/types.hpp>
 
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -10,28 +11,6 @@
 
 using fire_engine::Mat4;
 using fire_engine::Node;
-using fire_engine::Vec3;
-
-// ---------------------------------------------------------------------------
-// Reproduce the quaternionToEuler logic used in GltfLoader (private static)
-// so we can validate it independently.
-// ---------------------------------------------------------------------------
-static Vec3 quaternionToEuler(float qx, float qy, float qz, float qw)
-{
-    float sinr_cosp = 2.0f * (qw * qx + qy * qz);
-    float cosr_cosp = 1.0f - 2.0f * (qx * qx + qy * qy);
-    float roll = std::atan2(sinr_cosp, cosr_cosp);
-
-    float sinp = 2.0f * (qw * qy - qz * qx);
-    float pitch =
-        (std::abs(sinp) >= 1.0f) ? std::copysign(3.14159265f / 2.0f, sinp) : std::asin(sinp);
-
-    float siny_cosp = 2.0f * (qw * qz + qx * qy);
-    float cosy_cosp = 1.0f - 2.0f * (qy * qy + qz * qz);
-    float yaw = std::atan2(siny_cosp, cosy_cosp);
-
-    return {pitch, yaw, roll};
-}
 
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
 // mirroring the logic in GltfLoader::applyTRS for the matrix branch.
@@ -43,56 +22,8 @@ static void applyMatrix(const fastgltf::math::fmat4x4& mat, Node& node)
     fastgltf::math::decomposeTransformMatrix(mat, scale, rotation, translation);
 
     node.transform().position({translation.x(), translation.y(), translation.z()});
-    node.transform().rotation(
-        quaternionToEuler(rotation.x(), rotation.y(), rotation.z(), rotation.w()));
+    node.transform().rotation({rotation.x(), rotation.y(), rotation.z(), rotation.w()});
     node.transform().scale({scale.x(), scale.y(), scale.z()});
-}
-
-// ==========================================================================
-// quaternionToEuler
-// ==========================================================================
-
-TEST(QuaternionToEuler, IdentityQuaternionGivesZeroRotation)
-{
-    auto euler = quaternionToEuler(0, 0, 0, 1);
-    EXPECT_NEAR(euler.x(), 0.0f, 1e-5f);
-    EXPECT_NEAR(euler.y(), 0.0f, 1e-5f);
-    EXPECT_NEAR(euler.z(), 0.0f, 1e-5f);
-}
-
-TEST(QuaternionToEuler, Rotate90DegreesAroundY)
-{
-    // Y-axis rotation at 90° hits gimbal lock (pitch = ±90°).
-    // quaternionToEuler returns (pitch, yaw, roll) where pitch maps to the Y-axis
-    // singularity. At exactly 90° the pitch saturates and yaw absorbs the remainder.
-    float angle = fire_engine::pi / 2.0f;
-    float qy = std::sin(angle / 2.0f);
-    float qw = std::cos(angle / 2.0f);
-    auto euler = quaternionToEuler(0, qy, 0, qw);
-    // Pitch (euler.x) should be ~90° — this is the gimbal lock singularity
-    EXPECT_NEAR(euler.x(), angle, 1e-3f);
-}
-
-TEST(QuaternionToEuler, Rotate90DegreesAroundX)
-{
-    float angle = fire_engine::pi / 2.0f;
-    float qx = std::sin(angle / 2.0f);
-    float qw = std::cos(angle / 2.0f);
-    auto euler = quaternionToEuler(qx, 0, 0, qw);
-    EXPECT_NEAR(euler.x(), 0.0f, 1e-5f);
-    EXPECT_NEAR(euler.y(), 0.0f, 1e-5f);
-    EXPECT_NEAR(euler.z(), angle, 1e-5f);
-}
-
-TEST(QuaternionToEuler, Rotate90DegreesAroundZ)
-{
-    float angle = fire_engine::pi / 2.0f;
-    float qz = std::sin(angle / 2.0f);
-    float qw = std::cos(angle / 2.0f);
-    auto euler = quaternionToEuler(0, 0, qz, qw);
-    EXPECT_NEAR(euler.x(), 0.0f, 1e-5f);
-    EXPECT_NEAR(euler.y(), angle, 1e-5f);
-    EXPECT_NEAR(euler.z(), 0.0f, 1e-5f);
 }
 
 // ==========================================================================
@@ -195,7 +126,7 @@ TEST(MatrixDecomposition, ZUpRotationMatrix)
     EXPECT_NEAR(node.transform().scale().y(), 1.0f, 1e-4f);
     EXPECT_NEAR(node.transform().scale().z(), 1.0f, 1e-4f);
 
-    // Rotation should be non-zero (this is a 90° rotation around X)
+    // Rotation should be non-identity (this is a 90° rotation around X)
     auto rot = node.transform().rotation();
     EXPECT_TRUE(std::abs(rot.x()) > 0.01f || std::abs(rot.y()) > 0.01f ||
                 std::abs(rot.z()) > 0.01f);
@@ -263,4 +194,48 @@ TEST(MatrixDecomposition, UpdateProducesCorrectWorldTranslation)
     EXPECT_NEAR((node.transform().world()[0, 3]), 3.0f, 1e-5f);
     EXPECT_NEAR((node.transform().world()[1, 3]), 7.0f, 1e-5f);
     EXPECT_NEAR((node.transform().world()[2, 3]), 11.0f, 1e-5f);
+}
+
+// ==========================================================================
+// TRS rotation round-trip — the loader must store the glTF quaternion
+// verbatim on the Node's Transform, so the rendered rotation matches the
+// source asset without passing through an intermediate Euler representation.
+// ==========================================================================
+
+TEST(TRSRotation, DecalBlendQuaternionRoundTrip)
+{
+    // AlphaBlendModeTest DecalBlend/DecalOpaque: pure X-axis rotation of ~-56°.
+    // Applying the quaternion directly must land the rotation on the X axis,
+    // not permute it onto Z as the old Euler path did.
+    fastgltf::Node gltf;
+    fastgltf::TRS trsInit{};
+    trsInit.translation = fastgltf::math::fvec3{0.0f, 0.0f, 0.4090209901332855f};
+    trsInit.rotation = fastgltf::math::fquat{-0.47185850143432617f, 0.0f, 0.0f,
+                                              0.88167440891265869f};
+    trsInit.scale = fastgltf::math::fvec3{1.0f, 1.0f, 1.0f};
+    gltf.transform = trsInit;
+
+    Node node("DecalBlend");
+    // Mirror the TRS branch of GltfLoader::applyTRS inline so this test
+    // exercises the stored-quaternion contract without needing access to the
+    // private static.
+    auto* trs = std::get_if<fastgltf::TRS>(&gltf.transform);
+    ASSERT_NE(trs, nullptr);
+    node.transform().position(
+        {trs->translation.x(), trs->translation.y(), trs->translation.z()});
+    node.transform().rotation(
+        {trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()});
+    node.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
+
+    auto rot = node.transform().rotation();
+    EXPECT_FLOAT_EQ(rot.x(), -0.47185850143432617f);
+    EXPECT_FLOAT_EQ(rot.y(), 0.0f);
+    EXPECT_FLOAT_EQ(rot.z(), 0.0f);
+    EXPECT_FLOAT_EQ(rot.w(), 0.88167440891265869f);
+
+    // Extrinsic-XYZ Euler extraction must place the rotation on the X axis.
+    auto e = rot.toEulerXYZ();
+    EXPECT_NEAR(e.x(), -0.98279f, 1e-4f);
+    EXPECT_NEAR(e.y(), 0.0f, 1e-5f);
+    EXPECT_NEAR(e.z(), 0.0f, 1e-5f);
 }

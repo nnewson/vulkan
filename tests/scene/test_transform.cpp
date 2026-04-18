@@ -2,7 +2,10 @@
 
 #include <gtest/gtest.h>
 
+#include <fire_engine/math/quaternion.hpp>
+
 using fire_engine::Mat4;
+using fire_engine::Quaternion;
 using fire_engine::Transform;
 
 // ==========================================================================
@@ -23,6 +26,7 @@ TEST(TransformConstruction, DefaultRotation)
     EXPECT_FLOAT_EQ(t.rotation().x(), 0.0f);
     EXPECT_FLOAT_EQ(t.rotation().y(), 0.0f);
     EXPECT_FLOAT_EQ(t.rotation().z(), 0.0f);
+    EXPECT_FLOAT_EQ(t.rotation().w(), 1.0f);
 }
 
 TEST(TransformConstruction, DefaultScale)
@@ -61,10 +65,11 @@ TEST(TransformAccessors, SetPosition)
 TEST(TransformAccessors, SetRotation)
 {
     Transform t;
-    t.rotation({0.1f, 0.2f, 0.3f});
+    t.rotation(Quaternion{0.1f, 0.2f, 0.3f, 0.4f});
     EXPECT_FLOAT_EQ(t.rotation().x(), 0.1f);
     EXPECT_FLOAT_EQ(t.rotation().y(), 0.2f);
     EXPECT_FLOAT_EQ(t.rotation().z(), 0.3f);
+    EXPECT_FLOAT_EQ(t.rotation().w(), 0.4f);
 }
 
 TEST(TransformAccessors, SetScale)
