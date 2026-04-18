@@ -3,7 +3,7 @@
 namespace fire_engine
 {
 
-void Empty::update(const CameraState& /*input_state*/, const Transform& /*transform*/)
+void Empty::update(const InputState& /*input_state*/, const Transform& /*transform*/)
 {
 }
 

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <fire_engine/input/camera_state.hpp>
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/platform/keyboard.hpp>
 #include <fire_engine/platform/mouse.hpp>
 #include <fire_engine/platform/window.hpp>
@@ -19,7 +19,7 @@ public:
     Input(Input&&) noexcept = default;
     Input& operator=(Input&&) noexcept = default;
 
-    [[nodiscard]] CameraState update(const Window& window, float deltaTime);
+    [[nodiscard]] InputState update(const Window& window, float deltaTime);
 
     void enable(const Window& window);
 
@@ -29,6 +29,8 @@ private:
 
     static constexpr float speed_{10.0f};
     static constexpr float sensitivity_{0.003f};
+    static constexpr float panSensitivity_{0.01f};
+    static constexpr float zoomSpeed_{1.0f};
 };
 
 } // namespace fire_engine

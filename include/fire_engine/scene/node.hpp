@@ -5,7 +5,7 @@
 #include <string>
 #include <vector>
 
-#include <fire_engine/input/camera_state.hpp>
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
@@ -70,7 +70,7 @@ public:
 
     Node& addChild(std::unique_ptr<Node> child);
 
-    void update(const CameraState& input_state, const Mat4& parentComposedWorld);
+    void update(const InputState& input_state, const Mat4& parentComposedWorld);
     void render(const RenderContext& ctx, const Mat4& parentWorld);
 
 private:

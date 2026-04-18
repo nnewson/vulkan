@@ -37,6 +37,9 @@ struct MaterialUBO
     float anisotropyRotation;
     float alphaCutoff;
     int hasTexture{0};
+    int hasEmissiveTexture{0};
+    int hasNormalTexture{0};
+    int hasMetallicRoughnessTexture{0};
 };
 
 struct SkinUBO

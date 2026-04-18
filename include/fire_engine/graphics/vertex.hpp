@@ -38,6 +38,19 @@ public:
     {
     }
 
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, float texU, float texV, uint32_t j0,
+           uint32_t j1, uint32_t j2, uint32_t j3, float w0, float w1, float w2, float w3,
+           float tx, float ty, float tz, float tw) noexcept
+        : position_(position),
+          colour_(colour),
+          normal_(normal),
+          texCoord_{texU, texV},
+          joints_{j0, j1, j2, j3},
+          weights_{w0, w1, w2, w3},
+          tangent_{tx, ty, tz, tw}
+    {
+    }
+
     [[nodiscard]] Vec3 position() const noexcept
     {
         return position_;
@@ -107,6 +120,18 @@ public:
         weights_[3] = w3;
     }
 
+    [[nodiscard]] const float* tangent() const noexcept
+    {
+        return tangent_;
+    }
+    void tangent(float x, float y, float z, float w) noexcept
+    {
+        tangent_[0] = x;
+        tangent_[1] = y;
+        tangent_[2] = z;
+        tangent_[3] = w;
+    }
+
     [[nodiscard]]
     bool operator==(const Vertex& other) const noexcept
     {
@@ -124,6 +149,7 @@ private:
     float texCoord_[2]{0.0f, 0.0f};
     uint32_t joints_[4]{0, 0, 0, 0};
     float weights_[4]{0.0f, 0.0f, 0.0f, 0.0f};
+    float tangent_[4]{0.0f, 0.0f, 0.0f, 0.0f};
 };
 
 } // namespace fire_engine

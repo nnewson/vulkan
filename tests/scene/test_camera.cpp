@@ -2,6 +2,9 @@
 
 #include <cmath>
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/scene/transform.hpp>
+
 #include <gtest/gtest.h>
 
 using fire_engine::Camera;
@@ -225,4 +228,180 @@ TEST(CameraMove, MoveAssignTransfersState)
     Camera b;
     b = std::move(a);
     EXPECT_FLOAT_EQ(b.localPitch(), 0.8f);
+}
+
+// ==========================================================================
+// Camera-relative WASD movement
+// ==========================================================================
+
+using fire_engine::CameraState;
+using fire_engine::InputState;
+using fire_engine::Transform;
+
+TEST(CameraMovement, ForwardMovesAlongYawDirection)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({0.0f, 0.0f, 1.0f}); // forward
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    // yaw=0 → forward_xz = (cos(0), 0, sin(0)) = (1, 0, 0)
+    EXPECT_NEAR(cam.localPosition().x(), 1.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 0.0f, 1e-5f);
+}
+
+TEST(CameraMovement, StrafeMovesPerpendicularToYaw)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({1.0f, 0.0f, 0.0f}); // strafe right
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    // yaw=0 → right = (sin(0), 0, -cos(0)) = (0, 0, -1)
+    EXPECT_NEAR(cam.localPosition().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), -1.0f, 1e-5f);
+}
+
+TEST(CameraMovement, ForwardAtYaw90MovesAlongPositiveZ)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(static_cast<float>(M_PI) / 2.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({0.0f, 0.0f, 1.0f}); // forward
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    // yaw=pi/2 → forward_xz = (cos(pi/2), 0, sin(pi/2)) = (0, 0, 1)
+    EXPECT_NEAR(cam.localPosition().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 1.0f, 1e-5f);
+}
+
+// ==========================================================================
+// Zoom
+// ==========================================================================
+
+TEST(CameraZoom, ZoomMovesAlongViewDirection)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaZoom(2.0f);
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    // yaw=0, pitch=0 → forward_3d = (1, 0, 0)
+    EXPECT_NEAR(cam.localPosition().x(), 2.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 0.0f, 1e-5f);
+}
+
+TEST(CameraZoom, ZoomWithPitchMovesVertically)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(static_cast<float>(M_PI) / 4.0f); // 45 degrees up
+
+    InputState state;
+    CameraState cs;
+    cs.deltaZoom(1.0f);
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    // forward_3d = (cos(pi/4)*cos(0), sin(pi/4), cos(pi/4)*sin(0))
+    float c = std::cos(static_cast<float>(M_PI) / 4.0f);
+    float s = std::sin(static_cast<float>(M_PI) / 4.0f);
+    EXPECT_NEAR(cam.localPosition().x(), c, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), s, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 0.0f, 1e-5f);
+}
+
+TEST(CameraZoom, NegativeZoomMovesBackward)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaZoom(-1.0f);
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_NEAR(cam.localPosition().x(), -1.0f, 1e-5f);
+}
+
+// ==========================================================================
+// Rotation via update
+// ==========================================================================
+
+TEST(CameraRotation, DeltaYawAppliedViaUpdate)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaYaw(0.5f);
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_FLOAT_EQ(cam.localYaw(), 0.5f);
+}
+
+TEST(CameraRotation, DeltaPitchAppliedViaUpdate)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPitch(0.3f);
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_FLOAT_EQ(cam.localPitch(), 0.3f);
 }

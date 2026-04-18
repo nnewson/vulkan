@@ -143,6 +143,42 @@ void Object::load(Resources& resources)
             geoInfo.texture = resources.createTexture(white, 1, 1);
         }
 
+        // Emissive texture — use a 1x1 black dummy when material has no emissive texture
+        if (binding.geometry->material().hasEmissiveTexture())
+        {
+            geoInfo.emissiveTexture =
+                binding.geometry->material().emissiveTexture().handle();
+        }
+        else
+        {
+            static const uint8_t black[] = {0, 0, 0, 255};
+            geoInfo.emissiveTexture = resources.createTexture(black, 1, 1);
+        }
+
+        // Normal texture — use a 1x1 flat-normal dummy (128,128,255 = z-up in tangent space)
+        if (binding.geometry->material().hasNormalTexture())
+        {
+            geoInfo.normalTexture =
+                binding.geometry->material().normalTexture().handle();
+        }
+        else
+        {
+            static const uint8_t flatNormal[] = {128, 128, 255, 255};
+            geoInfo.normalTexture = resources.createTexture(flatNormal, 1, 1);
+        }
+
+        // MetallicRoughness texture — use a 1x1 white dummy (1.0 metallic, 1.0 roughness)
+        if (binding.geometry->material().hasMetallicRoughnessTexture())
+        {
+            geoInfo.metallicRoughnessTexture =
+                binding.geometry->material().metallicRoughnessTexture().handle();
+        }
+        else
+        {
+            static const uint8_t white[] = {255, 255, 255, 255};
+            geoInfo.metallicRoughnessTexture = resources.createTexture(white, 1, 1);
+        }
+
         req.geometries.push_back(geoInfo);
     }
 
@@ -181,6 +217,9 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.anisotropyRotation = mat.anisotropyRotation();
     ubo.alphaCutoff = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
     ubo.hasTexture = mat.hasTexture() ? 1 : 0;
+    ubo.hasEmissiveTexture = mat.hasEmissiveTexture() ? 1 : 0;
+    ubo.hasNormalTexture = mat.hasNormalTexture() ? 1 : 0;
+    ubo.hasMetallicRoughnessTexture = mat.hasMetallicRoughnessTexture() ? 1 : 0;
     return ubo;
 }
 

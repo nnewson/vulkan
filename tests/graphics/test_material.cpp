@@ -239,22 +239,85 @@ TEST(Material, TexturePointerNullAfterDefault)
 }
 
 // ---------------------------------------------------------------------------
+// Emissive texture pointer
+// ---------------------------------------------------------------------------
+
+TEST(Material, DefaultConstructionHasNoEmissiveTexture)
+{
+    Material mat;
+    EXPECT_FALSE(mat.hasEmissiveTexture());
+}
+
+TEST(Material, EmissiveTexturePointerAssignment)
+{
+    Material mat;
+    Texture tex;
+    mat.emissiveTexture(&tex);
+    EXPECT_TRUE(mat.hasEmissiveTexture());
+}
+
+// ---------------------------------------------------------------------------
+// Normal texture pointer
+// ---------------------------------------------------------------------------
+
+TEST(Material, DefaultConstructionHasNoNormalTexture)
+{
+    Material mat;
+    EXPECT_FALSE(mat.hasNormalTexture());
+}
+
+TEST(Material, NormalTexturePointerAssignment)
+{
+    Material mat;
+    Texture tex;
+    mat.normalTexture(&tex);
+    EXPECT_TRUE(mat.hasNormalTexture());
+}
+
+// ---------------------------------------------------------------------------
+// MetallicRoughness texture pointer
+// ---------------------------------------------------------------------------
+
+TEST(Material, DefaultConstructionHasNoMetallicRoughnessTexture)
+{
+    Material mat;
+    EXPECT_FALSE(mat.hasMetallicRoughnessTexture());
+}
+
+TEST(Material, MetallicRoughnessTexturePointerAssignment)
+{
+    Material mat;
+    Texture tex;
+    mat.metallicRoughnessTexture(&tex);
+    EXPECT_TRUE(mat.hasMetallicRoughnessTexture());
+}
+
+// ---------------------------------------------------------------------------
 // Copy semantics
 // ---------------------------------------------------------------------------
 
 TEST(Material, CopyConstructionCopiesAllProperties)
 {
+    Texture baseTex, emissiveTex, normalTex, mrTex;
     Material original;
     original.name("copper");
     original.diffuse({0.7f, 0.3f, 0.1f});
     original.roughness(0.4f);
     original.metallic(1.0f);
+    original.texture(&baseTex);
+    original.emissiveTexture(&emissiveTex);
+    original.normalTexture(&normalTex);
+    original.metallicRoughnessTexture(&mrTex);
 
     Material copy(original);
     EXPECT_EQ(copy.name(), "copper");
     EXPECT_FLOAT_EQ(copy.diffuse().r(), 0.7f);
     EXPECT_FLOAT_EQ(copy.roughness(), 0.4f);
     EXPECT_FLOAT_EQ(copy.metallic(), 1.0f);
+    EXPECT_TRUE(copy.hasTexture());
+    EXPECT_TRUE(copy.hasEmissiveTexture());
+    EXPECT_TRUE(copy.hasNormalTexture());
+    EXPECT_TRUE(copy.hasMetallicRoughnessTexture());
 }
 
 TEST(Material, CopyAssignmentCopiesAllProperties)

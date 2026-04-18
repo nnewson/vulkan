@@ -1,5 +1,8 @@
 #pragma once
 
+#include <cstddef>
+#include <vector>
+
 #include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
@@ -18,7 +21,7 @@ public:
     Animator(Animator&&) noexcept = default;
     Animator& operator=(Animator&&) noexcept = default;
 
-    void update(const CameraState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
@@ -29,23 +32,41 @@ public:
         return modelMatrix_;
     }
 
-    void animation(Animation* anim) noexcept
+    void addAnimation(Animation* anim);
+
+    void activeAnimation(std::size_t index) noexcept;
+
+    [[nodiscard]] std::size_t activeAnimation() const noexcept
     {
-        animation_ = anim;
+        return activeIndex_;
+    }
+
+    [[nodiscard]] std::size_t animationCount() const noexcept
+    {
+        return animations_.size();
     }
 
     [[nodiscard]] Animation* animation() noexcept
     {
-        return animation_;
+        if (animations_.empty())
+        {
+            return nullptr;
+        }
+        return animations_[activeIndex_];
     }
 
     [[nodiscard]] const Animation* animation() const noexcept
     {
-        return animation_;
+        if (animations_.empty())
+        {
+            return nullptr;
+        }
+        return animations_[activeIndex_];
     }
 
 private:
-    Animation* animation_{nullptr};
+    std::vector<Animation*> animations_;
+    std::size_t activeIndex_{0};
     Mat4 modelMatrix_{Mat4::identity()};
     double startTime_{0.0};
     bool initialized_{false};

@@ -41,6 +41,45 @@ public:
         return texture_ != nullptr;
     }
 
+    [[nodiscard]] const Texture& emissiveTexture() const noexcept
+    {
+        return *emissiveTexture_;
+    }
+    void emissiveTexture(const Texture* t) noexcept
+    {
+        emissiveTexture_ = t;
+    }
+    [[nodiscard]] bool hasEmissiveTexture() const noexcept
+    {
+        return emissiveTexture_ != nullptr;
+    }
+
+    [[nodiscard]] const Texture& normalTexture() const noexcept
+    {
+        return *normalTexture_;
+    }
+    void normalTexture(const Texture* t) noexcept
+    {
+        normalTexture_ = t;
+    }
+    [[nodiscard]] bool hasNormalTexture() const noexcept
+    {
+        return normalTexture_ != nullptr;
+    }
+
+    [[nodiscard]] const Texture& metallicRoughnessTexture() const noexcept
+    {
+        return *metallicRoughnessTexture_;
+    }
+    void metallicRoughnessTexture(const Texture* t) noexcept
+    {
+        metallicRoughnessTexture_ = t;
+    }
+    [[nodiscard]] bool hasMetallicRoughnessTexture() const noexcept
+    {
+        return metallicRoughnessTexture_ != nullptr;
+    }
+
     [[nodiscard]] const std::string& name() const noexcept
     {
         return name_;
@@ -244,6 +283,9 @@ private:
     bool doubleSided_{false};
 
     const Texture* texture_{nullptr};
+    const Texture* emissiveTexture_{nullptr};
+    const Texture* normalTexture_{nullptr};
+    const Texture* metallicRoughnessTexture_{nullptr};
 };
 
 } // namespace fire_engine

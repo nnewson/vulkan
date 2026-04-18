@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 #include <fire_engine/math/mat4.hpp>
@@ -57,6 +58,15 @@ public:
     Animation& operator=(const Animation&) = default;
     Animation(Animation&&) noexcept = default;
     Animation& operator=(Animation&&) noexcept = default;
+
+    [[nodiscard]] const std::string& name() const noexcept
+    {
+        return name_;
+    }
+    void name(std::string n) noexcept
+    {
+        name_ = std::move(n);
+    }
 
     // Keyframe setters — interpolation mode stays whatever it was (default Linear).
     void rotationKeyframes(std::vector<RotationKeyframe> kf) noexcept
@@ -198,6 +208,7 @@ public:
     [[nodiscard]] std::vector<float> sampleWeights(float t, std::size_t numTargets) const;
 
 private:
+    std::string name_;
     std::vector<RotationKeyframe> rotationKeyframes_;
     std::vector<TranslationKeyframe> translationKeyframes_;
     std::vector<ScaleKeyframe> scaleKeyframes_;

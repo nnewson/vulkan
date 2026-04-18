@@ -62,6 +62,9 @@ public:
         BufferHandle morphSsbo{NullBuffer};
         std::size_t morphSsboSize{0};
         TextureHandle texture{NullTexture};
+        TextureHandle emissiveTexture{NullTexture};
+        TextureHandle normalTexture{NullTexture};
+        TextureHandle metallicRoughnessTexture{NullTexture};
     };
 
     struct ObjectDescriptorRequest

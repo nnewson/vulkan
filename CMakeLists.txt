@@ -121,6 +121,8 @@ add_executable(test_fire_engine
     tests/core/test_system.cpp
     tests/core/test_gltf_loader.cpp
     tests/input/test_camera_state.cpp
+    tests/input/test_animation_state.cpp
+    tests/input/test_input_state.cpp
     tests/scene/test_animator.cpp
     tests/scene/test_camera.cpp
     tests/scene/test_node.cpp

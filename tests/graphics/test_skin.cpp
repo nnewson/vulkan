@@ -1,10 +1,10 @@
 #include <fire_engine/graphics/skin.hpp>
-#include <fire_engine/input/camera_state.hpp>
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/scene/node.hpp>
 
 #include <gtest/gtest.h>
 
-using fire_engine::CameraState;
+using fire_engine::InputState;
 using fire_engine::Mat4;
 using fire_engine::Node;
 using fire_engine::Skin;
@@ -77,7 +77,7 @@ TEST(SkinComputeJointMatrices, IdentityInverseBind)
 {
     Skin skin;
     Node node("joint0");
-    CameraState cs;
+    InputState cs;
     node.update(cs, Mat4::identity());
 
     skin.addJoint(&node, Mat4::identity());
@@ -102,7 +102,7 @@ TEST(SkinComputeJointMatrices, WithTranslation)
     Node node("joint0");
     node.transform().position({5.0f, 0.0f, 0.0f});
 
-    CameraState cs;
+    InputState cs;
     node.update(cs, Mat4::identity());
 
     skin.addJoint(&node, Mat4::identity());

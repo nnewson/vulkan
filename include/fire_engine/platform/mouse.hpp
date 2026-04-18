@@ -37,33 +37,21 @@ public:
 
         lastX_ = currentX;
         lastY_ = currentY;
+
+        leftButton_ = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_LEFT) == GLFW_PRESS;
+        rightButton_ = glfwGetMouseButton(w, GLFW_MOUSE_BUTTON_RIGHT) == GLFW_PRESS;
     }
 
-    void capture(const Window& window)
+    void registerScrollCallback(const Window& window)
     {
-        if (captured_)
-        {
-            return;
-        }
-        if (glfwGetMouseButton(window.getWindow(), GLFW_MOUSE_BUTTON_LEFT) != GLFW_PRESS)
-        {
-            return;
-        }
-
-        enable(window);
+        glfwSetScrollCallback(window.getWindow(), scrollCallback);
     }
 
-    void release(const Window& window)
+    [[nodiscard]] double consumeScrollDelta() noexcept
     {
-        glfwSetInputMode(window.getWindow(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-        captured_ = false;
-    }
-
-    void enable(const Window& window)
-    {
-        glfwSetInputMode(window.getWindow(), GLFW_CURSOR, GLFW_CURSOR_DISABLED);
-        captured_ = true;
-        firstMouse_ = true;
+        double delta = scrollAccumulator_;
+        scrollAccumulator_ = 0.0;
+        return delta;
     }
 
     [[nodiscard]] double x() const noexcept
@@ -82,18 +70,30 @@ public:
     {
         return deltaY_;
     }
-    [[nodiscard]] bool captured() const noexcept
+    [[nodiscard]] bool leftButton() const noexcept
     {
-        return captured_;
+        return leftButton_;
+    }
+    [[nodiscard]] bool rightButton() const noexcept
+    {
+        return rightButton_;
     }
 
 private:
+    static void scrollCallback(GLFWwindow* /*window*/, double /*xoffset*/, double yoffset)
+    {
+        scrollAccumulator_ += yoffset;
+    }
+
+    static inline double scrollAccumulator_{0.0};
+
     double lastX_{0.0};
     double lastY_{0.0};
     double deltaX_{0.0};
     double deltaY_{0.0};
     bool firstMouse_{true};
-    bool captured_{true};
+    bool leftButton_{false};
+    bool rightButton_{false};
 };
 
 } // namespace fire_engine

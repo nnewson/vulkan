@@ -27,8 +27,9 @@ public:
         s_ = glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS;
         a_ = glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS;
         d_ = glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS;
-        q_ = glfwGetKey(w, GLFW_KEY_Q) == GLFW_PRESS;
-        e_ = glfwGetKey(w, GLFW_KEY_E) == GLFW_PRESS;
+        one_ = glfwGetKey(w, GLFW_KEY_1) == GLFW_PRESS;
+        two_ = glfwGetKey(w, GLFW_KEY_2) == GLFW_PRESS;
+        three_ = glfwGetKey(w, GLFW_KEY_3) == GLFW_PRESS;
     }
 
     [[nodiscard]] bool escape() const noexcept
@@ -51,13 +52,17 @@ public:
     {
         return d_;
     }
-    [[nodiscard]] bool q() const noexcept
+    [[nodiscard]] bool one() const noexcept
     {
-        return q_;
+        return one_;
     }
-    [[nodiscard]] bool e() const noexcept
+    [[nodiscard]] bool two() const noexcept
     {
-        return e_;
+        return two_;
+    }
+    [[nodiscard]] bool three() const noexcept
+    {
+        return three_;
     }
 
 private:
@@ -66,8 +71,9 @@ private:
     bool s_{false};
     bool a_{false};
     bool d_{false};
-    bool q_{false};
-    bool e_{false};
+    bool one_{false};
+    bool two_{false};
+    bool three_{false};
 };
 
 } // namespace fire_engine

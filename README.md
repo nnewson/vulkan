@@ -9,13 +9,14 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 
 ## Features
 
-- **glTF 2.0 model loading** via [fastgltf](https://github.com/spnda/fastgltf) — geometry, PBR materials, textures, skeletal skins, and morph targets
+- **glTF 2.0 model loading** via [fastgltf](https://github.com/spnda/fastgltf) — geometry, PBR materials, textures, skeletal skins, morph targets, and alpha-mode state (OPAQUE / MASK / BLEND, `alphaCutoff`, `doubleSided`)
 - **Keyframe animation** — LINEAR interpolation with SLERP for quaternion rotation, plus translation, scale, and morph weight channels with looping playback
 - **Skeletal skinning** — GPU joint matrix blending with up to 64 joints per skin
 - **Morph target animation** — vertex position/normal deltas blended via weights in the vertex shader
-- **Scenegraph architecture** — tree of Nodes with Component variants (Camera, Animator, Mesh, Empty) that propagate transforms, input, and draw commands
-- **Backend-decoupled graphics layer** — graphics classes use opaque handles (`BufferHandle`, `TextureHandle`, `DescriptorSetHandle`) and emit `DrawCommand` structs with no Vulkan dependencies. All Vulkan code is confined to `render/`
-- **Vulkan rendering** via vulkan.hpp C++ bindings with a 6-binding descriptor set layout (model/view/proj UBO, material UBO, texture sampler, skin UBO, morph UBO, morph targets SSBO)
+- **Alpha blending and masking** — three forward pipeline variants (opaque, double-sided opaque, blend) dispatched per draw from the material's `AlphaMode`/`doubleSided` flags. MASK handled via a fragment-shader discard test; BLEND uses straight-alpha blending with depth-write disabled and back-to-front sort of translucent draws
+- **Scenegraph architecture** — tree of Nodes with Component variants (Camera, Animator, Mesh, Empty) that propagate transforms, input, and draw commands. Node transforms store rotation as a quaternion so orientations from glTF round-trip exactly
+- **Backend-decoupled graphics layer** — graphics classes use opaque handles (`BufferHandle`, `TextureHandle`, `DescriptorSetHandle`, `PipelineHandle`) and emit `DrawCommand` structs with no Vulkan dependencies. All Vulkan code is confined to `render/`
+- **Vulkan rendering** via vulkan.hpp C++ bindings with a 6-binding descriptor set layout (model/view/proj UBO, material UBO, texture sampler, skin UBO, morph UBO, morph targets SSBO) plus a separate 1-binding skybox pipeline
 - **Texture mapping** via [stb_image](https://github.com/nothings/stb), uploaded to GPU through staging buffers
 - **First-person camera** with keyboard (WASD/QE) and mouse controls
 - **GLSL shaders** compiled to SPIR-V at build time via `glslc`
@@ -24,7 +25,7 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 
 ### Scenegraph
 
-The engine uses a scenegraph where each `Node` holds a `Transform` (position, rotation, scale) and an optional `Component`. Components are stored as a `std::variant<Empty, Animator, Camera, Mesh>`. Each component implements `update()` and `render()`:
+The engine uses a scenegraph where each `Node` holds a `Transform` (position, unit-quaternion rotation, scale) and an optional `Component`. Components are stored as a `std::variant<Empty, Animator, Camera, Mesh>`. Each component implements `update()` and `render()`:
 
 - **Camera** processes input deltas to update position/yaw/pitch. FireEngine owns the active Camera directly and passes its position/target to the renderer each frame.
 - **Animator** owns a `LinearAnimation` (rotation, translation, scale, and morph weight keyframes). Each frame it samples the animation at the current elapsed time, producing a TRS matrix that is applied to all child nodes.
@@ -35,10 +36,10 @@ The engine uses a scenegraph where each `Node` holds a `Transform` (position, ro
 
 The `graphics/` layer is fully decoupled from Vulkan:
 
-- **Opaque handles** — `BufferHandle`, `TextureHandle`, `DescriptorSetHandle` are scoped enums backed by `uint32_t`. Graphics classes store these instead of Vulkan objects.
-- **Resources** (in `render/`) — owns all Vulkan GPU resources and hands out opaque handles. Graphics classes call `Resources` methods during `load()` to create buffers, textures, and descriptor sets.
-- **DrawCommand** — a backend-agnostic struct containing handle references and an index count. `Object::render()` returns a vector of these; the Renderer resolves handles to Vulkan objects and records the actual draw calls.
-- **FrameInfo** — plain data struct carrying frame index, viewport dimensions, and camera vectors. Passed to graphics classes instead of the Vulkan-aware RenderContext.
+- **Opaque handles** — `BufferHandle`, `TextureHandle`, `DescriptorSetHandle`, and `PipelineHandle` are scoped enums backed by `uint32_t`. Graphics classes store these instead of Vulkan objects.
+- **Resources** (in `render/`) — owns all Vulkan GPU resources (buffers, textures, descriptor pools/sets) and a registry of pipelines. Graphics classes call `Resources` methods during `load()` to create buffers, textures, and descriptor sets, and receive handles back.
+- **DrawCommand** — a backend-agnostic struct containing handle references (including the `PipelineHandle` to bind), an index count, and a `sortDepth` used for back-to-front ordering of translucent draws. `Object::render()` returns a vector of these; the Renderer resolves handles to Vulkan objects and records the actual draw calls.
+- **FrameInfo** — plain data struct carrying frame index, viewport dimensions, camera vectors, and the `AlphaPipelines` bundle so graphics code can pick the right pipeline per material without touching Vulkan types.
 
 ### Loading
 
@@ -56,21 +57,27 @@ Animation keyframes (input times and output quaternions/vectors/weights) are rea
 1. `FireEngine::mainLoop()` polls GLFW input and calls `scene_.update(input_state)`
 2. `SceneGraph::update()` propagates transforms and input down the node tree; each Node caches its `composedWorld` matrix for skin joint lookups
 3. `Renderer::drawFrame()` acquires a swapchain image, begins the render pass, and calls `scene.render(ctx)`
-4. During render traversal, Animator nodes apply their sampled TRS matrix to children's world transforms; Mesh nodes call `Object::render()` which writes UBOs and returns DrawCommands
-5. The Renderer iterates collected DrawCommands, resolves opaque handles to Vulkan objects via Resources, and records bind/draw commands
+4. During render traversal, Animator nodes apply their sampled TRS matrix to children's world transforms; Mesh nodes call `Object::render()` which writes UBOs, selects a pipeline from the material's alpha state, and returns DrawCommands stamped with that pipeline handle and a world-space sort depth
+5. The Renderer splits DrawCommands into opaque and blend buckets, sorts the blend bucket back-to-front, and replays both through the same bind/draw loop, resolving opaque handles to Vulkan objects via Resources
 6. The renderer ends the render pass, submits the command buffer, and presents
 
 ### Rendering Pipeline
 
 - Descriptor set layout with 6 bindings:
   - Binding 0: model/view/projection + camera position UBO
-  - Binding 1: material UBO (PBR properties)
+  - Binding 1: material UBO (PBR properties + `alphaCutoff`)
   - Binding 2: texture sampler
   - Binding 3: skin UBO (joint matrices, `mat4[64]`)
   - Binding 4: morph UBO (morph metadata + weights)
   - Binding 5: morph targets SSBO (position/normal deltas)
-- Resources class owns all GPU resources and exposes opaque handles
+- Three forward pipeline variants share the shader + binding layout but differ in cull mode, blend, and depth-write state:
+  - **opaque** (cull back, no blend, depth write) — OPAQUE and MASK materials with `doubleSided=false`
+  - **opaque-double-sided** (cull none, no blend, depth write) — OPAQUE and MASK with `doubleSided=true`
+  - **blend** (cull none, `SRC_ALPHA / ONE_MINUS_SRC_ALPHA` blend, no depth write) — BLEND materials
+- MASK is implemented via a fragment-shader `discard` when `alpha < alphaCutoff`; OPAQUE/BLEND write `alphaCutoff = 0.0` so the discard is inert
+- Resources class owns all GPU resources and exposes opaque handles (including a pipeline registry)
 - Each Object creates its own descriptor pool and sets via Resources
+- A procedural skybox pipeline (1-binding layout, LEQUAL depth compare, no depth write) renders first to fill background pixels
 - Depth buffering and swapchain recreation on window resize
 
 ### Vertex Shader Pipeline

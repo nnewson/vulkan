@@ -11,11 +11,35 @@ Mesh::Mesh(Object object)
 {
 }
 
-void Mesh::update(const CameraState& input_state, const Transform& /*transform*/)
+void Mesh::addMorphAnimation(Animation* anim)
+{
+    morphAnimations_.push_back(anim);
+}
+
+void Mesh::activeMorphAnimation(std::size_t index) noexcept
+{
+    if (index < morphAnimations_.size())
+    {
+        activeMorphIndex_ = index;
+        morphInitialized_ = false;
+    }
+}
+
+void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
 {
     object_.updateSkin();
 
-    if (morphAnimation_ != nullptr)
+    const auto& animState = input_state.animationState();
+    if (animState.hasActiveAnimation())
+    {
+        auto index = *animState.activeAnimation();
+        if (index < morphAnimations_.size() && index != activeMorphIndex_)
+        {
+            activeMorphAnimation(index);
+        }
+    }
+
+    if (!morphAnimations_.empty())
     {
         if (!morphInitialized_)
         {
@@ -24,7 +48,8 @@ void Mesh::update(const CameraState& input_state, const Transform& /*transform*/
         }
 
         float t = static_cast<float>(input_state.time() - startTime_);
-        morphWeights_ = morphAnimation_->sampleWeights(t, morphWeights_.size());
+        morphWeights_ =
+            morphAnimations_[activeMorphIndex_]->sampleWeights(t, morphWeights_.size());
     }
 
     if (!morphWeights_.empty())

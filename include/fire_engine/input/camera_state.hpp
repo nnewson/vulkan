@@ -52,11 +52,21 @@ public:
         time_ = t;
     }
 
+    [[nodiscard]] float deltaZoom() const noexcept
+    {
+        return deltaZoom_;
+    }
+    void deltaZoom(float dz) noexcept
+    {
+        deltaZoom_ = dz;
+    }
+
 private:
     Vec3 deltaPosition_{};
     float deltaPitch_{0.0f};
     float deltaYaw_{0.0f};
     double time_{0.0};
+    float deltaZoom_{0.0f};
 };
 
 } // namespace fire_engine

@@ -34,6 +34,12 @@ TEST(CameraStateConstruction, DefaultTimeIsZero)
     EXPECT_DOUBLE_EQ(s.time(), 0.0);
 }
 
+TEST(CameraStateConstruction, DefaultDeltaZoomIsZero)
+{
+    CameraState s;
+    EXPECT_FLOAT_EQ(s.deltaZoom(), 0.0f);
+}
+
 // ==========================================================================
 // Accessors
 // ==========================================================================
@@ -74,6 +80,13 @@ TEST(CameraStateAccessors, OverwritePreviousValues)
     s.deltaYaw(1.0f);
     s.deltaYaw(2.0f);
     EXPECT_FLOAT_EQ(s.deltaYaw(), 2.0f);
+}
+
+TEST(CameraStateAccessors, SetDeltaZoom)
+{
+    CameraState s;
+    s.deltaZoom(2.5f);
+    EXPECT_FLOAT_EQ(s.deltaZoom(), 2.5f);
 }
 
 // ==========================================================================
@@ -133,4 +146,6 @@ TEST(CameraStateNoexcept, AllOperationsAreNoexcept)
     static_assert(noexcept(s.deltaPitch(0.0f)));
     static_assert(noexcept(s.time()));
     static_assert(noexcept(s.time(0.0)));
+    static_assert(noexcept(s.deltaZoom()));
+    static_assert(noexcept(s.deltaZoom(0.0f)));
 }

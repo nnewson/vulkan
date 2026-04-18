@@ -3,11 +3,29 @@
 namespace fire_engine
 {
 
-void Camera::update(const CameraState& input_state, const Transform& transform)
+void Camera::update(const InputState& input_state, const Transform& transform)
 {
-    localPosition_ += input_state.deltaPosition();
-    localYaw_ += input_state.deltaYaw();
-    localPitch_ = clampPitch(localPitch_ + input_state.deltaPitch());
+    const auto& cs = input_state.cameraState();
+
+    // Apply rotation first (from right-mouse drag)
+    localYaw_ += cs.deltaYaw();
+    localPitch_ = clampPitch(localPitch_ + cs.deltaPitch());
+
+    // Compute camera basis vectors from yaw
+    float cosYaw = std::cos(localYaw_);
+    float sinYaw = std::sin(localYaw_);
+    Vec3 forwardXZ{cosYaw, 0.0f, sinYaw};
+    Vec3 right{sinYaw, 0.0f, -cosYaw};
+
+    // WASD and left-mouse drag movement (camera-relative XZ plane)
+    const Vec3& delta = cs.deltaPosition();
+    localPosition_ = localPosition_ + forwardXZ * delta.z() + right * delta.x();
+
+    // Scroll wheel zoom (along full 3D view direction)
+    float cosPitch = std::cos(localPitch_);
+    float sinPitch = std::sin(localPitch_);
+    Vec3 forward3D{cosPitch * cosYaw, sinPitch, cosPitch * sinYaw};
+    localPosition_ = localPosition_ + forward3D * cs.deltaZoom();
 
     Vec3 tp = transform.position();
     Vec3 tr = transform.rotation().toEulerXYZ();

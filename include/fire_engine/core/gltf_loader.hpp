@@ -34,8 +34,15 @@ public:
     static void loadScene(const std::string& path, SceneGraph& scene,
                           Resources& resources, Assets& assets);
 
+    struct TexturePaths
+    {
+        std::string baseColor;
+        std::string emissive;
+        std::string normal;
+        std::string metallicRoughness;
+    };
+
     using NodeMap = std::unordered_map<std::size_t, Node*>;
-    using AnimationMap = std::unordered_map<std::size_t, std::size_t>;
 
 private:
     // Asset parsing and setup
@@ -57,11 +64,11 @@ private:
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                       Node& node, const std::string& baseDir,
                                       Resources& resources, Assets& assets,
-                                      NodeMap& nodeMap, AnimationMap& animMap);
+                                      NodeMap& nodeMap, std::size_t& nextAnimSlot);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, Resources& resources, Assets& assets,
-                         NodeMap& nodeMap, AnimationMap& animMap);
+                         NodeMap& nodeMap, std::size_t& nextAnimSlot);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
@@ -81,18 +88,41 @@ private:
                    const std::string& texturePath, Resources& resources, Assets& assets);
 
     [[nodiscard]]
+    static const Texture*
+    resolveEmissiveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                           const std::string& texturePath, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveNormalTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                         const std::string& texturePath, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveMetallicRoughnessTexture(const fastgltf::Asset& asset,
+                                    const fastgltf::Primitive& primitive,
+                                    const std::string& texturePath, Resources& resources,
+                                    Assets& assets);
+
+    [[nodiscard]]
     static Material* resolveMaterial(const fastgltf::Asset& asset,
                                      const fastgltf::Primitive& primitive, Material& materialData,
-                                     const Texture* texPtr, Assets& assets);
+                                     const Texture* texPtr, const Texture* emissiveTexPtr,
+                                     const Texture* normalTexPtr, const Texture* mrTexPtr,
+                                     Assets& assets);
 
     static void loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
                              const Material* matPtr, Resources& resources, Assets& assets,
                              std::size_t geoIdx);
 
     [[nodiscard]]
-    static std::pair<Material, std::string> loadMaterial(const fastgltf::Asset& asset,
-                                                         const fastgltf::Primitive& primitive,
-                                                         const std::string& baseDir);
+    static std::pair<Material, TexturePaths> loadMaterial(const fastgltf::Asset& asset,
+                                                          const fastgltf::Primitive& primitive,
+                                                          const std::string& baseDir);
+
+    [[nodiscard]]
+    static std::string resolveTextureURI(const fastgltf::Asset& asset, std::size_t textureIndex,
+                                         const std::string& baseDir);
 
     // Animation
     static void applyRestTRS(const fastgltf::Node& gltfNode, Animation& anim);
@@ -100,11 +130,12 @@ private:
     [[nodiscard]]
     static bool nodeHasAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex);
 
-    static void loadAnimation(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                              Animation& anim, std::size_t numMorphTargets = 0);
+    static void loadAnimation(const fastgltf::Asset& asset, std::size_t gltfAnimIndex,
+                              std::size_t nodeIndex, Animation& anim,
+                              std::size_t numMorphTargets = 0);
 
     [[nodiscard]]
-    static float computeSharedDuration(const fastgltf::Asset& asset, std::size_t nodeIndex);
+    static float computeSharedDuration(const fastgltf::Asset& asset, std::size_t gltfAnimIndex);
 
     [[nodiscard]]
     static Animation::Interpolation mapInterpolation(fastgltf::AnimationInterpolation m);

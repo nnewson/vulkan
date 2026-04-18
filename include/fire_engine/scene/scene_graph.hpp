@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-#include <fire_engine/input/camera_state.hpp>
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -39,7 +39,7 @@ public:
         rootTransform_ = t;
     }
 
-    void update(const CameraState& input_state);
+    void update(const InputState& input_state);
     void render(const RenderContext& ctx);
 
 private:

@@ -16,7 +16,7 @@ public:
     Empty(Empty&&) noexcept = default;
     Empty& operator=(Empty&&) noexcept = default;
 
-    void update(const CameraState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;

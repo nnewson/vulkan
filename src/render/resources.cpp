@@ -207,7 +207,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     // Create descriptor pool
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 4},
-        {vk::DescriptorType::eCombinedImageSampler, totalSets},
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 4},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
@@ -252,7 +252,22 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
             vk::DescriptorBufferInfo morphSsboBufInfo(
                 *buffers_[static_cast<uint32_t>(geo.morphSsbo)].buffer, 0, ssboSize);
 
-            std::array<vk::WriteDescriptorSet, 6> writes = {{
+            auto emissiveTexIdx = static_cast<uint32_t>(geo.emissiveTexture);
+            vk::DescriptorImageInfo emissiveTexInfo(
+                *textures_[emissiveTexIdx].sampler, *textures_[emissiveTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            auto normalTexIdx = static_cast<uint32_t>(geo.normalTexture);
+            vk::DescriptorImageInfo normalTexInfo(
+                *textures_[normalTexIdx].sampler, *textures_[normalTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            auto mrTexIdx = static_cast<uint32_t>(geo.metallicRoughnessTexture);
+            vk::DescriptorImageInfo mrTexInfo(
+                *textures_[mrTexIdx].sampler, *textures_[mrTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            std::array<vk::WriteDescriptorSet, 9> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -261,6 +276,9 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                  &morphUboBufInfo},
                 {*sets[i], 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
                  &morphSsboBufInfo},
+                {*sets[i], 6, 0, 1, vk::DescriptorType::eCombinedImageSampler, &emissiveTexInfo},
+                {*sets[i], 7, 0, 1, vk::DescriptorType::eCombinedImageSampler, &normalTexInfo},
+                {*sets[i], 8, 0, 1, vk::DescriptorType::eCombinedImageSampler, &mrTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 

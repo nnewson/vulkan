@@ -1,6 +1,5 @@
 #include <variant>
 
-#include "fire_engine/input/camera_state.hpp"
 #include <fire_engine/scene/node.hpp>
 
 namespace fire_engine
@@ -18,7 +17,7 @@ Node& Node::addChild(std::unique_ptr<Node> child)
     return *children_.back();
 }
 
-void Node::update(const CameraState& input_state, const Mat4& parentComposedWorld)
+void Node::update(const InputState& input_state, const Mat4& parentComposedWorld)
 {
     transform_.update(parentComposedWorld);
 

@@ -9,7 +9,7 @@ Node& SceneGraph::addNode(std::unique_ptr<Node> node)
     return *nodes_.back();
 }
 
-void SceneGraph::update(const CameraState& input_state)
+void SceneGraph::update(const InputState& input_state)
 {
     for (auto& node : nodes_)
     {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <vector>
 
 #include <fire_engine/graphics/object.hpp>
@@ -27,9 +28,36 @@ public:
         object_.skin(s);
     }
 
-    void morphAnimation(Animation* anim) noexcept
+    void addMorphAnimation(Animation* anim);
+
+    void activeMorphAnimation(std::size_t index) noexcept;
+
+    [[nodiscard]] std::size_t activeMorphAnimation() const noexcept
     {
-        morphAnimation_ = anim;
+        return activeMorphIndex_;
+    }
+
+    [[nodiscard]] std::size_t morphAnimationCount() const noexcept
+    {
+        return morphAnimations_.size();
+    }
+
+    [[nodiscard]] Animation* morphAnimation() noexcept
+    {
+        if (morphAnimations_.empty())
+        {
+            return nullptr;
+        }
+        return morphAnimations_[activeMorphIndex_];
+    }
+
+    [[nodiscard]] const Animation* morphAnimation() const noexcept
+    {
+        if (morphAnimations_.empty())
+        {
+            return nullptr;
+        }
+        return morphAnimations_[activeMorphIndex_];
     }
 
     void initialMorphWeights(std::vector<float> w) noexcept
@@ -37,14 +65,15 @@ public:
         morphWeights_ = std::move(w);
     }
 
-    void update(const CameraState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform) override;
 
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
 
 private:
     Object object_;
-    Animation* morphAnimation_{nullptr};
+    std::vector<Animation*> morphAnimations_;
+    std::size_t activeMorphIndex_{0};
     std::vector<float> morphWeights_;
     double startTime_{0.0};
     bool morphInitialized_{false};

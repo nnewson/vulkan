@@ -3,53 +3,71 @@
 namespace fire_engine
 {
 
-CameraState Input::update(const Window& window, float deltaTime)
+InputState Input::update(const Window& window, float deltaTime)
 {
     window.pollEvents();
 
     keyboard_.poll(window);
+    mouse_.poll(window);
 
-    if (keyboard_.escape())
-    {
-        mouse_.release(window);
-    }
-    mouse_.capture(window);
-
+    // WASD movement (camera-relative: z = forward/back, x = strafe)
     Vec3 delta{};
 
     if (keyboard_.w())
     {
-        delta.z(delta.z() - speed_ * deltaTime);
+        delta.z(delta.z() + speed_ * deltaTime);
     }
     if (keyboard_.s())
     {
-        delta.z(delta.z() + speed_ * deltaTime);
+        delta.z(delta.z() - speed_ * deltaTime);
     }
     if (keyboard_.a())
     {
-        delta.x(delta.x() - speed_ * deltaTime);
+        delta.x(delta.x() + speed_ * deltaTime);
     }
     if (keyboard_.d())
     {
-        delta.x(delta.x() + speed_ * deltaTime);
-    }
-    if (keyboard_.q())
-    {
-        delta.y(delta.y() + speed_ * deltaTime);
-    }
-    if (keyboard_.e())
-    {
-        delta.y(delta.y() - speed_ * deltaTime);
+        delta.x(delta.x() - speed_ * deltaTime);
     }
 
-    CameraState state;
-    state.deltaPosition(delta);
-
-    mouse_.poll(window);
-    if (mouse_.captured())
+    // Left mouse button drag = camera-relative movement (same as WASD)
+    if (mouse_.leftButton())
     {
-        state.deltaYaw(static_cast<float>(mouse_.deltaX()) * sensitivity_);
-        state.deltaPitch(-static_cast<float>(mouse_.deltaY()) * sensitivity_);
+        delta.x(delta.x() + static_cast<float>(mouse_.deltaX()) * panSensitivity_);
+        delta.z(delta.z() - static_cast<float>(mouse_.deltaY()) * panSensitivity_);
+    }
+
+    CameraState cameraState;
+    cameraState.deltaPosition(delta);
+
+    // Right mouse button drag = rotation (yaw/pitch)
+    if (mouse_.rightButton())
+    {
+        cameraState.deltaYaw(static_cast<float>(mouse_.deltaX()) * sensitivity_);
+        cameraState.deltaPitch(-static_cast<float>(mouse_.deltaY()) * sensitivity_);
+    }
+
+    // Scroll wheel = zoom
+    double scroll = mouse_.consumeScrollDelta();
+    if (scroll != 0.0)
+    {
+        cameraState.deltaZoom(static_cast<float>(scroll) * zoomSpeed_);
+    }
+
+    InputState state;
+    state.cameraState(cameraState);
+
+    if (keyboard_.one())
+    {
+        state.animationState().activeAnimation(0);
+    }
+    else if (keyboard_.two())
+    {
+        state.animationState().activeAnimation(1);
+    }
+    else if (keyboard_.three())
+    {
+        state.animationState().activeAnimation(2);
     }
 
     return state;
@@ -57,7 +75,7 @@ CameraState Input::update(const Window& window, float deltaTime)
 
 void Input::enable(const Window& window)
 {
-    mouse_.enable(window);
+    mouse_.registerScrollCallback(window);
 }
 
 } // namespace fire_engine

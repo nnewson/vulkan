@@ -22,6 +22,10 @@ TEST(VertexConstruction, DefaultIsZeroed)
     EXPECT_FLOAT_EQ(v.normal().z(), 0.0f);
     EXPECT_FLOAT_EQ(v.texU(), 0.0f);
     EXPECT_FLOAT_EQ(v.texV(), 0.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[0], 0.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[1], 0.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[2], 0.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[3], 0.0f);
 }
 
 TEST(VertexConstruction, FullConstructor)
@@ -78,6 +82,33 @@ TEST(VertexAccessors, SetTexCoords)
     v.texV(0.75f);
     EXPECT_FLOAT_EQ(v.texU(), 0.5f);
     EXPECT_FLOAT_EQ(v.texV(), 0.75f);
+}
+
+TEST(VertexAccessors, SetTangent)
+{
+    Vertex v;
+    v.tangent(0.6f, 0.7f, 0.8f, -1.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[0], 0.6f);
+    EXPECT_FLOAT_EQ(v.tangent()[1], 0.7f);
+    EXPECT_FLOAT_EQ(v.tangent()[2], 0.8f);
+    EXPECT_FLOAT_EQ(v.tangent()[3], -1.0f);
+}
+
+TEST(VertexConstruction, FullConstructorWithTangent)
+{
+    Vertex v({1.0f, 2.0f, 3.0f}, {0.5f, 0.6f, 0.7f}, {0.0f, 1.0f, 0.0f}, 0.25f, 0.75f,
+             0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 0.1f, 0.2f, 0.3f, 1.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[0], 0.1f);
+    EXPECT_FLOAT_EQ(v.tangent()[1], 0.2f);
+    EXPECT_FLOAT_EQ(v.tangent()[2], 0.3f);
+    EXPECT_FLOAT_EQ(v.tangent()[3], 1.0f);
+}
+
+TEST(VertexConstruction, TangentHandednessNegative)
+{
+    Vertex v({0, 0, 0}, {0, 0, 0}, {0, 1, 0}, 0, 0,
+             0, 0, 0, 0, 0.0f, 0.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, -1.0f);
+    EXPECT_FLOAT_EQ(v.tangent()[3], -1.0f);
 }
 
 // ==========================================================================
@@ -183,5 +214,7 @@ TEST(VertexNoexcept, AllAccessorsAreNoexcept)
     static_assert(noexcept(v.normal({})));
     static_assert(noexcept(v.texU(0.0f)));
     static_assert(noexcept(v.texV(0.0f)));
+    static_assert(noexcept(v.tangent()));
+    static_assert(noexcept(v.tangent(0.0f, 0.0f, 0.0f, 0.0f)));
     static_assert(noexcept(v == v));
 }

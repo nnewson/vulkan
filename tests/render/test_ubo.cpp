@@ -100,6 +100,59 @@ TEST(UBO, MaterialUBOHasTextureCanBeSet)
     EXPECT_EQ(ubo.hasTexture, 1);
 }
 
+TEST(UBO, MaterialUBOHasEmissiveTextureDefaultsToZero)
+{
+    MaterialUBO ubo{};
+    EXPECT_EQ(ubo.hasEmissiveTexture, 0);
+}
+
+TEST(UBO, MaterialUBOHasEmissiveTextureCanBeSet)
+{
+    MaterialUBO ubo{};
+    ubo.hasEmissiveTexture = 1;
+    EXPECT_EQ(ubo.hasEmissiveTexture, 1);
+}
+
+TEST(UBO, MaterialUBOHasNormalTextureDefaultsToZero)
+{
+    MaterialUBO ubo{};
+    EXPECT_EQ(ubo.hasNormalTexture, 0);
+}
+
+TEST(UBO, MaterialUBOHasNormalTextureCanBeSet)
+{
+    MaterialUBO ubo{};
+    ubo.hasNormalTexture = 1;
+    EXPECT_EQ(ubo.hasNormalTexture, 1);
+}
+
+TEST(UBO, MaterialUBOHasMetallicRoughnessTextureDefaultsToZero)
+{
+    MaterialUBO ubo{};
+    EXPECT_EQ(ubo.hasMetallicRoughnessTexture, 0);
+}
+
+TEST(UBO, MaterialUBOHasMetallicRoughnessTextureCanBeSet)
+{
+    MaterialUBO ubo{};
+    ubo.hasMetallicRoughnessTexture = 1;
+    EXPECT_EQ(ubo.hasMetallicRoughnessTexture, 1);
+}
+
+TEST(UBO, MaterialUBOTextureFlagsFieldOrder)
+{
+    static_assert(offsetof(MaterialUBO, hasTexture) < offsetof(MaterialUBO, hasEmissiveTexture),
+                  "hasTexture must precede hasEmissiveTexture to match shader layout");
+    static_assert(offsetof(MaterialUBO, hasEmissiveTexture) <
+                      offsetof(MaterialUBO, hasNormalTexture),
+                  "hasEmissiveTexture must precede hasNormalTexture to match shader layout");
+    static_assert(offsetof(MaterialUBO, hasNormalTexture) <
+                      offsetof(MaterialUBO, hasMetallicRoughnessTexture),
+                  "hasNormalTexture must precede hasMetallicRoughnessTexture to match shader "
+                  "layout");
+    SUCCEED();
+}
+
 TEST(UBO, MorphUBOSize)
 {
     EXPECT_EQ(sizeof(MorphUBO) % 16, 0u);

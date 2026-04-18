@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads glTF 2.0 models with PBR materials, texture mapping, skeletal skinning (GPU joint matrix blending), and morph target vertex animation. Keyframe animation supports rotation (SLERP), translation, scale, and morph weight channels with LINEAR interpolation. Built on macOS with MoltenVK. Uses a scenegraph architecture where components (Camera, Animator, Mesh, Empty) handle update and render logic.
+**fire_engine** is a Vulkan-based 3D renderer written in C++23. It loads glTF 2.0 models with PBR materials, texture mapping, skeletal skinning (GPU joint matrix blending), and morph target vertex animation. Keyframe animation supports rotation (SLERP), translation, scale, and morph weight channels with LINEAR interpolation. glTF alpha modes (OPAQUE, MASK, BLEND) and double-sided materials are honoured via three forward pipeline variants with back-to-front sorting for blended draws. Built on macOS with MoltenVK. Uses a scenegraph architecture where components (Camera, Animator, Mesh, Empty) handle update and render logic.
 
 The graphics layer (`graphics/`) is fully decoupled from Vulkan — it uses opaque handles and emits backend-agnostic `DrawCommand` structs. All Vulkan-specific code lives in the render layer (`render/`), with `Resources` acting as the bridge that owns GPU resources and hands out opaque handles.
 
@@ -13,7 +13,7 @@ cd build
 cmake ..
 cmake --build .
 ./fireEngineApp        # run the app (from build dir)
-./test_fire_engine     # run all tests (525 tests)
+./test_fire_engine     # run all tests (564 tests)
 ```
 
 Shaders are compiled from GLSL to SPIR-V via `glslc` as part of the build. Assets are copied to the build directory on every build via `cmake/copy_assets.cmake`.
@@ -29,11 +29,11 @@ include/fire_engine/
   animation/       # LinearAnimation (rotation/translation/scale/weight keyframes, SLERP)
   core/            # System (GLFW lifecycle), ShaderLoader, GltfLoader
   math/            # Vec3, Mat4, Quaternion, constants (header-only)
-  graphics/        # Colour3, Vertex, Geometry, Material, Image, Texture, Object, Assets, Skin,
-                   # DrawCommand, FrameInfo, gpu_handle (opaque handle types)
+  graphics/        # Colour3, Vertex, Geometry, Material (with AlphaMode), Image, Texture, Object,
+                   # Assets, Skin, DrawCommand, FrameInfo (with AlphaPipelines), gpu_handle (opaque handle types)
   input/           # CameraState, Input
   platform/        # Window, Keyboard, Mouse (Keyboard/Mouse header-only)
-  render/          # Renderer, Device, Swapchain, Pipeline, Frame, RenderContext, Resources, UBO, constants
+  render/          # Renderer, Device, Swapchain, Pipeline, RenderPass, Frame, RenderContext, Resources, UBO, constants
   scene/           # Component, Components, Node, SceneGraph, Transform, Camera, Animator, Mesh, Empty
   fire_engine.hpp
 src/
@@ -76,29 +76,31 @@ The `graphics/` layer contains no Vulkan headers or `vk::` types. It communicate
 
 - **Device** — wraps Vulkan instance, surface, physical/logical device, queues, `findMemoryType`, `createBuffer`
 - **Swapchain** — swapchain, image views, depth resources, framebuffers; handles `cleanup()`/`recreate()`
-- **Pipeline** — render pass, descriptor set layout (6 bindings), pipeline layout, graphics pipeline. Uses `offsetof(Vertex, ...)` via `friend` access to build vertex input descriptions
+- **RenderPass** — owns the Vulkan render pass object and its framebuffers. `createForward()` builds the colour + depth forward pass shared by all three forward pipeline variants and by the skybox pipeline
+- **Pipeline** — descriptor set layout, pipeline layout, graphics pipeline. Configured via `PipelineConfig` (shader paths, bindings, render pass, cullMode, depthWrite/Compare, blend factors). Factories `forwardConfig`, `forwardDoubleSidedConfig`, `forwardBlendConfig`, and `skyboxConfig` cover every variant the engine uses. Uses `offsetof(Vertex, ...)` via `friend` access to build vertex input descriptions
 - **Frame** — command pool, command buffers, sync objects (semaphores, fences). Pure frame orchestration; owns no per-mesh resources
 - **Resources** — owns all Vulkan GPU resources on behalf of graphics objects. Creates vertex/index buffers, textures (with staging upload), mapped uniform/storage buffers, and descriptor pool/sets. Returns opaque handles. Provides Vulkan-typed accessors (`vulkanBuffer()`, `vulkanDescriptorSet()`) for Renderer command recording
-- **Renderer** — owns Device, Swapchain, Pipeline, Frame, Resources. `drawFrame()` acquires a swapchain image, begins the render pass, binds the pipeline, calls `SceneGraph::render(ctx)` to collect `DrawCommand` structs, then iterates them to record Vulkan bind/draw calls, ends the render pass and submits
-- **RenderContext** — per-frame data bag passed through the scenegraph during render: Device, Swapchain, Frame, Pipeline, active CommandBuffer, currentFrame index, camera position/target, `DrawCommand` collection pointer. Provides `frameInfo()` to extract a Vulkan-free `FrameInfo` for graphics/ classes
+- **Renderer** — owns Device, Swapchain, RenderPass, three forward Pipelines (opaque, opaque-double-sided, blend), the skybox Pipeline, Frame, and Resources. `drawFrame()` acquires a swapchain image, begins the render pass, collects `DrawCommand` structs via `SceneGraph::render(ctx)`, splits them into opaque and blend buckets, sorts the blend bucket back-to-front by `sortDepth`, then replays both buckets through the same bind/draw loop. Pipeline is bound per-draw from the command's `PipelineHandle`
+- **RenderContext** — per-frame data bag passed through the scenegraph during render: Device, Swapchain, Frame, Pipeline, active CommandBuffer, currentFrame index, camera position/target, `DrawCommand` collection pointer, and an `AlphaPipelines` bundle with the three forward pipeline handles. Provides `frameInfo()` to extract a Vulkan-free `FrameInfo` for graphics/ classes
 - **UBO** (`ubo.hpp`) — shared UBO structs:
   - `UniformBufferObject` — model/view/proj matrices, cameraPos, `hasSkin` flag
-  - `MaterialUBO` — PBR material properties
+  - `MaterialUBO` — PBR material properties, including `alphaCutoff` consumed by the fragment shader's discard test (0.0 for OPAQUE/BLEND = no-op, real cutoff for MASK)
   - `SkinUBO` — `Mat4 joints[MAX_JOINTS]` for skeletal animation
   - `MorphUBO` — `hasMorph`, `morphTargetCount`, `vertexCount`, `float weights[MAX_MORPH_TARGETS]`
+  - `SkyboxUBO` — camera basis vectors + viewParams for the procedural skybox
 - **constants** (`constants.hpp`) — `MAX_FRAMES_IN_FLIGHT=2`, `MAX_JOINTS=64`, `MAX_MORPH_TARGETS=8`
 
 ### Graphics (`graphics/`)
 
 No Vulkan headers or `vk::` types in any file.
 
-- **Object** — manages per-geometry rendering state via opaque handles and mapped memory pointers. Inner `GeometryBindings` struct groups per-geometry `MappedMemory` arrays and `DescriptorSetHandle` arrays. `load(Resources&)` creates all GPU resources. `render(FrameInfo, Mat4)` writes UBO data via memcpy to mapped pointers and returns a `vector<DrawCommand>`
+- **Object** — manages per-geometry rendering state via opaque handles and mapped memory pointers. Inner `GeometryBindings` struct groups per-geometry `MappedMemory` arrays and `DescriptorSetHandle` arrays. `load(Resources&)` creates all GPU resources. `render(FrameInfo, Mat4)` writes UBO data via memcpy to mapped pointers and returns a `vector<DrawCommand>`. Per-geometry it picks the right pipeline handle (opaque / opaque-double-sided / blend) from the material's `AlphaMode` and `doubleSided` flags, stamps `alphaCutoff` into `MaterialUBO`, and computes a world-space `sortDepth` for back-to-front sorting
 - **Assets** — centralized manager holding vectors of Texture, Material, Geometry, Skin, and LinearAnimation. GltfLoader populates it during scene loading; components reference assets by index
 - **Skin** — holds joint Node pointers and inverse bind matrices. `updateJointMatrices()` computes final joint matrices as `inverseBindMatrix * node.composedWorld()`. `computeJointMatrices()` returns a fresh vector; `cachedJointMatrices()` returns the last computed result
 - **Geometry** — vertices, indices, material pointer; holds `BufferHandle` for vertex/index buffers after `load(Resources&)`. Also stores morph target deltas: `morphPositions_` and `morphNormals_` (vector of vectors of Vec3, one per target)
 - **Vertex** — 6 vertex attributes: position (vec3), colour (vec3), normal (vec3), texCoord (vec2), joints (uvec4), weights (vec4). The joints/weights attributes support skeletal skinning. Pipeline accesses member offsets via `friend class Pipeline`
 - **Texture** — holds a single `TextureHandle`. Factory methods `load_from_file(path, Resources&)` and `load_from_data(pixels, w, h, Resources&)` delegate to Resources. `loaded()` checks handle against `NullTexture`
-- **Material** — PBR material properties (ambient, diffuse, specular, emissive, roughness, metallic, etc.)
+- **Material** — PBR material properties (ambient, diffuse, specular, emissive, roughness, metallic, etc.) plus the glTF alpha state: `AlphaMode` (Opaque / Mask / Blend), `alphaCutoff` (default 0.5f per glTF spec), and `doubleSided`
 - **Image** — CPU-side image data (pixels, width, height, channels)
 - **Colour3** — RGB colour value type
 
@@ -119,7 +121,7 @@ No Vulkan headers or `vk::` types in any file.
 - **Components** — `std::variant<Empty, Animator, Camera, Mesh>` with `componentName()` helper
 - **Node** — holds a name, Transform, a single Components variant, parent pointer, children, and a cached `composedWorld_` matrix (used by Skin for joint lookups). `update()` takes `parentComposedWorld` and propagates through the tree. Has a `std::formatter` specialization for debug printing
 - **SceneGraph** — owns root nodes. `update()` propagates input through the tree. `render()` propagates the RenderContext through the tree. Has no camera knowledge — FireEngine owns the active Camera directly
-- **Transform** — position, rotation (Euler), scale → computes local and world matrices. Has a `std::formatter` specialization
+- **Transform** — position, rotation (Quaternion), scale → computes local and world matrices. Rotation is stored as a unit quaternion so orientations sourced from glTF TRS data round-trip exactly; `Quaternion::toEulerXYZ()` is available for code paths that still need Euler angles (e.g. Camera yaw/pitch). Has a `std::formatter` specialization
 - **Camera** — processes input deltas to update position/yaw/pitch. `render()` is a no-op (returns world unchanged)
 - **Animator** — owns a `LinearAnimation`, samples it each frame in `update()`, returns `world * modelMatrix_` from `render()` so children inherit the animation
 - **Mesh** — wraps an `Object` (does not own GPU resources directly). Supports optional skin pointer, morph animation pointer, and initial morph weights. `update()` samples morph weights from animation if present. `render()` calls `Object::render(ctx.frameInfo(), world)` and pushes returned DrawCommands to `ctx.drawCommands`
@@ -136,7 +138,7 @@ No Vulkan headers or `vk::` types in any file.
    - Object::render() writes all UBOs (main + skin + morph) via memcpy to mapped pointers, returns `vector<DrawCommand>`
    - Mesh::render() pushes DrawCommands to the RenderContext collection
    - Animator applies its sampled TRS matrix to children's world
-5. Renderer iterates collected DrawCommands, resolves handles to Vulkan objects via Resources, records bind/draw commands
+5. Renderer buckets collected DrawCommands by pipeline: blend draws go into a back-to-front sorted list (descending `sortDepth`), everything else keeps emission order. Both buckets replay through the same bind/draw loop, resolving handles to Vulkan objects via Resources
 6. Renderer ends render pass, submits, presents
 
 ### Vertex Shader Pipeline
@@ -145,6 +147,22 @@ The vertex shader processes vertices in this order:
 1. **Morph targets** (if `hasMorph==1`): accumulates weighted position/normal deltas from the MorphTargets SSBO using weights from MorphUBO
 2. **Skinning** (if `hasSkin==1`): blends joint matrices from SkinUBO using per-vertex joint indices and weights
 3. **Transform**: applies either the blended skin matrix or the model matrix to produce world-space position
+
+### Fragment Shader — Alpha Handling
+
+The fragment shader computes `alpha = (1.0 - transparency) * texColor.a` (or just `1.0 - transparency` when untextured) and then runs `if (alpha < material.alphaCutoff) discard;`. For OPAQUE and BLEND materials the cutoff is stamped as `0.0` so the discard is a no-op; MASK materials receive the real cutoff. Pipeline selection (not the discard) is what distinguishes BLEND from OPAQUE.
+
+### Alpha Modes and Pipeline Variants
+
+Three forward pipeline variants cover every combination glTF asks for:
+
+| Pipeline | cullMode | blendEnable | depthWrite | Used by |
+|---|---|---|---|---|
+| forward-opaque | eBack | false | true | OPAQUE & MASK, `doubleSided=false` |
+| forward-opaque-double | eNone | false | true | OPAQUE & MASK, `doubleSided=true` |
+| forward-blend | eNone | true | false | BLEND (always treated as double-sided) |
+
+Blend factors for BLEND are straight alpha: `SRC_ALPHA / ONE_MINUS_SRC_ALPHA` on colour, `ONE / ONE_MINUS_SRC_ALPHA` on alpha. Blended draws are sorted back-to-front by world-space centroid depth (node-origin projected onto the camera forward vector) before replay. This is a per-draw sort — self-intersecting translucent meshes are not handled and would need per-triangle sorting or OIT.
 
 ## Code Style
 
@@ -216,7 +234,7 @@ Key points:
 
 ## Testing
 
-Google Test framework. 525 tests in a single executable `test_fire_engine`. Test files mirror the source structure: `tests/animation/`, `tests/math/`, `tests/graphics/`, `tests/render/`, `tests/scene/`, etc. Test assets (minimal OBJ, MTL, PNG files) live in `tests/assets/` and are copied to `build/test_assets/` at configure time. Tests cover construction, accessors, equality, arithmetic, file loading, move/copy semantics, animation sampling/interpolation, skinning, morph targets, UBO layout, opaque handle types, DrawCommand/FrameInfo structs, edge cases, constexpr validation, and noexcept guarantees. The graphics layer tests run without a GPU since all Vulkan types are abstracted behind opaque handles.
+Google Test framework. 564 tests in a single executable `test_fire_engine`. Test files mirror the source structure: `tests/animation/`, `tests/math/`, `tests/graphics/`, `tests/render/`, `tests/scene/`, etc. Test assets (minimal OBJ, MTL, PNG files) live in `tests/assets/` and are copied to `build/test_assets/` at configure time. Tests cover construction, accessors, equality, arithmetic, file loading, move/copy semantics, animation sampling/interpolation, skinning, morph targets, UBO layout (including `MaterialUBO::alphaCutoff` offset), opaque handle types, DrawCommand/FrameInfo structs, quaternion Euler round-trip, glTF material alpha-field translation, edge cases, constexpr validation, and noexcept guarantees. The graphics layer tests run without a GPU since all Vulkan types are abstracted behind opaque handles.
 
 ## Rendering Pipeline
 
@@ -228,8 +246,8 @@ Google Test framework. 525 tests in a single executable `test_fire_engine`. Test
   - Binding 3: SkinUBO (joint matrices — `mat4[64]`)
   - Binding 4: MorphUBO (morph metadata + weights as `vec4[2]`)
   - Binding 5: MorphTargets SSBO (std430, readonly — position/normal deltas)
-- Resources class owns all GPU resources (buffers, textures, descriptor pools/sets) and exposes opaque handles to graphics/ classes
-- Object emits `DrawCommand` structs; Renderer resolves handles and records Vulkan bind/draw calls
-- glTF 2.0 loading via fastgltf — geometry, PBR materials, textures, skins, morph targets, and keyframe animations
+- Resources class owns all GPU resources (buffers, textures, descriptor pools/sets, registered pipelines) and exposes opaque handles to graphics/ classes
+- Object emits `DrawCommand` structs carrying a `PipelineHandle` and `sortDepth`; Renderer resolves handles, buckets blend draws, sorts them back-to-front, and records Vulkan bind/draw calls
+- glTF 2.0 loading via fastgltf — geometry, PBR materials, textures, alpha mode + cutoff + doubleSided flags, skins, morph targets, and keyframe animations
 - Texture loading via stb_image (RGBA), uploaded to GPU via staging buffer
 - GLFW for windowing with keyboard (WASD/QE) and mouse camera controls

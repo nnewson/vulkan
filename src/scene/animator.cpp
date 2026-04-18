@@ -5,11 +5,35 @@
 namespace fire_engine
 {
 
-void Animator::update(const CameraState& input_state, const Transform& /*transform*/)
+void Animator::addAnimation(Animation* anim)
 {
-    if (animation_ == nullptr)
+    animations_.push_back(anim);
+}
+
+void Animator::activeAnimation(std::size_t index) noexcept
+{
+    if (index < animations_.size())
+    {
+        activeIndex_ = index;
+        initialized_ = false;
+    }
+}
+
+void Animator::update(const InputState& input_state, const Transform& /*transform*/)
+{
+    if (animations_.empty())
     {
         return;
+    }
+
+    const auto& animState = input_state.animationState();
+    if (animState.hasActiveAnimation())
+    {
+        auto index = *animState.activeAnimation();
+        if (index < animations_.size() && index != activeIndex_)
+        {
+            activeAnimation(index);
+        }
     }
 
     if (!initialized_)
@@ -19,7 +43,7 @@ void Animator::update(const CameraState& input_state, const Transform& /*transfo
     }
 
     float t = static_cast<float>(input_state.time() - startTime_);
-    modelMatrix_ = animation_->sample(t);
+    modelMatrix_ = animations_[activeIndex_]->sample(t);
 }
 
 Mat4 Animator::render(const RenderContext& /*ctx*/, const Mat4& world)
