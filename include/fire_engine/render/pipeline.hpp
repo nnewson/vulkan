@@ -7,7 +7,6 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/render/device.hpp>
-#include <fire_engine/render/swapchain.hpp>
 
 namespace fire_engine
 {
@@ -32,7 +31,7 @@ struct PipelineConfig
 class Pipeline
 {
 public:
-    Pipeline(const Device& device, const Swapchain& swapchain, const PipelineConfig& config);
+    Pipeline(const Device& device, const PipelineConfig& config);
     ~Pipeline() = default;
 
     Pipeline(const Pipeline&) = delete;
@@ -77,7 +76,7 @@ public:
 
 private:
     void createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings);
-    void createGraphicsPipeline(const Swapchain& swapchain, const PipelineConfig& config);
+    void createGraphicsPipeline(const PipelineConfig& config);
 
     [[nodiscard]] std::array<vk::PipelineShaderStageCreateInfo, 2>
     createShaderStages(const PipelineConfig& config, vk::raii::ShaderModule& vertMod,

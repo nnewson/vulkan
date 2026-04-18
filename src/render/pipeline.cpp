@@ -7,11 +7,11 @@
 namespace fire_engine
 {
 
-Pipeline::Pipeline(const Device& device, const Swapchain& swapchain, const PipelineConfig& config)
+Pipeline::Pipeline(const Device& device, const PipelineConfig& config)
     : device_(&device.device())
 {
     createDescriptorSetLayout(config.bindings);
-    createGraphicsPipeline(swapchain, config);
+    createGraphicsPipeline(config);
 }
 
 PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
@@ -74,7 +74,7 @@ void Pipeline::createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayo
     descSetLayout_ = vk::raii::DescriptorSetLayout(*device_, ci);
 }
 
-void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const PipelineConfig& config)
+void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
 {
     vk::raii::ShaderModule vertMod{nullptr};
     vk::raii::ShaderModule fragMod{nullptr};

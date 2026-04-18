@@ -20,12 +20,12 @@ Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_, swapchain_)),
-      pipelineOpaque_(device_, swapchain_, Pipeline::forwardConfig(forwardPass_.renderPass())),
-      pipelineOpaqueDoubleSided_(device_, swapchain_,
+      pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
+      pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
-      pipelineBlend_(device_, swapchain_,
+      pipelineBlend_(device_,
                      Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
-      skyboxPipeline_(device_, swapchain_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
+      skyboxPipeline_(device_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       frame_(device_, swapchain_),
       resources_(device_, pipelineOpaque_)
 {
