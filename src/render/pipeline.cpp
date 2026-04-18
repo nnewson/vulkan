@@ -76,8 +76,6 @@ void Pipeline::createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayo
 
 void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const PipelineConfig& config)
 {
-    auto extent = swapchain.extent();
-
     vk::raii::ShaderModule vertMod{nullptr};
     vk::raii::ShaderModule fragMod{nullptr};
     auto stages = createShaderStages(config, vertMod, fragMod);
@@ -99,10 +97,12 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const Pipeline
 
     vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);
 
-    vk::Viewport viewport(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
-                          0, 1);
-    vk::Rect2D scissor({0, 0}, extent);
-    vk::PipelineViewportStateCreateInfo vpState({}, viewport, scissor);
+    vk::PipelineViewportStateCreateInfo vpState;
+    vpState.viewportCount = 1;
+    vpState.scissorCount = 1;
+
+    std::array dynamicStates = {vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+    vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
 
     vk::PipelineRasterizationStateCreateInfo raster(
         {}, false, false, vk::PolygonMode::eFill, config.cullMode,
@@ -124,7 +124,7 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const Pipeline
     createPipelineLayout();
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
-                                       &raster, &ms, &depthStencil, &colorBlend, nullptr,
+                                       &raster, &ms, &depthStencil, &colorBlend, &dynamicState,
                                        *pipelineLayout_, config.renderPass, 0);
 
     pipeline_ = vk::raii::Pipeline(*device_, nullptr, pci);

@@ -162,6 +162,11 @@ void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
+
+    vk::Viewport viewport(0, 0, static_cast<float>(extent.width),
+                          static_cast<float>(extent.height), 0, 1);
+    cmd.setViewport(0, viewport);
+    cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
 }
 
 void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex)
