@@ -1,5 +1,6 @@
 #include <fire_engine/render/renderer.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstring>
@@ -19,14 +20,23 @@ Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_, swapchain_)),
-      pipeline_(device_, swapchain_, Pipeline::forwardConfig(forwardPass_.renderPass())),
+      pipelineOpaque_(device_, swapchain_, Pipeline::forwardConfig(forwardPass_.renderPass())),
+      pipelineOpaqueDoubleSided_(device_, swapchain_,
+                                 Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
+      pipelineBlend_(device_, swapchain_,
+                     Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
       skyboxPipeline_(device_, swapchain_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       frame_(device_, swapchain_),
-      resources_(device_, pipeline_)
+      resources_(device_, pipelineOpaque_)
 {
     swapchain_.createDepthResources(device_);
     forwardPass_.createForwardFramebuffers(device_, swapchain_);
-    forwardPipeline_ = resources_.registerPipeline(pipeline_.pipeline(), pipeline_.pipelineLayout());
+    forwardOpaqueHandle_ =
+        resources_.registerPipeline(pipelineOpaque_.pipeline(), pipelineOpaque_.pipelineLayout());
+    forwardOpaqueDoubleSidedHandle_ = resources_.registerPipeline(
+        pipelineOpaqueDoubleSided_.pipeline(), pipelineOpaqueDoubleSided_.pipelineLayout());
+    forwardBlendHandle_ =
+        resources_.registerPipeline(pipelineBlend_.pipeline(), pipelineBlend_.pipelineLayout());
     skyboxPipelineHandle_ = resources_.registerPipeline(skyboxPipeline_.pipeline(),
                                                         skyboxPipeline_.pipelineLayout());
     skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
@@ -53,34 +63,63 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     std::vector<DrawCommand> drawCommands;
     recordSkybox(cameraPosition, cameraTarget, drawCommands);
 
-    RenderContext ctx{device_,       swapchain_,     frame_,        pipeline_,
-                      cmd,           currentFrame_,  cameraPosition, cameraTarget,
-                      &drawCommands, forwardPipeline_};
+    AlphaPipelines pipelines{forwardOpaqueHandle_, forwardOpaqueDoubleSidedHandle_,
+                             forwardBlendHandle_};
+    RenderContext ctx{device_,       swapchain_,    frame_,         pipelineOpaque_,
+                      cmd,           currentFrame_, cameraPosition, cameraTarget,
+                      &drawCommands, pipelines};
     scene.render(ctx);
 
-    // Record draw commands collected during scene traversal. Pipeline is
-    // bound via the DrawCommand-carried PipelineHandle so that future passes
-    // with different pipelines can interleave without changing this loop.
-    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+    // Split draws into opaque (includes skybox + MASK) and blend buckets.
+    // Blend is sorted back-to-front by world-space centroid depth so straight
+    // alpha composites in the right order. Opaque keeps emission order.
+    std::vector<DrawCommand> opaqueDraws;
+    std::vector<DrawCommand> blendDraws;
+    opaqueDraws.reserve(drawCommands.size());
     for (const auto& dc : drawCommands)
     {
-        if (dc.pipeline != lastBoundPipeline)
+        if (dc.pipeline == forwardBlendHandle_)
         {
-            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                             resources_.vulkanPipeline(dc.pipeline));
-            lastBoundPipeline = dc.pipeline;
+            blendDraws.push_back(dc);
         }
-        if (dc.vertexBuffer != NullBuffer)
+        else
         {
-            cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer),
-                                  {vk::DeviceSize{0}});
+            opaqueDraws.push_back(dc);
         }
-        cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
-        vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
-        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                               resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
-        cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
     }
+    std::sort(blendDraws.begin(), blendDraws.end(),
+              [](const DrawCommand& a, const DrawCommand& b) {
+                  return a.sortDepth > b.sortDepth;
+              });
+
+    // Record draw commands. Pipeline is bound via the DrawCommand-carried
+    // PipelineHandle so passes with different pipelines interleave without
+    // changing this loop.
+    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+    auto recordBucket = [&](const std::vector<DrawCommand>& bucket) {
+        for (const auto& dc : bucket)
+        {
+            if (dc.pipeline != lastBoundPipeline)
+            {
+                cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                                 resources_.vulkanPipeline(dc.pipeline));
+                lastBoundPipeline = dc.pipeline;
+            }
+            if (dc.vertexBuffer != NullBuffer)
+            {
+                cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer),
+                                      {vk::DeviceSize{0}});
+            }
+            cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0,
+                                vk::IndexType::eUint16);
+            vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                   resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
+            cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
+        }
+    };
+    recordBucket(opaqueDraws);
+    recordBucket(blendDraws);
 
     cmd.endRenderPass();
     cmd.end();

@@ -23,6 +23,7 @@ layout(binding = 1) uniform MaterialUBO {
     float clearcoatRoughness;
     float anisotropy;
     float anisotropyRotation;
+    float alphaCutoff;
     int hasTexture;
 } material;
 
@@ -65,6 +66,8 @@ void main() {
         spec = pow(max(dot(N, H), 0.0), shine);
     }
     vec3 specularTerm = spec * material.specular;
+
+    if (alpha < material.alphaCutoff) discard;
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + material.emissive;
     outColor = vec4(color, alpha);

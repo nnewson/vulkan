@@ -42,10 +42,12 @@ TEST(FrameInfo, DefaultCameraTargetIsOrigin)
     EXPECT_FLOAT_EQ(info.cameraTarget.z(), 0.0f);
 }
 
-TEST(FrameInfo, DefaultPipelineIsNull)
+TEST(FrameInfo, DefaultAlphaPipelinesAreNull)
 {
     FrameInfo info;
-    EXPECT_EQ(info.pipeline, NullPipeline);
+    EXPECT_EQ(info.pipelines.opaque, NullPipeline);
+    EXPECT_EQ(info.pipelines.opaqueDoubleSided, NullPipeline);
+    EXPECT_EQ(info.pipelines.blend, NullPipeline);
 }
 
 // ---------------------------------------------------------------------------

@@ -55,7 +55,7 @@ public:
 
     [[nodiscard]] const Pipeline& pipeline() const noexcept
     {
-        return pipeline_;
+        return pipelineOpaque_;
     }
 
     [[nodiscard]] const Frame& frame() const noexcept
@@ -89,11 +89,15 @@ private:
     Device device_;
     Swapchain swapchain_;
     RenderPass forwardPass_;
-    Pipeline pipeline_;
+    Pipeline pipelineOpaque_;
+    Pipeline pipelineOpaqueDoubleSided_;
+    Pipeline pipelineBlend_;
     Pipeline skyboxPipeline_;
     Frame frame_;
     Resources resources_;
-    PipelineHandle forwardPipeline_{NullPipeline};
+    PipelineHandle forwardOpaqueHandle_{NullPipeline};
+    PipelineHandle forwardOpaqueDoubleSidedHandle_{NullPipeline};
+    PipelineHandle forwardBlendHandle_{NullPipeline};
     PipelineHandle skyboxPipelineHandle_{NullPipeline};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};

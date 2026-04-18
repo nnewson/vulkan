@@ -22,6 +22,11 @@ struct PipelineConfig
     bool depthWrite{true};
     vk::CompareOp depthCompare{vk::CompareOp::eLess};
     vk::CullModeFlags cullMode{vk::CullModeFlagBits::eBack};
+    bool blendEnable{false};
+    vk::BlendFactor srcColorBlend{vk::BlendFactor::eOne};
+    vk::BlendFactor dstColorBlend{vk::BlendFactor::eZero};
+    vk::BlendFactor srcAlphaBlend{vk::BlendFactor::eOne};
+    vk::BlendFactor dstAlphaBlend{vk::BlendFactor::eZero};
 };
 
 class Pipeline
@@ -52,6 +57,17 @@ public:
     // pipeline. The render pass handle comes from the caller (usually a
     // RenderPass::createForward() result).
     [[nodiscard]] static PipelineConfig forwardConfig(vk::RenderPass renderPass);
+
+    // Variant of forwardConfig with cullMode=None for glTF materials flagged
+    // doubleSided. Otherwise identical to forwardConfig (shaders, bindings,
+    // depth state).
+    [[nodiscard]] static PipelineConfig forwardDoubleSidedConfig(vk::RenderPass renderPass);
+
+    // Variant of forwardConfig for glTF BLEND materials: cullMode=None,
+    // depthWrite disabled, straight-alpha blending
+    // (SRC_ALPHA / ONE_MINUS_SRC_ALPHA on colour; ONE / ONE_MINUS_SRC_ALPHA on
+    // alpha).
+    [[nodiscard]] static PipelineConfig forwardBlendConfig(vk::RenderPass renderPass);
 
     // Factory producing the PipelineConfig for a procedural skybox pipeline.
     // Shares the forward render pass, uses no vertex buffers (fullscreen

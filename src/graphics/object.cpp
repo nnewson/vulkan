@@ -179,6 +179,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.clearcoatRoughness = mat.clearcoatRoughness();
     ubo.anisotropy = mat.anisotropy();
     ubo.anisotropyRotation = mat.anisotropyRotation();
+    ubo.alphaCutoff = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
     ubo.hasTexture = mat.hasTexture() ? 1 : 0;
     return ubo;
 }
@@ -241,17 +242,42 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
         std::memcpy(binding.morphUboMapped[frame.currentFrame], &morphUbo, sizeof(morphUbo));
     }
 
+    // Camera forward used to project draw centroids for back-to-front sort of
+    // blend draws. Each mesh instance is taken as its world-translation origin
+    // — fine for the scenes the engine renders today (flat decals etc.); a
+    // future AABB-based centroid would be the natural upgrade.
+    Vec3 forwardVec = Vec3::normalise(frame.cameraTarget - frame.cameraPosition);
+
     // Build draw commands
     std::vector<DrawCommand> commands;
     commands.reserve(bindings_.size());
     for (const auto& binding : bindings_)
     {
+        const Material& mat = binding.geometry->material();
+        PipelineHandle pipe{};
+        if (mat.alphaMode() == AlphaMode::Blend)
+        {
+            pipe = frame.pipelines.blend;
+        }
+        else if (mat.doubleSided())
+        {
+            pipe = frame.pipelines.opaqueDoubleSided;
+        }
+        else
+        {
+            pipe = frame.pipelines.opaque;
+        }
+
+        Vec3 centroid{world[0, 3], world[1, 3], world[2, 3]};
+        float depth = Vec3::dotProduct(forwardVec, centroid - frame.cameraPosition);
+
         DrawCommand cmd;
         cmd.vertexBuffer = binding.geometry->vertexBuffer();
         cmd.indexBuffer = binding.geometry->indexBuffer();
         cmd.indexCount = binding.geometry->indexCount();
         cmd.descriptorSet = binding.descSets[frame.currentFrame];
-        cmd.pipeline = frame.pipeline;
+        cmd.pipeline = pipe;
+        cmd.sortDepth = depth;
         commands.push_back(cmd);
     }
     return commands;

@@ -3,14 +3,32 @@
 #include <fastgltf/math.hpp>
 #include <fastgltf/types.hpp>
 
+#include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/scene/node.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 #include <gtest/gtest.h>
 
+using fire_engine::AlphaMode;
 using fire_engine::Mat4;
+using fire_engine::Material;
 using fire_engine::Node;
+
+// Mirrors the alpha-mode translation performed inside
+// GltfLoader::loadMaterial so the translation can be exercised without
+// needing a GPU-backed Resources object.
+static void applyAlphaFields(const fastgltf::Material& gltfMat, Material& material)
+{
+    switch (gltfMat.alphaMode)
+    {
+        case fastgltf::AlphaMode::Opaque: material.alphaMode(AlphaMode::Opaque); break;
+        case fastgltf::AlphaMode::Mask:   material.alphaMode(AlphaMode::Mask);   break;
+        case fastgltf::AlphaMode::Blend:  material.alphaMode(AlphaMode::Blend);  break;
+    }
+    material.alphaCutoff(static_cast<float>(gltfMat.alphaCutoff));
+    material.doubleSided(gltfMat.doubleSided);
+}
 
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
 // mirroring the logic in GltfLoader::applyTRS for the matrix branch.
@@ -238,4 +256,44 @@ TEST(TRSRotation, DecalBlendQuaternionRoundTrip)
     EXPECT_NEAR(e.x(), -0.98279f, 1e-4f);
     EXPECT_NEAR(e.y(), 0.0f, 1e-5f);
     EXPECT_NEAR(e.z(), 0.0f, 1e-5f);
+}
+
+// ==========================================================================
+// Alpha fields — glTF alphaMode / alphaCutoff / doubleSided must land on the
+// engine's Material verbatim so the renderer can route to the right pipeline.
+// ==========================================================================
+
+TEST(MaterialAlphaFields, OpaqueIsDefault)
+{
+    fastgltf::Material gltfMat{};
+    Material material;
+    applyAlphaFields(gltfMat, material);
+    EXPECT_EQ(material.alphaMode(), AlphaMode::Opaque);
+    EXPECT_FALSE(material.doubleSided());
+    // fastgltf default alphaCutoff is 0.5f per the glTF spec.
+    EXPECT_FLOAT_EQ(material.alphaCutoff(), 0.5f);
+}
+
+TEST(MaterialAlphaFields, MaskWithCustomCutoff)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.alphaMode = fastgltf::AlphaMode::Mask;
+    gltfMat.alphaCutoff = 0.25f;
+    gltfMat.doubleSided = true;
+    Material material;
+    applyAlphaFields(gltfMat, material);
+    EXPECT_EQ(material.alphaMode(), AlphaMode::Mask);
+    EXPECT_FLOAT_EQ(material.alphaCutoff(), 0.25f);
+    EXPECT_TRUE(material.doubleSided());
+}
+
+TEST(MaterialAlphaFields, BlendMapsThrough)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.alphaMode = fastgltf::AlphaMode::Blend;
+    gltfMat.doubleSided = true;
+    Material material;
+    applyAlphaFields(gltfMat, material);
+    EXPECT_EQ(material.alphaMode(), AlphaMode::Blend);
+    EXPECT_TRUE(material.doubleSided());
 }

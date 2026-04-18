@@ -76,6 +76,23 @@ TEST(UBO, MaterialUBOHasTextureDefaultsToZero)
     EXPECT_EQ(ubo.hasTexture, 0);
 }
 
+TEST(UBO, MaterialUBOAlphaCutoffSitsBeforeHasTexture)
+{
+    static_assert(offsetof(MaterialUBO, alphaCutoff) < offsetof(MaterialUBO, hasTexture),
+                  "alphaCutoff must precede hasTexture to match shader layout");
+    static_assert(offsetof(MaterialUBO, anisotropyRotation) <
+                      offsetof(MaterialUBO, alphaCutoff),
+                  "alphaCutoff must sit after anisotropyRotation to match shader layout");
+    SUCCEED();
+}
+
+TEST(UBO, MaterialUBOAlphaCutoffRoundTrip)
+{
+    MaterialUBO ubo{};
+    ubo.alphaCutoff = 0.25f;
+    EXPECT_FLOAT_EQ(ubo.alphaCutoff, 0.25f);
+}
+
 TEST(UBO, MaterialUBOHasTextureCanBeSet)
 {
     MaterialUBO ubo{};

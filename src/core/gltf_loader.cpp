@@ -638,6 +638,15 @@ std::pair<Material, std::string> GltfLoader::loadMaterial(const fastgltf::Asset&
                            static_cast<float>(gltfMat.emissiveFactor.y()),
                            static_cast<float>(gltfMat.emissiveFactor.z())});
 
+        switch (gltfMat.alphaMode)
+        {
+            case fastgltf::AlphaMode::Opaque: material.alphaMode(AlphaMode::Opaque); break;
+            case fastgltf::AlphaMode::Mask:   material.alphaMode(AlphaMode::Mask);   break;
+            case fastgltf::AlphaMode::Blend:  material.alphaMode(AlphaMode::Blend);  break;
+        }
+        material.alphaCutoff(static_cast<float>(gltfMat.alphaCutoff));
+        material.doubleSided(gltfMat.doubleSided);
+
         // Resolve base color texture path
         if (pbr.baseColorTexture.has_value())
         {

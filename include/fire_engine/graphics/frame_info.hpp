@@ -8,6 +8,16 @@
 namespace fire_engine
 {
 
+// Pipeline handles covering the three forward alpha variants. Object::render
+// picks one per geometry from the material's alphaMode/doubleSided flags. The
+// renderer later buckets blend draws so they can be sorted back-to-front.
+struct AlphaPipelines
+{
+    PipelineHandle opaque{NullPipeline};
+    PipelineHandle opaqueDoubleSided{NullPipeline};
+    PipelineHandle blend{NullPipeline};
+};
+
 struct FrameInfo
 {
     uint32_t currentFrame{0};
@@ -15,7 +25,7 @@ struct FrameInfo
     uint32_t viewportHeight{0};
     Vec3 cameraPosition;
     Vec3 cameraTarget;
-    PipelineHandle pipeline{NullPipeline};
+    AlphaPipelines pipelines{};
 };
 
 } // namespace fire_engine

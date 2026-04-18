@@ -168,6 +168,51 @@ TEST(Material, SetAndGetAnisotropyRotation)
     EXPECT_FLOAT_EQ(mat.anisotropyRotation(), 1.57f);
 }
 
+// ---------------------------------------------------------------------------
+// Alpha mode
+// ---------------------------------------------------------------------------
+
+TEST(Material, DefaultAlphaModeIsOpaque)
+{
+    Material mat;
+    EXPECT_EQ(mat.alphaMode(), AlphaMode::Opaque);
+}
+
+TEST(Material, DefaultAlphaCutoffMatchesGltfSpec)
+{
+    Material mat;
+    EXPECT_FLOAT_EQ(mat.alphaCutoff(), 0.5f);
+}
+
+TEST(Material, DefaultDoubleSidedIsFalse)
+{
+    Material mat;
+    EXPECT_FALSE(mat.doubleSided());
+}
+
+TEST(Material, SetAndGetAlphaMode)
+{
+    Material mat;
+    mat.alphaMode(AlphaMode::Mask);
+    EXPECT_EQ(mat.alphaMode(), AlphaMode::Mask);
+    mat.alphaMode(AlphaMode::Blend);
+    EXPECT_EQ(mat.alphaMode(), AlphaMode::Blend);
+}
+
+TEST(Material, SetAndGetAlphaCutoff)
+{
+    Material mat;
+    mat.alphaCutoff(0.25f);
+    EXPECT_FLOAT_EQ(mat.alphaCutoff(), 0.25f);
+}
+
+TEST(Material, SetAndGetDoubleSided)
+{
+    Material mat;
+    mat.doubleSided(true);
+    EXPECT_TRUE(mat.doubleSided());
+}
+
 TEST(Material, SetAndGetMapKd)
 {
     Material mat;

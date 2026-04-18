@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 #include <fire_engine/graphics/colour3.hpp>
@@ -8,6 +9,13 @@ namespace fire_engine
 {
 
 class Texture;
+
+enum class AlphaMode : uint8_t
+{
+    Opaque,
+    Mask,
+    Blend,
+};
 
 class Material
 {
@@ -186,6 +194,33 @@ public:
         anisotropyRotation_ = v;
     }
 
+    [[nodiscard]] AlphaMode alphaMode() const noexcept
+    {
+        return alphaMode_;
+    }
+    void alphaMode(AlphaMode m) noexcept
+    {
+        alphaMode_ = m;
+    }
+
+    [[nodiscard]] float alphaCutoff() const noexcept
+    {
+        return alphaCutoff_;
+    }
+    void alphaCutoff(float v) noexcept
+    {
+        alphaCutoff_ = v;
+    }
+
+    [[nodiscard]] bool doubleSided() const noexcept
+    {
+        return doubleSided_;
+    }
+    void doubleSided(bool v) noexcept
+    {
+        doubleSided_ = v;
+    }
+
 private:
     std::string name_;
     Colour3 ambient_{};
@@ -204,6 +239,9 @@ private:
     float clearcoatRoughness_{0.0f};
     float anisotropy_{0.0f};
     float anisotropyRotation_{0.0f};
+    AlphaMode alphaMode_{AlphaMode::Opaque};
+    float alphaCutoff_{0.5f};
+    bool doubleSided_{false};
 
     const Texture* texture_{nullptr};
 };

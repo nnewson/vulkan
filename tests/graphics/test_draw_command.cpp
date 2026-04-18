@@ -40,6 +40,19 @@ TEST(DrawCommand, DefaultPipelineIsNull)
     EXPECT_EQ(cmd.pipeline, NullPipeline);
 }
 
+TEST(DrawCommand, DefaultSortDepthIsZero)
+{
+    DrawCommand cmd;
+    EXPECT_FLOAT_EQ(cmd.sortDepth, 0.0f);
+}
+
+TEST(DrawCommand, AssignSortDepth)
+{
+    DrawCommand cmd;
+    cmd.sortDepth = 42.5f;
+    EXPECT_FLOAT_EQ(cmd.sortDepth, 42.5f);
+}
+
 // ---------------------------------------------------------------------------
 // Member assignment
 // ---------------------------------------------------------------------------

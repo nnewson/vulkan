@@ -32,6 +32,26 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
     return config;
 }
 
+PipelineConfig Pipeline::forwardDoubleSidedConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config = forwardConfig(renderPass);
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
+PipelineConfig Pipeline::forwardBlendConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config = forwardConfig(renderPass);
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    config.depthWrite = false;
+    config.blendEnable = true;
+    config.srcColorBlend = vk::BlendFactor::eSrcAlpha;
+    config.dstColorBlend = vk::BlendFactor::eOneMinusSrcAlpha;
+    config.srcAlphaBlend = vk::BlendFactor::eOne;
+    config.dstAlphaBlend = vk::BlendFactor::eOneMinusSrcAlpha;
+    return config;
+}
+
 PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
 {
     PipelineConfig config;
@@ -94,7 +114,8 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const Pipeline
                                                          config.depthCompare);
 
     vk::PipelineColorBlendAttachmentState colorBlendAtt(
-        false, {}, {}, {}, {}, {}, {},
+        config.blendEnable, config.srcColorBlend, config.dstColorBlend, vk::BlendOp::eAdd,
+        config.srcAlphaBlend, config.dstAlphaBlend, vk::BlendOp::eAdd,
         vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
             vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 

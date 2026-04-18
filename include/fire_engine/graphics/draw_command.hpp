@@ -14,6 +14,7 @@ struct DrawCommand
     uint32_t indexCount{0};
     DescriptorSetHandle descriptorSet{NullDescriptorSet};
     PipelineHandle pipeline{NullPipeline};
+    float sortDepth{0.0f};
 };
 
 } // namespace fire_engine

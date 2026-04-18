@@ -8,8 +8,7 @@ namespace fire_engine
 FrameInfo RenderContext::frameInfo() const noexcept
 {
     auto extent = swapchain.extent();
-    return {currentFrame,   extent.width,   extent.height, cameraPosition,
-            cameraTarget, pipelineHandle};
+    return {currentFrame, extent.width, extent.height, cameraPosition, cameraTarget, pipelines};
 }
 
 } // namespace fire_engine
