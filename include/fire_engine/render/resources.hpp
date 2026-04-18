@@ -79,6 +79,14 @@ public:
     [[nodiscard]] ObjectDescriptorResult
     createObjectDescriptors(const ObjectDescriptorRequest& req);
 
+    // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout that has a
+    // single uniform-buffer binding at slot 0. Writes one UBO descriptor per
+    // frame from the provided MappedBufferSet. Used by passes whose layout is
+    // simpler than the forward 6-binding layout (e.g. the skybox).
+    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+    createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
+                               vk::DeviceSize uboSize);
+
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
     // handles so Renderer can resolve PipelineHandle values stamped on

@@ -31,22 +31,11 @@ void Swapchain::createDepthResources(const Device& device)
     depthView_ = createImageView(*depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
 }
 
-void Swapchain::createFramebuffers(vk::RenderPass renderPass)
+void Swapchain::recreate(const Device& device, const Window& window)
 {
-    framebuffers_.clear();
-    framebuffers_.reserve(views_.size());
-    for (size_t i = 0; i < views_.size(); ++i)
-    {
-        std::array<vk::ImageView, 2> attachments = {*views_[i], *depthView_};
-        vk::FramebufferCreateInfo ci({}, renderPass, attachments, extent_.width, extent_.height, 1);
-        framebuffers_.emplace_back(*device_, ci);
-    }
-}
-
-void Swapchain::recreate(const Device& device, const Window& window, vk::RenderPass renderPass)
-{
-    // Destroy in reverse dependency order
-    framebuffers_.clear();
+    // Destroy in reverse dependency order. Framebuffers are owned by
+    // RenderPass now — the caller is responsible for recreating them after
+    // this call returns.
     views_.clear();
     depthView_ = nullptr;
     depthImage_ = nullptr;
@@ -56,7 +45,6 @@ void Swapchain::recreate(const Device& device, const Window& window, vk::RenderP
     createSwapchain(device, window);
     createImageViews();
     createDepthResources(device);
-    createFramebuffers(renderPass);
 }
 
 void Swapchain::createSwapchain(const Device& device, const Window& window)

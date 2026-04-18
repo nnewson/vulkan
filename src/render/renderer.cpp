@@ -1,8 +1,12 @@
 #include <fire_engine/render/renderer.hpp>
 
+#include <array>
+#include <cmath>
+#include <cstring>
 #include <limits>
 #include <tuple>
 
+#include <fire_engine/math/constants.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/render/swapchain.hpp>
 #include <fire_engine/render/ubo.hpp>
@@ -14,14 +18,22 @@ namespace fire_engine
 Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
-      forwardRenderPass_(Pipeline::createForwardRenderPass(device_, swapchain_)),
-      pipeline_(device_, swapchain_, Pipeline::forwardConfig(*forwardRenderPass_)),
+      forwardPass_(RenderPass::createForward(device_, swapchain_)),
+      pipeline_(device_, swapchain_, Pipeline::forwardConfig(forwardPass_.renderPass())),
+      skyboxPipeline_(device_, swapchain_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       frame_(device_, swapchain_),
       resources_(device_, pipeline_)
 {
     swapchain_.createDepthResources(device_);
-    swapchain_.createFramebuffers(*forwardRenderPass_);
+    forwardPass_.createForwardFramebuffers(device_, swapchain_);
     forwardPipeline_ = resources_.registerPipeline(pipeline_.pipeline(), pipeline_.pipelineLayout());
+    skyboxPipelineHandle_ = resources_.registerPipeline(skyboxPipeline_.pipeline(),
+                                                        skyboxPipeline_.pipelineLayout());
+    skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
+    skyboxDescSets_ = resources_.createSingleUboDescriptors(
+        skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO));
+    std::array<uint16_t, 3> skyboxIndices{0, 1, 2};
+    skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -39,6 +51,8 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     beginRenderPass(cmd, *imageIndex);
 
     std::vector<DrawCommand> drawCommands;
+    recordSkybox(cameraPosition, cameraTarget, drawCommands);
+
     RenderContext ctx{device_,       swapchain_,     frame_,        pipeline_,
                       cmd,           currentFrame_,  cameraPosition, cameraTarget,
                       &drawCommands, forwardPipeline_};
@@ -56,7 +70,11 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                              resources_.vulkanPipeline(dc.pipeline));
             lastBoundPipeline = dc.pipeline;
         }
-        cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer), {vk::DeviceSize{0}});
+        if (dc.vertexBuffer != NullBuffer)
+        {
+            cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer),
+                                  {vk::DeviceSize{0}});
+        }
         cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
         vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
         cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
@@ -100,7 +118,8 @@ void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(*forwardRenderPass_, swapchain_.framebuffer(imageIndex),
+    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(),
+                                    forwardPass_.framebuffer(imageIndex),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
@@ -131,6 +150,42 @@ void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t
     }
 }
 
+void Renderer::recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
+                            std::vector<DrawCommand>& drawCommands)
+{
+    Vec3 worldUp{0.0f, 1.0f, 0.0f};
+    Vec3 forward = Vec3::normalise(cameraTarget - cameraPosition);
+    Vec3 right = Vec3::normalise(Vec3::crossProduct(forward, worldUp));
+    Vec3 up = Vec3::crossProduct(right, forward);
+
+    constexpr float skyboxFov = 45.0f * deg_to_rad;
+    auto extent = swapchain_.extent();
+    float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    float tanHalfFov = std::tan(skyboxFov * 0.5f);
+
+    SkyboxUBO data{};
+    data.cameraForward[0] = forward.x();
+    data.cameraForward[1] = forward.y();
+    data.cameraForward[2] = forward.z();
+    data.cameraRight[0] = right.x();
+    data.cameraRight[1] = right.y();
+    data.cameraRight[2] = right.z();
+    data.cameraUp[0] = up.x();
+    data.cameraUp[1] = up.y();
+    data.cameraUp[2] = up.z();
+    data.viewParams[0] = tanHalfFov;
+    data.viewParams[1] = aspect;
+    std::memcpy(skyboxUbo_.mapped[currentFrame_], &data, sizeof(data));
+
+    DrawCommand dc;
+    dc.vertexBuffer = NullBuffer;
+    dc.indexBuffer = skyboxIndexBuffer_;
+    dc.indexCount = 3;
+    dc.descriptorSet = skyboxDescSets_[currentFrame_];
+    dc.pipeline = skyboxPipelineHandle_;
+    drawCommands.push_back(dc);
+}
+
 void Renderer::recreateSwapchain(const Window& display)
 {
     auto [w, h] = display.framebufferSize();
@@ -143,7 +198,8 @@ void Renderer::recreateSwapchain(const Window& display)
 
     frame_.destroyRenderFinishedSemaphores();
 
-    swapchain_.recreate(device_, display, *forwardRenderPass_);
+    swapchain_.recreate(device_, display);
+    forwardPass_.createForwardFramebuffers(device_, swapchain_);
 
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
 }

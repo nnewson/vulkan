@@ -279,6 +279,44 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     return result;
 }
 
+std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+Resources::createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
+                                      vk::DeviceSize uboSize)
+{
+    std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
+        {vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT},
+    }};
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                    MAX_FRAMES_IN_FLIGHT, poolSizes);
+    auto& poolEntry = descriptorPools_.emplace_back();
+    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+
+    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, layout);
+    vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
+    auto sets = device_->device().allocateDescriptorSets(ai);
+
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vk::DescriptorBufferInfo bufInfo(
+            *buffers_[static_cast<uint32_t>(ubo.buffers[i])].buffer, 0, uboSize);
+        vk::WriteDescriptorSet write(*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                                     &bufInfo);
+        device_->device().updateDescriptorSets(write, {});
+
+        auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
+        descriptorSetTable_.push_back(*sets[i]);
+        result[i] = DescriptorSetHandle{dsHandle};
+    }
+
+    for (auto& s : sets)
+    {
+        poolEntry.sets.push_back(std::move(s));
+    }
+
+    return result;
+}
+
 // --- Pipeline registry ---
 
 PipelineHandle Resources::registerPipeline(vk::Pipeline pipeline, vk::PipelineLayout layout)

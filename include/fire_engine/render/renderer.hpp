@@ -1,11 +1,17 @@
 #pragma once
 
+#include <array>
 #include <optional>
+#include <vector>
 
+#include <fire_engine/graphics/draw_command.hpp>
+#include <fire_engine/graphics/gpu_handle.hpp>
 #include <fire_engine/math/vec3.hpp>
+#include <fire_engine/render/constants.hpp>
 #include <fire_engine/render/device.hpp>
 #include <fire_engine/render/frame.hpp>
 #include <fire_engine/render/pipeline.hpp>
+#include <fire_engine/render/render_pass.hpp>
 #include <fire_engine/render/resources.hpp>
 #include <fire_engine/render/swapchain.hpp>
 
@@ -77,14 +83,21 @@ private:
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex);
+    void recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
+                      std::vector<DrawCommand>& drawCommands);
 
     Device device_;
     Swapchain swapchain_;
-    vk::raii::RenderPass forwardRenderPass_;
+    RenderPass forwardPass_;
     Pipeline pipeline_;
+    Pipeline skyboxPipeline_;
     Frame frame_;
     Resources resources_;
     PipelineHandle forwardPipeline_{NullPipeline};
+    PipelineHandle skyboxPipelineHandle_{NullPipeline};
+    Resources::MappedBufferSet skyboxUbo_;
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
+    BufferHandle skyboxIndexBuffer_{NullBuffer};
     uint32_t currentFrame_{0};
 };
 

@@ -14,41 +14,6 @@ Pipeline::Pipeline(const Device& device, const Swapchain& swapchain, const Pipel
     createGraphicsPipeline(swapchain, config);
 }
 
-vk::raii::RenderPass Pipeline::createForwardRenderPass(const Device& device,
-                                                       const Swapchain& swapchain)
-{
-    vk::AttachmentDescription colorAtt(
-        {}, swapchain.format(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::ePresentSrcKHR);
-
-    vk::AttachmentDescription depthAtt(
-        {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eDontCare, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
-    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
-
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
-                                   &depthRef);
-
-    vk::SubpassDependency dep(VK_SUBPASS_EXTERNAL, 0,
-                              vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                  vk::PipelineStageFlagBits::eEarlyFragmentTests,
-                              vk::PipelineStageFlagBits::eColorAttachmentOutput |
-                                  vk::PipelineStageFlagBits::eEarlyFragmentTests,
-                              {},
-                              vk::AccessFlagBits::eColorAttachmentWrite |
-                                  vk::AccessFlagBits::eDepthStencilAttachmentWrite);
-
-    std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
-    vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
-    return vk::raii::RenderPass(device.device(), ci);
-}
-
 PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
 {
     PipelineConfig config;
@@ -64,6 +29,22 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         {5, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex},
     };
     config.renderPass = renderPass;
+    return config;
+}
+
+PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "skybox.vert.spv";
+    config.fragShaderPath = "skybox.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthWrite = false;
+    config.depthCompare = vk::CompareOp::eLessOrEqual;
+    config.cullMode = vk::CullModeFlagBits::eNone;
     return config;
 }
 
@@ -90,7 +71,11 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const Pipeline
         {4, 0, vk::Format::eR32G32B32A32Uint, static_cast<uint32_t>(offsetof(Vertex, joints_))},
         {5, 0, vk::Format::eR32G32B32A32Sfloat, static_cast<uint32_t>(offsetof(Vertex, weights_))},
     }};
-    vk::PipelineVertexInputStateCreateInfo vertInput({}, bindDesc, attrDesc);
+    vk::PipelineVertexInputStateCreateInfo vertInput;
+    if (config.useVertexInput)
+    {
+        vertInput = vk::PipelineVertexInputStateCreateInfo({}, bindDesc, attrDesc);
+    }
 
     vk::PipelineInputAssemblyStateCreateInfo inputAsm({}, vk::PrimitiveTopology::eTriangleList);
 
@@ -100,12 +85,13 @@ void Pipeline::createGraphicsPipeline(const Swapchain& swapchain, const Pipeline
     vk::PipelineViewportStateCreateInfo vpState({}, viewport, scissor);
 
     vk::PipelineRasterizationStateCreateInfo raster(
-        {}, false, false, vk::PolygonMode::eFill, vk::CullModeFlagBits::eBack,
+        {}, false, false, vk::PolygonMode::eFill, config.cullMode,
         vk::FrontFace::eCounterClockwise, false, 0, 0, 0, 1.0f);
 
     vk::PipelineMultisampleStateCreateInfo ms({}, vk::SampleCountFlagBits::e1);
 
-    vk::PipelineDepthStencilStateCreateInfo depthStencil({}, true, true, vk::CompareOp::eLess);
+    vk::PipelineDepthStencilStateCreateInfo depthStencil({}, true, config.depthWrite,
+                                                         config.depthCompare);
 
     vk::PipelineColorBlendAttachmentState colorBlendAtt(
         false, {}, {}, {}, {}, {}, {},

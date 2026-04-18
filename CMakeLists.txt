@@ -33,6 +33,7 @@ add_library(fireengine SHARED
     src/render/frame.cpp
     src/render/pipeline.cpp
     src/render/render_context.cpp
+    src/render/render_pass.cpp
     src/render/renderer.cpp
     src/render/resources.cpp
     src/render/swapchain.cpp
@@ -64,6 +65,8 @@ target_compile_options(fireEngineApp PRIVATE -Wall -Wextra -Wpedantic)
 set(SHADER_SOURCES
     shaders/shader.vert
     shaders/shader.frag
+    shaders/skybox.vert
+    shaders/skybox.frag
 )
 
 foreach(shader IN LISTS SHADER_SOURCES)

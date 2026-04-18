@@ -22,8 +22,7 @@ public:
     Swapchain& operator=(Swapchain&&) noexcept = default;
 
     void createDepthResources(const Device& device);
-    void createFramebuffers(vk::RenderPass renderPass);
-    void recreate(const Device& device, const Window& window, vk::RenderPass renderPass);
+    void recreate(const Device& device, const Window& window);
 
     [[nodiscard]] vk::SwapchainKHR swapchain() const noexcept
     {
@@ -32,6 +31,10 @@ public:
     [[nodiscard]] const std::vector<vk::Image>& images() const noexcept
     {
         return images_;
+    }
+    [[nodiscard]] const std::vector<vk::raii::ImageView>& imageViews() const noexcept
+    {
+        return views_;
     }
     [[nodiscard]] vk::Format format() const noexcept
     {
@@ -44,15 +47,6 @@ public:
     [[nodiscard]] vk::ImageView depthView() const noexcept
     {
         return *depthView_;
-    }
-
-    [[nodiscard]] vk::Framebuffer framebuffer(size_t index) const noexcept
-    {
-        return *framebuffers_[index];
-    }
-    [[nodiscard]] size_t framebufferCount() const noexcept
-    {
-        return framebuffers_.size();
     }
 
 private:
@@ -76,7 +70,6 @@ private:
     vk::raii::Image depthImage_{nullptr};
     vk::raii::DeviceMemory depthMem_{nullptr};
     vk::raii::ImageView depthView_{nullptr};
-    std::vector<vk::raii::Framebuffer> framebuffers_;
 };
 
 } // namespace fire_engine

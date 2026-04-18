@@ -18,6 +18,10 @@ struct PipelineConfig
     std::string fragShaderPath;
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
     vk::RenderPass renderPass{};
+    bool useVertexInput{true};
+    bool depthWrite{true};
+    vk::CompareOp depthCompare{vk::CompareOp::eLess};
+    vk::CullModeFlags cullMode{vk::CullModeFlagBits::eBack};
 };
 
 class Pipeline
@@ -44,11 +48,16 @@ public:
         return *pipeline_;
     }
 
-    // Factory helpers for the existing forward-lit pipeline — used until
-    // dedicated RenderPass/pipeline types are extracted in later steps.
-    [[nodiscard]] static vk::raii::RenderPass createForwardRenderPass(const Device& device,
-                                                                      const Swapchain& swapchain);
+    // Factory producing the PipelineConfig for the existing forward-lit
+    // pipeline. The render pass handle comes from the caller (usually a
+    // RenderPass::createForward() result).
     [[nodiscard]] static PipelineConfig forwardConfig(vk::RenderPass renderPass);
+
+    // Factory producing the PipelineConfig for a procedural skybox pipeline.
+    // Shares the forward render pass, uses no vertex buffers (fullscreen
+    // triangle via gl_VertexIndex), and disables depth writes with LEQUAL
+    // compare so it only writes where no forward geometry has drawn.
+    [[nodiscard]] static PipelineConfig skyboxConfig(vk::RenderPass renderPass);
 
 private:
     void createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings);

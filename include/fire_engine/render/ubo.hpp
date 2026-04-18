@@ -52,4 +52,12 @@ struct MorphUBO
     float weights[MAX_MORPH_TARGETS]{};
 };
 
+struct SkyboxUBO
+{
+    alignas(16) float cameraForward[4]{};
+    alignas(16) float cameraRight[4]{};
+    alignas(16) float cameraUp[4]{};
+    alignas(16) float viewParams[4]{}; // x = tanHalfFov, y = aspect
+};
+
 } // namespace fire_engine
