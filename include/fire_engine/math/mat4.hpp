@@ -183,6 +183,21 @@ public:
         return r;
     }
 
+    [[nodiscard]]
+    static constexpr Mat4 ortho(float left, float right, float bottom, float top, float near,
+                                float far) noexcept
+    {
+        Mat4 r;
+        r.m_[0] = 2.0f / (right - left);
+        r.m_[5] = -2.0f / (top - bottom); // Vulkan Y flipped
+        r.m_[10] = 1.0f / (far - near);   // Vulkan Z in [0,1]
+        r.m_[12] = -(right + left) / (right - left);
+        r.m_[13] = (top + bottom) / (top - bottom);
+        r.m_[14] = -near / (far - near);
+        r.m_[15] = 1.0f;
+        return r;
+    }
+
 private:
     float m_[16];
 };

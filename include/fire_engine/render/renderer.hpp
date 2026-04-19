@@ -102,6 +102,7 @@ private:
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};
+    Resources::MappedBufferSet lightUbo_;
     uint32_t currentFrame_{0};
 };
 

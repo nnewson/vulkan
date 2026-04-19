@@ -38,6 +38,12 @@ layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
 
+layout(binding = 11) uniform LightUBO {
+    vec4 direction;
+    vec4 colour;
+    mat4 lightViewProj;
+} light;
+
 layout(location = 0) in vec3 fragColor;
 layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec3 fragWorldPos;
@@ -84,8 +90,8 @@ void main() {
         N = normalize(fragNormal);
     }
 
-    vec3 lightDir = normalize(vec3(1.0, 1.0, 1.0));
-    vec3 lightColor = vec3(1.5);
+    vec3 lightDir = normalize(light.direction.xyz);
+    vec3 lightColor = light.colour.rgb * light.colour.a;
     vec3 V = normalize(ubo.cameraPos.xyz - fragWorldPos);
     vec3 H = normalize(lightDir + V);
 

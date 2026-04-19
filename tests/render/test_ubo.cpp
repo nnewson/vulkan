@@ -5,6 +5,7 @@
 #include <fire_engine/render/constants.hpp>
 #include <fire_engine/render/ubo.hpp>
 
+using fire_engine::LightUBO;
 using fire_engine::MaterialUBO;
 using fire_engine::MorphUBO;
 using fire_engine::SkinUBO;
@@ -178,4 +179,39 @@ TEST(UBO, MorphUBOSize)
 TEST(UBO, SkinUBOSize)
 {
     EXPECT_EQ(sizeof(SkinUBO) % 16, 0u);
+}
+
+TEST(UBO, LightUBOSize)
+{
+    EXPECT_EQ(sizeof(LightUBO) % 16, 0u);
+}
+
+TEST(UBO, LightUBODefaults)
+{
+    LightUBO ubo{};
+    for (int i = 0; i < 4; ++i)
+    {
+        EXPECT_FLOAT_EQ(ubo.direction[i], 0.0f);
+        EXPECT_FLOAT_EQ(ubo.colour[i], 0.0f);
+    }
+}
+
+TEST(UBO, LightUBOFieldOrder)
+{
+    static_assert(offsetof(LightUBO, direction) < offsetof(LightUBO, colour),
+                  "direction must precede colour to match shader layout");
+    static_assert(offsetof(LightUBO, colour) < offsetof(LightUBO, lightViewProj),
+                  "colour must precede lightViewProj to match shader layout");
+    SUCCEED();
+}
+
+TEST(UBO, LightUBODirectionAligned16)
+{
+    static_assert(offsetof(LightUBO, direction) % 16 == 0,
+                  "direction must be 16-byte aligned for std140 vec4");
+    static_assert(offsetof(LightUBO, colour) % 16 == 0,
+                  "colour must be 16-byte aligned for std140 vec4");
+    static_assert(offsetof(LightUBO, lightViewProj) % 16 == 0,
+                  "lightViewProj must be 16-byte aligned for std140 mat4");
+    SUCCEED();
 }

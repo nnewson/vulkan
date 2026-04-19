@@ -65,4 +65,11 @@ struct SkyboxUBO
     alignas(16) float viewParams[4]{}; // x = tanHalfFov, y = aspect
 };
 
+struct LightUBO
+{
+    alignas(16) float direction[4]{}; // xyz normalised, w unused
+    alignas(16) float colour[4]{};    // rgb, a = intensity
+    alignas(16) Mat4 lightViewProj{};
+};
+
 } // namespace fire_engine

@@ -44,6 +44,9 @@ Renderer::Renderer(const Window& window)
         skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO));
     std::array<uint16_t, 3> skyboxIndices{0, 1, 2};
     skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
+
+    lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
+    resources_.lightBuffers(lightUbo_.buffers);
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -57,6 +60,22 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     auto cmd = frame_.commandBuffer(currentFrame_);
     cmd.reset();
     cmd.begin(vk::CommandBufferBeginInfo{});
+
+    // Shared directional light. Direction normalised from (1,1,1), colour
+    // matches the pre-UBO hardcoded constants. lightViewProj stays identity
+    // in phase A; phase B fills it with the shadow light-space matrix.
+    LightUBO lightData{};
+    Vec3 lightDir = Vec3::normalise({1.0f, 1.0f, 1.0f});
+    lightData.direction[0] = lightDir.x();
+    lightData.direction[1] = lightDir.y();
+    lightData.direction[2] = lightDir.z();
+    lightData.direction[3] = 0.0f;
+    lightData.colour[0] = 1.5f;
+    lightData.colour[1] = 1.5f;
+    lightData.colour[2] = 1.5f;
+    lightData.colour[3] = 1.0f;
+    lightData.lightViewProj = Mat4::identity();
+    std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
 
     beginRenderPass(cmd, *imageIndex);
 

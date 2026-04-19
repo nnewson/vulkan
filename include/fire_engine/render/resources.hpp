@@ -71,6 +71,7 @@ public:
     struct ObjectDescriptorRequest
     {
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> uniformBufs{NullBuffer, NullBuffer};
+        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBufs{NullBuffer, NullBuffer};
         std::vector<GeometryDescriptorInfo> geometries;
     };
 
@@ -90,6 +91,19 @@ public:
     [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
     createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
                                vk::DeviceSize uboSize);
+
+    // --- Shared light UBO (bound to every forward descriptor set) ---
+
+    void lightBuffers(const std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT>& bufs) noexcept
+    {
+        lightBuffers_ = bufs;
+    }
+
+    [[nodiscard]] const std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT>&
+    lightBuffers() const noexcept
+    {
+        return lightBuffers_;
+    }
 
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
@@ -149,6 +163,8 @@ private:
         vk::PipelineLayout layout{};
     };
     std::vector<PipelineEntry> pipelines_;
+
+    std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
 };
 
 } // namespace fire_engine

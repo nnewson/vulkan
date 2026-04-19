@@ -206,7 +206,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
 
     // Create descriptor pool
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
-        {vk::DescriptorType::eUniformBuffer, totalSets * 4},
+        {vk::DescriptorType::eUniformBuffer, totalSets * 5},
         {vk::DescriptorType::eCombinedImageSampler, totalSets * 5},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
@@ -272,7 +272,10 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 *textures_[occTexIdx].sampler, *textures_[occTexIdx].view,
                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 10> writes = {{
+            vk::DescriptorBufferInfo lightBufInfo(
+                *buffers_[static_cast<uint32_t>(req.lightBufs[i])].buffer, 0, sizeof(LightUBO));
+
+            std::array<vk::WriteDescriptorSet, 11> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -285,6 +288,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 7, 0, 1, vk::DescriptorType::eCombinedImageSampler, &normalTexInfo},
                 {*sets[i], 8, 0, 1, vk::DescriptorType::eCombinedImageSampler, &mrTexInfo},
                 {*sets[i], 9, 0, 1, vk::DescriptorType::eCombinedImageSampler, &occTexInfo},
+                {*sets[i], 11, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 
