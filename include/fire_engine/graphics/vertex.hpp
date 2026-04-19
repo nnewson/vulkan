@@ -1,9 +1,10 @@
 #pragma once
 
-#include <cstdint>
-
 #include <fire_engine/graphics/colour3.hpp>
+#include <fire_engine/graphics/joints4.hpp>
+#include <fire_engine/math/vec2.hpp>
 #include <fire_engine/math/vec3.hpp>
+#include <fire_engine/math/vec4.hpp>
 
 namespace fire_engine
 {
@@ -19,35 +20,34 @@ public:
     Vertex(Vertex&&) noexcept = default;
     Vertex& operator=(Vertex&&) noexcept = default;
 
-    Vertex(Vec3 position, Colour3 colour, Vec3 normal, float texU, float texV) noexcept
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, Vec2 texCoord) noexcept
         : position_(position),
           colour_(colour),
           normal_(normal),
-          texCoord_{texU, texV}
+          texCoord_(texCoord)
     {
     }
 
-    Vertex(Vec3 position, Colour3 colour, Vec3 normal, float texU, float texV, uint32_t j0,
-           uint32_t j1, uint32_t j2, uint32_t j3, float w0, float w1, float w2, float w3) noexcept
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, Vec2 texCoord, Joints4 joints,
+           Vec4 weights) noexcept
         : position_(position),
           colour_(colour),
           normal_(normal),
-          texCoord_{texU, texV},
-          joints_{j0, j1, j2, j3},
-          weights_{w0, w1, w2, w3}
+          texCoord_(texCoord),
+          joints_(joints),
+          weights_(weights)
     {
     }
 
-    Vertex(Vec3 position, Colour3 colour, Vec3 normal, float texU, float texV, uint32_t j0,
-           uint32_t j1, uint32_t j2, uint32_t j3, float w0, float w1, float w2, float w3,
-           float tx, float ty, float tz, float tw) noexcept
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, Vec2 texCoord, Joints4 joints,
+           Vec4 weights, Vec4 tangent) noexcept
         : position_(position),
           colour_(colour),
           normal_(normal),
-          texCoord_{texU, texV},
-          joints_{j0, j1, j2, j3},
-          weights_{w0, w1, w2, w3},
-          tangent_{tx, ty, tz, tw}
+          texCoord_(texCoord),
+          joints_(joints),
+          weights_(weights),
+          tangent_(tangent)
     {
     }
 
@@ -78,66 +78,47 @@ public:
         normal_ = v;
     }
 
-    [[nodiscard]] float texU() const noexcept
+    [[nodiscard]] Vec2 texCoord() const noexcept
     {
-        return texCoord_[0];
+        return texCoord_;
     }
-    void texU(float u) noexcept
+    void texCoord(Vec2 tc) noexcept
     {
-        texCoord_[0] = u;
-    }
-
-    [[nodiscard]] float texV() const noexcept
-    {
-        return texCoord_[1];
-    }
-    void texV(float v) noexcept
-    {
-        texCoord_[1] = v;
+        texCoord_ = tc;
     }
 
-    [[nodiscard]] const uint32_t* joints() const noexcept
+    [[nodiscard]] Joints4 joints() const noexcept
     {
         return joints_;
     }
-    void joints(uint32_t j0, uint32_t j1, uint32_t j2, uint32_t j3) noexcept
+    void joints(Joints4 j) noexcept
     {
-        joints_[0] = j0;
-        joints_[1] = j1;
-        joints_[2] = j2;
-        joints_[3] = j3;
+        joints_ = j;
     }
 
-    [[nodiscard]] const float* weights() const noexcept
+    [[nodiscard]] Vec4 weights() const noexcept
     {
         return weights_;
     }
-    void weights(float w0, float w1, float w2, float w3) noexcept
+    void weights(Vec4 w) noexcept
     {
-        weights_[0] = w0;
-        weights_[1] = w1;
-        weights_[2] = w2;
-        weights_[3] = w3;
+        weights_ = w;
     }
 
-    [[nodiscard]] const float* tangent() const noexcept
+    [[nodiscard]] Vec4 tangent() const noexcept
     {
         return tangent_;
     }
-    void tangent(float x, float y, float z, float w) noexcept
+    void tangent(Vec4 t) noexcept
     {
-        tangent_[0] = x;
-        tangent_[1] = y;
-        tangent_[2] = z;
-        tangent_[3] = w;
+        tangent_ = t;
     }
 
     [[nodiscard]]
     bool operator==(const Vertex& other) const noexcept
     {
         return position_ == other.position_ && colour_ == other.colour_ &&
-               normal_ == other.normal_ && texCoord_[0] == other.texCoord_[0] &&
-               texCoord_[1] == other.texCoord_[1];
+               normal_ == other.normal_ && texCoord_ == other.texCoord_;
     }
 
     friend class Pipeline;
@@ -146,10 +127,10 @@ private:
     Vec3 position_{};
     Colour3 colour_{};
     Vec3 normal_{};
-    float texCoord_[2]{0.0f, 0.0f};
-    uint32_t joints_[4]{0, 0, 0, 0};
-    float weights_[4]{0.0f, 0.0f, 0.0f, 0.0f};
-    float tangent_[4]{0.0f, 0.0f, 0.0f, 0.0f};
+    Vec2 texCoord_{};
+    Joints4 joints_{};
+    Vec4 weights_{};
+    Vec4 tangent_{};
 };
 
 } // namespace fire_engine

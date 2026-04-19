@@ -666,48 +666,25 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
         float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
 
-        uint32_t j0 = 0, j1 = 0, j2 = 0, j3 = 0;
-        float w0 = 0.0f, w1 = 0.0f, w2 = 0.0f, w3 = 0.0f;
+        Joints4 jt{};
         if (i < joints.size())
         {
-            j0 = joints[i][0];
-            j1 = joints[i][1];
-            j2 = joints[i][2];
-            j3 = joints[i][3];
-        }
-        if (i < weights.size())
-        {
-            w0 = weights[i].x();
-            w1 = weights[i].y();
-            w2 = weights[i].z();
-            w3 = weights[i].w();
+            jt = Joints4{joints[i][0], joints[i][1], joints[i][2], joints[i][3]};
         }
 
-        verts.push_back(Vertex{pos,
-                               vertexColour,
-                               norm,
-                               u,
-                               v,
-                               j0,
-                               j1,
-                               j2,
-                               j3,
-                               w0,
-                               w1,
-                               w2,
-                               w3,
-                               (i < tangents.size())
-                                   ? tangents[i].x()
-                                   : 0.0f,
-                               (i < tangents.size())
-                                   ? tangents[i].y()
-                                   : 0.0f,
-                               (i < tangents.size())
-                                   ? tangents[i].z()
-                                   : 0.0f,
-                               (i < tangents.size())
-                                   ? tangents[i].w()
-                                   : 1.0f});
+        Vec4 wt{};
+        if (i < weights.size())
+        {
+            wt = Vec4{weights[i].x(), weights[i].y(), weights[i].z(), weights[i].w()};
+        }
+
+        Vec4 tang{0.0f, 0.0f, 0.0f, 1.0f};
+        if (i < tangents.size())
+        {
+            tang = Vec4{tangents[i].x(), tangents[i].y(), tangents[i].z(), tangents[i].w()};
+        }
+
+        verts.push_back(Vertex{pos, vertexColour, norm, Vec2{u, v}, jt, wt, tang});
     }
     geometry.vertices(std::move(verts));
 

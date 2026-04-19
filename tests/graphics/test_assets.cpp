@@ -76,9 +76,9 @@ TEST(Assets, GeometryAccessSetVerticesAndIndices)
     assets.resizeGeometries(1);
 
     std::vector<Vertex> verts = {
-        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
-        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, 1, 0},
-        {{0, 1, 0}, {1, 1, 1}, {0, 1, 0}, 0, 1},
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, {0, 0}},
+        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, {1, 0}},
+        {{0, 1, 0}, {1, 1, 1}, {0, 1, 0}, {0, 1}},
     };
     std::vector<uint16_t> idxs = {0, 1, 2};
 

@@ -36,9 +36,9 @@ TEST(Geometry, SetAndGetVertices)
 {
     Geometry geo;
     std::vector<Vertex> verts = {
-        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
-        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, 1, 0},
-        {{0, 1, 0}, {1, 1, 1}, {0, 1, 0}, 0, 1},
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, {0, 0}},
+        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, {1, 0}},
+        {{0, 1, 0}, {1, 1, 1}, {0, 1, 0}, {0, 1}},
     };
     geo.vertices(verts);
     EXPECT_EQ(geo.vertices().size(), 3);
@@ -48,7 +48,7 @@ TEST(Geometry, VerticesMoveSemantics)
 {
     Geometry geo;
     std::vector<Vertex> verts = {
-        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, {0, 0}},
     };
     geo.vertices(std::move(verts));
     EXPECT_EQ(geo.vertices().size(), 1);
@@ -117,8 +117,8 @@ TEST(Geometry, MoveConstructionTransfersVerticesAndIndices)
 {
     Geometry original;
     std::vector<Vertex> verts = {
-        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0},
-        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, 1, 0},
+        {{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, {0, 0}},
+        {{1, 0, 0}, {1, 1, 1}, {0, 1, 0}, {1, 0}},
     };
     std::vector<uint16_t> idxs = {0, 1};
     original.vertices(verts);
@@ -133,7 +133,7 @@ TEST(Geometry, MoveConstructionTransfersVerticesAndIndices)
 TEST(Geometry, MoveAssignmentTransfersState)
 {
     Geometry original;
-    std::vector<Vertex> verts = {{{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, 0, 0}};
+    std::vector<Vertex> verts = {{{0, 0, 0}, {1, 1, 1}, {0, 1, 0}, {0, 0}}};
     original.vertices(verts);
 
     Geometry target;

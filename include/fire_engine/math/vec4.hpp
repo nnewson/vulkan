@@ -5,22 +5,23 @@
 namespace fire_engine
 {
 
-class Vec3 : public VecBase<Vec3, 3>
+class Vec4 : public VecBase<Vec4, 4>
 {
 public:
-    constexpr Vec3(float x = 0.0f, float y = 0.0f, float z = 0.0f) noexcept
+    constexpr Vec4(float x = 0.0f, float y = 0.0f, float z = 0.0f, float w = 0.0f) noexcept
     {
         data_[0] = x;
         data_[1] = y;
         data_[2] = z;
+        data_[3] = w;
     }
 
-    ~Vec3() = default;
+    ~Vec4() = default;
 
-    Vec3(const Vec3&) = default;
-    Vec3& operator=(const Vec3&) = default;
-    Vec3(Vec3&&) noexcept = default;
-    Vec3& operator=(Vec3&&) noexcept = default;
+    Vec4(const Vec4&) = default;
+    Vec4& operator=(const Vec4&) = default;
+    Vec4(Vec4&&) noexcept = default;
+    Vec4& operator=(Vec4&&) noexcept = default;
 
     [[nodiscard]]
     constexpr float x() const noexcept
@@ -56,17 +57,14 @@ public:
     }
 
     [[nodiscard]]
-    static constexpr Vec3 crossProduct(const Vec3& lhs, const Vec3& rhs) noexcept
+    constexpr float w() const noexcept
     {
-        return {lhs.data_[1] * rhs.data_[2] - lhs.data_[2] * rhs.data_[1],
-                lhs.data_[2] * rhs.data_[0] - lhs.data_[0] * rhs.data_[2],
-                lhs.data_[0] * rhs.data_[1] - lhs.data_[1] * rhs.data_[0]};
+        return data_[3];
     }
 
-    [[nodiscard]]
-    constexpr Vec3 crossProduct(const Vec3& rhs) const noexcept
+    constexpr void w(float w) noexcept
     {
-        return Vec3::crossProduct(*this, rhs);
+        data_[3] = w;
     }
 };
 
