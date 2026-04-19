@@ -121,6 +121,7 @@ add_executable(test_fire_engine
     tests/graphics/test_draw_command.cpp
     tests/graphics/test_frame_info.cpp
     tests/graphics/test_texture.cpp
+    tests/graphics/test_sampler_settings.cpp
     tests/render/test_ubo.cpp
     tests/core/test_shader_loader.cpp
     tests/core/test_system.cpp

@@ -18,6 +18,7 @@
 #include <fire_engine/graphics/object.hpp>
 #include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
+#include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -25,6 +26,53 @@
 
 namespace fire_engine
 {
+
+// ---------------------------------------------------------------------------
+// Sampler helpers
+// ---------------------------------------------------------------------------
+
+static WrapMode toWrapMode(fastgltf::Wrap w)
+{
+    switch (w)
+    {
+        case fastgltf::Wrap::MirroredRepeat: return WrapMode::MirroredRepeat;
+        case fastgltf::Wrap::ClampToEdge: return WrapMode::ClampToEdge;
+        default: return WrapMode::Repeat;
+    }
+}
+
+static FilterMode toFilterMode(fastgltf::Filter f)
+{
+    switch (f)
+    {
+        case fastgltf::Filter::Nearest:
+        case fastgltf::Filter::NearestMipMapNearest:
+        case fastgltf::Filter::NearestMipMapLinear: return FilterMode::Nearest;
+        default: return FilterMode::Linear;
+    }
+}
+
+static SamplerSettings extractSamplerSettings(const fastgltf::Asset& asset,
+                                              std::size_t textureIndex)
+{
+    SamplerSettings settings;
+    const auto& tex = asset.textures[textureIndex];
+    if (tex.samplerIndex.has_value())
+    {
+        const auto& sampler = asset.samplers[tex.samplerIndex.value()];
+        settings.wrapS = toWrapMode(sampler.wrapS);
+        settings.wrapT = toWrapMode(sampler.wrapT);
+        if (sampler.magFilter.has_value())
+        {
+            settings.magFilter = toFilterMode(sampler.magFilter.value());
+        }
+        if (sampler.minFilter.has_value())
+        {
+            settings.minFilter = toFilterMode(sampler.minFilter.value());
+        }
+    }
+    return settings;
+}
 
 // ---------------------------------------------------------------------------
 // Node helpers (formerly anonymous namespace)
@@ -439,7 +487,8 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                tex = Texture::load_from_file(texturePath, resources);
+                auto settings = extractSamplerSettings(asset, texIndex);
+                tex = Texture::load_from_file(texturePath, resources, settings);
             }
             return &tex;
         }
@@ -462,7 +511,8 @@ const Texture* GltfLoader::resolveEmissiveTexture(const fastgltf::Asset& asset,
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                tex = Texture::load_from_file(texturePath, resources);
+                auto settings = extractSamplerSettings(asset, texIndex);
+                tex = Texture::load_from_file(texturePath, resources, settings);
             }
             return &tex;
         }
@@ -485,7 +535,8 @@ const Texture* GltfLoader::resolveNormalTexture(const fastgltf::Asset& asset,
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                tex = Texture::load_from_file(texturePath, resources);
+                auto settings = extractSamplerSettings(asset, texIndex);
+                tex = Texture::load_from_file(texturePath, resources, settings);
             }
             return &tex;
         }
@@ -508,7 +559,8 @@ const Texture* GltfLoader::resolveMetallicRoughnessTexture(const fastgltf::Asset
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                tex = Texture::load_from_file(texturePath, resources);
+                auto settings = extractSamplerSettings(asset, texIndex);
+                tex = Texture::load_from_file(texturePath, resources, settings);
             }
             return &tex;
         }
@@ -531,7 +583,8 @@ const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
-                tex = Texture::load_from_file(texturePath, resources);
+                auto settings = extractSamplerSettings(asset, texIndex);
+                tex = Texture::load_from_file(texturePath, resources, settings);
             }
             return &tex;
         }

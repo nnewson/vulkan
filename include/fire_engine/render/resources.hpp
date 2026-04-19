@@ -9,6 +9,7 @@
 #include <vulkan/vulkan_raii.hpp>
 
 #include <fire_engine/graphics/gpu_handle.hpp>
+#include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/render/constants.hpp>
 
 namespace fire_engine
@@ -37,8 +38,10 @@ public:
 
     // --- Texture creation ---
 
-    [[nodiscard]] TextureHandle createTexture(const Image& image);
-    [[nodiscard]] TextureHandle createTexture(const uint8_t* pixels, int width, int height);
+    [[nodiscard]] TextureHandle createTexture(const Image& image,
+                                              const SamplerSettings& sampler = {});
+    [[nodiscard]] TextureHandle createTexture(const uint8_t* pixels, int width, int height,
+                                              const SamplerSettings& sampler = {});
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
 

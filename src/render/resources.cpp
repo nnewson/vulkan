@@ -57,12 +57,32 @@ BufferHandle Resources::createIndexBuffer(std::span<const uint16_t> indices)
 
 // --- Texture creation ---
 
-TextureHandle Resources::createTexture(const Image& image)
+static vk::SamplerAddressMode toVkAddressMode(WrapMode mode)
 {
-    return createTexture(image.data(), image.width(), image.height());
+    switch (mode)
+    {
+        case WrapMode::MirroredRepeat: return vk::SamplerAddressMode::eMirroredRepeat;
+        case WrapMode::ClampToEdge: return vk::SamplerAddressMode::eClampToEdge;
+        default: return vk::SamplerAddressMode::eRepeat;
+    }
 }
 
-TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int height)
+static vk::Filter toVkFilter(FilterMode mode)
+{
+    switch (mode)
+    {
+        case FilterMode::Nearest: return vk::Filter::eNearest;
+        default: return vk::Filter::eLinear;
+    }
+}
+
+TextureHandle Resources::createTexture(const Image& image, const SamplerSettings& sampler)
+{
+    return createTexture(image.data(), image.width(), image.height(), sampler);
+}
+
+TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int height,
+                                       const SamplerSettings& sampler)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
@@ -142,11 +162,11 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
     // Create sampler
     auto props = device_->physicalDevice().getProperties();
     vk::SamplerCreateInfo samplerCi(
-        {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
-        vk::SamplerAddressMode::eRepeat, vk::SamplerAddressMode::eRepeat,
-        vk::SamplerAddressMode::eRepeat, 0.0f, vk::True, props.limits.maxSamplerAnisotropy,
-        vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f, vk::BorderColor::eIntOpaqueBlack,
-        vk::False);
+        {}, toVkFilter(sampler.magFilter), toVkFilter(sampler.minFilter),
+        vk::SamplerMipmapMode::eLinear, toVkAddressMode(sampler.wrapS),
+        toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS), 0.0f, vk::True,
+        props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f,
+        vk::BorderColor::eIntOpaqueBlack, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
     return TextureHandle{id};
