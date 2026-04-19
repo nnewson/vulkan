@@ -139,6 +139,19 @@ TEST(UBO, MaterialUBOHasMetallicRoughnessTextureCanBeSet)
     EXPECT_EQ(ubo.hasMetallicRoughnessTexture, 1);
 }
 
+TEST(UBO, MaterialUBOHasOcclusionTextureDefaultsToZero)
+{
+    MaterialUBO ubo{};
+    EXPECT_EQ(ubo.hasOcclusionTexture, 0);
+}
+
+TEST(UBO, MaterialUBOHasOcclusionTextureCanBeSet)
+{
+    MaterialUBO ubo{};
+    ubo.hasOcclusionTexture = 1;
+    EXPECT_EQ(ubo.hasOcclusionTexture, 1);
+}
+
 TEST(UBO, MaterialUBOTextureFlagsFieldOrder)
 {
     static_assert(offsetof(MaterialUBO, hasTexture) < offsetof(MaterialUBO, hasEmissiveTexture),
@@ -149,6 +162,10 @@ TEST(UBO, MaterialUBOTextureFlagsFieldOrder)
     static_assert(offsetof(MaterialUBO, hasNormalTexture) <
                       offsetof(MaterialUBO, hasMetallicRoughnessTexture),
                   "hasNormalTexture must precede hasMetallicRoughnessTexture to match shader "
+                  "layout");
+    static_assert(offsetof(MaterialUBO, hasMetallicRoughnessTexture) <
+                      offsetof(MaterialUBO, hasOcclusionTexture),
+                  "hasMetallicRoughnessTexture must precede hasOcclusionTexture to match shader "
                   "layout");
     SUCCEED();
 }

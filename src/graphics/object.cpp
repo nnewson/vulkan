@@ -179,6 +179,18 @@ void Object::load(Resources& resources)
             geoInfo.metallicRoughnessTexture = resources.createTexture(white, 1, 1);
         }
 
+        // Occlusion texture — use a 1x1 white dummy (1.0 = no occlusion)
+        if (binding.geometry->material().hasOcclusionTexture())
+        {
+            geoInfo.occlusionTexture =
+                binding.geometry->material().occlusionTexture().handle();
+        }
+        else
+        {
+            static const uint8_t white[] = {255, 255, 255, 255};
+            geoInfo.occlusionTexture = resources.createTexture(white, 1, 1);
+        }
+
         req.geometries.push_back(geoInfo);
     }
 
@@ -220,6 +232,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.hasEmissiveTexture = mat.hasEmissiveTexture() ? 1 : 0;
     ubo.hasNormalTexture = mat.hasNormalTexture() ? 1 : 0;
     ubo.hasMetallicRoughnessTexture = mat.hasMetallicRoughnessTexture() ? 1 : 0;
+    ubo.hasOcclusionTexture = mat.hasOcclusionTexture() ? 1 : 0;
     return ubo;
 }
 

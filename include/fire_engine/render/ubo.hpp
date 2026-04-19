@@ -40,6 +40,7 @@ struct MaterialUBO
     int hasEmissiveTexture{0};
     int hasNormalTexture{0};
     int hasMetallicRoughnessTexture{0};
+    int hasOcclusionTexture{0};
 };
 
 struct SkinUBO

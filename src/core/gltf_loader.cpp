@@ -517,18 +517,41 @@ const Texture* GltfLoader::resolveMetallicRoughnessTexture(const fastgltf::Asset
     return nullptr;
 }
 
+const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
+                                                   const fastgltf::Primitive& primitive,
+                                                   const std::string& texturePath,
+                                                   Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.occlusionTexture.has_value() && !texturePath.empty())
+        {
+            auto texIndex = gltfMat.occlusionTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                tex = Texture::load_from_file(texturePath, resources);
+            }
+            return &tex;
+        }
+    }
+
+    return nullptr;
+}
+
 Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
                                       const fastgltf::Primitive& primitive, Material& materialData,
                                       const Texture* texPtr, const Texture* emissiveTexPtr,
                                       const Texture* normalTexPtr, const Texture* mrTexPtr,
-                                      Assets& assets)
+                                      const Texture* occTexPtr, Assets& assets)
 {
     if (primitive.materialIndex.has_value())
     {
         auto matIndex = primitive.materialIndex.value();
         auto& mat = assets.material(matIndex);
         if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture()
-            && !mat.hasMetallicRoughnessTexture())
+            && !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
         {
             mat = materialData;
             if (texPtr != nullptr)
@@ -547,13 +570,17 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
             {
                 mat.metallicRoughnessTexture(mrTexPtr);
             }
+            if (occTexPtr != nullptr)
+            {
+                mat.occlusionTexture(occTexPtr);
+            }
         }
         return &mat;
     }
 
     auto& mat = assets.material(0);
     if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture()
-        && !mat.hasMetallicRoughnessTexture())
+        && !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
     {
         if (texPtr != nullptr)
         {
@@ -570,6 +597,10 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
         if (mrTexPtr != nullptr)
         {
             mat.metallicRoughnessTexture(mrTexPtr);
+        }
+        if (occTexPtr != nullptr)
+        {
+            mat.occlusionTexture(occTexPtr);
         }
     }
     return &mat;
@@ -773,9 +804,11 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             resolveNormalTexture(asset, primitive, texPaths.normal, resources, assets);
         const Texture* mrTexPtr = resolveMetallicRoughnessTexture(
             asset, primitive, texPaths.metallicRoughness, resources, assets);
+        const Texture* occTexPtr =
+            resolveOcclusionTexture(asset, primitive, texPaths.occlusion, resources, assets);
         Material* matPtr =
             resolveMaterial(asset, primitive, materialData, texPtr, emissiveTexPtr, normalTexPtr,
-                            mrTexPtr, assets);
+                            mrTexPtr, occTexPtr, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
         loadGeometry(asset, primitive, matPtr, resources, assets, geoIdx);
@@ -840,6 +873,12 @@ GltfLoader::loadMaterial(const fastgltf::Asset& asset, const fastgltf::Primitive
         {
             paths.normal =
                 resolveTextureURI(asset, gltfMat.normalTexture.value().textureIndex, baseDir);
+        }
+
+        if (gltfMat.occlusionTexture.has_value())
+        {
+            paths.occlusion =
+                resolveTextureURI(asset, gltfMat.occlusionTexture.value().textureIndex, baseDir);
         }
     }
 

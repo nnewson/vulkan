@@ -65,6 +65,7 @@ public:
         TextureHandle emissiveTexture{NullTexture};
         TextureHandle normalTexture{NullTexture};
         TextureHandle metallicRoughnessTexture{NullTexture};
+        TextureHandle occlusionTexture{NullTexture};
     };
 
     struct ObjectDescriptorRequest

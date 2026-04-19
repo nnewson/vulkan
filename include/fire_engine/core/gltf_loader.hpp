@@ -40,6 +40,7 @@ public:
         std::string emissive;
         std::string normal;
         std::string metallicRoughness;
+        std::string occlusion;
     };
 
     using NodeMap = std::unordered_map<std::size_t, Node*>;
@@ -105,11 +106,16 @@ private:
                                     Assets& assets);
 
     [[nodiscard]]
+    static const Texture*
+    resolveOcclusionTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                            const std::string& texturePath, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
     static Material* resolveMaterial(const fastgltf::Asset& asset,
                                      const fastgltf::Primitive& primitive, Material& materialData,
                                      const Texture* texPtr, const Texture* emissiveTexPtr,
                                      const Texture* normalTexPtr, const Texture* mrTexPtr,
-                                     Assets& assets);
+                                     const Texture* occTexPtr, Assets& assets);
 
     static void loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
                              const Material* matPtr, Resources& resources, Assets& assets,

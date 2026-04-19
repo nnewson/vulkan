@@ -292,13 +292,27 @@ TEST(Material, MetallicRoughnessTexturePointerAssignment)
     EXPECT_TRUE(mat.hasMetallicRoughnessTexture());
 }
 
+TEST(Material, OcclusionTextureDefaultsToNull)
+{
+    Material mat;
+    EXPECT_FALSE(mat.hasOcclusionTexture());
+}
+
+TEST(Material, OcclusionTexturePointerAssignment)
+{
+    Material mat;
+    Texture tex;
+    mat.occlusionTexture(&tex);
+    EXPECT_TRUE(mat.hasOcclusionTexture());
+}
+
 // ---------------------------------------------------------------------------
 // Copy semantics
 // ---------------------------------------------------------------------------
 
 TEST(Material, CopyConstructionCopiesAllProperties)
 {
-    Texture baseTex, emissiveTex, normalTex, mrTex;
+    Texture baseTex, emissiveTex, normalTex, mrTex, occTex;
     Material original;
     original.name("copper");
     original.diffuse({0.7f, 0.3f, 0.1f});
@@ -308,6 +322,7 @@ TEST(Material, CopyConstructionCopiesAllProperties)
     original.emissiveTexture(&emissiveTex);
     original.normalTexture(&normalTex);
     original.metallicRoughnessTexture(&mrTex);
+    original.occlusionTexture(&occTex);
 
     Material copy(original);
     EXPECT_EQ(copy.name(), "copper");
@@ -318,6 +333,7 @@ TEST(Material, CopyConstructionCopiesAllProperties)
     EXPECT_TRUE(copy.hasEmissiveTexture());
     EXPECT_TRUE(copy.hasNormalTexture());
     EXPECT_TRUE(copy.hasMetallicRoughnessTexture());
+    EXPECT_TRUE(copy.hasOcclusionTexture());
 }
 
 TEST(Material, CopyAssignmentCopiesAllProperties)

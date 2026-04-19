@@ -80,6 +80,19 @@ public:
         return metallicRoughnessTexture_ != nullptr;
     }
 
+    [[nodiscard]] const Texture& occlusionTexture() const noexcept
+    {
+        return *occlusionTexture_;
+    }
+    void occlusionTexture(const Texture* t) noexcept
+    {
+        occlusionTexture_ = t;
+    }
+    [[nodiscard]] bool hasOcclusionTexture() const noexcept
+    {
+        return occlusionTexture_ != nullptr;
+    }
+
     [[nodiscard]] const std::string& name() const noexcept
     {
         return name_;
@@ -286,6 +299,7 @@ private:
     const Texture* emissiveTexture_{nullptr};
     const Texture* normalTexture_{nullptr};
     const Texture* metallicRoughnessTexture_{nullptr};
+    const Texture* occlusionTexture_{nullptr};
 };
 
 } // namespace fire_engine
