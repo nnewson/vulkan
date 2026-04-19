@@ -6,6 +6,7 @@
 
 #include <fire_engine/graphics/draw_command.hpp>
 #include <fire_engine/graphics/gpu_handle.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 #include <fire_engine/render/constants.hpp>
 #include <fire_engine/render/device.hpp>
@@ -86,23 +87,30 @@ private:
     void recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
                       std::vector<DrawCommand>& drawCommands);
 
+    static constexpr uint32_t shadowMapSize_ = 2048;
+
     Device device_;
     Swapchain swapchain_;
     RenderPass forwardPass_;
+    RenderPass shadowPass_;
     Pipeline pipelineOpaque_;
     Pipeline pipelineOpaqueDoubleSided_;
     Pipeline pipelineBlend_;
     Pipeline skyboxPipeline_;
+    Pipeline shadowPipeline_;
     Frame frame_;
     Resources resources_;
     PipelineHandle forwardOpaqueHandle_{NullPipeline};
     PipelineHandle forwardOpaqueDoubleSidedHandle_{NullPipeline};
     PipelineHandle forwardBlendHandle_{NullPipeline};
     PipelineHandle skyboxPipelineHandle_{NullPipeline};
+    PipelineHandle shadowPipelineHandle_{NullPipeline};
+    TextureHandle shadowMapHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};
     Resources::MappedBufferSet lightUbo_;
+    Mat4 lightViewProj_{};
     uint32_t currentFrame_{0};
 };
 

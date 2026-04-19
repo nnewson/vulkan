@@ -152,6 +152,45 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
     return TextureHandle{id};
 }
 
+// --- Shadow map ---
+
+TextureHandle Resources::createShadowMap(uint32_t extent)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+
+    vk::ImageCreateInfo imgCi(
+        {}, vk::ImageType::e2D, vk::Format::eD32Sfloat, vk::Extent3D(extent, extent, 1), 1, 1,
+        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
+        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eD32Sfloat, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    // Comparison sampler for sampler2DShadow: hardware PCF via eLess compare,
+    // clamp-to-border with white border so off-map samples return "lit".
+    vk::SamplerCreateInfo samplerCi(
+        {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
+        vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
+        vk::SamplerAddressMode::eClampToBorder, 0.0f, vk::False, 1.0f, vk::True,
+        vk::CompareOp::eLess, 0.0f, 1.0f, vk::BorderColor::eFloatOpaqueWhite, vk::False);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
+}
+
 // --- Mapped buffer sets ---
 
 Resources::MappedBufferSet Resources::createMappedUniformBuffers(std::size_t size)
@@ -298,6 +337,72 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
         }
 
         // Store RAII ownership
+        for (auto& s : sets)
+        {
+            poolEntry.sets.push_back(std::move(s));
+        }
+    }
+
+    return result;
+}
+
+Resources::ShadowDescriptorResult
+Resources::createShadowDescriptors(const ShadowDescriptorRequest& req)
+{
+    auto numGeometries = static_cast<uint32_t>(req.geometries.size());
+    uint32_t totalSets = numGeometries * MAX_FRAMES_IN_FLIGHT;
+
+    std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
+        {vk::DescriptorType::eUniformBuffer, totalSets * 3},
+        {vk::DescriptorType::eStorageBuffer, totalSets},
+    }};
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
+                                    poolSizes);
+    auto& poolEntry = descriptorPools_.emplace_back();
+    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+
+    ShadowDescriptorResult result;
+    result.descSets.resize(numGeometries);
+
+    for (uint32_t g = 0; g < numGeometries; ++g)
+    {
+        const auto& geo = req.geometries[g];
+
+        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shadowDescLayout_);
+        vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
+        auto sets = device_->device().allocateDescriptorSets(ai);
+
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+        {
+            vk::DescriptorBufferInfo shadowUboInfo(
+                *buffers_[static_cast<uint32_t>(geo.shadowUboBufs[i])].buffer, 0,
+                sizeof(ShadowUBO));
+            vk::DescriptorBufferInfo skinBufInfo(
+                *buffers_[static_cast<uint32_t>(geo.skinBufs[i])].buffer, 0, sizeof(SkinUBO));
+            vk::DescriptorBufferInfo morphUboBufInfo(
+                *buffers_[static_cast<uint32_t>(geo.morphUboBufs[i])].buffer, 0, sizeof(MorphUBO));
+
+            vk::DeviceSize ssboSize =
+                geo.morphSsboSize > 0 ? static_cast<vk::DeviceSize>(geo.morphSsboSize)
+                                      : sizeof(float) * 4;
+            vk::DescriptorBufferInfo morphSsboInfo(
+                *buffers_[static_cast<uint32_t>(geo.morphSsbo)].buffer, 0, ssboSize);
+
+            std::array<vk::WriteDescriptorSet, 4> writes = {{
+                {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &shadowUboInfo},
+                {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &skinBufInfo},
+                {*sets[i], 2, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
+                 &morphUboBufInfo},
+                {*sets[i], 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
+                 &morphSsboInfo},
+            }};
+            device_->device().updateDescriptorSets(writes, {});
+
+            auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
+            descriptorSetTable_.push_back(*sets[i]);
+            result.descSets[g][i] = DescriptorSetHandle{dsHandle};
+        }
+
         for (auto& s : sets)
         {
             poolEntry.sets.push_back(std::move(s));

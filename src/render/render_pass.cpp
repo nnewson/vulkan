@@ -45,6 +45,49 @@ RenderPass RenderPass::createForward(const Device& device, const Swapchain& swap
     return pass;
 }
 
+RenderPass RenderPass::createShadow(const Device& device)
+{
+    vk::AttachmentDescription depthAtt(
+        {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
+        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    vk::AttachmentReference depthRef(0, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, {}, {}, &depthRef);
+
+    // Gate shadow writes behind previous-frame forward reads, and drive the
+    // implicit transition to shader-read-only on pass end so the forward
+    // fragment shader sees a sampleable depth image.
+    std::array<vk::SubpassDependency, 2> deps{
+        vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0,
+                              vk::PipelineStageFlagBits::eFragmentShader,
+                              vk::PipelineStageFlagBits::eEarlyFragmentTests,
+                              vk::AccessFlagBits::eShaderRead,
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite},
+        vk::SubpassDependency{0, VK_SUBPASS_EXTERNAL,
+                              vk::PipelineStageFlagBits::eLateFragmentTests,
+                              vk::PipelineStageFlagBits::eFragmentShader,
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+                              vk::AccessFlagBits::eShaderRead},
+    };
+
+    vk::RenderPassCreateInfo ci({}, depthAtt, subpass, deps);
+
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
+void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView depthView,
+                                         uint32_t extent)
+{
+    framebuffers_.clear();
+    vk::FramebufferCreateInfo ci({}, *renderPass_, depthView, extent, extent, 1);
+    framebuffers_.emplace_back(device.device(), ci);
+}
+
 void RenderPass::createForwardFramebuffers(const Device& device, const Swapchain& swapchain)
 {
     framebuffers_.clear();

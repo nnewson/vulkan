@@ -59,7 +59,10 @@ private:
         std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> materialMapped{};
         std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> skinMapped{};
         std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> morphUboMapped{};
+        std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> shadowMapped{};
         std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> descSets{
+            NullDescriptorSet, NullDescriptorSet};
+        std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> shadowDescSets{
             NullDescriptorSet, NullDescriptorSet};
     };
 

@@ -20,12 +20,14 @@ Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_, swapchain_)),
+      shadowPass_(RenderPass::createShadow(device_)),
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
       pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
       pipelineBlend_(device_,
                      Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
       skyboxPipeline_(device_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
+      shadowPipeline_(device_, Pipeline::shadowConfig(shadowPass_.renderPass())),
       frame_(device_, swapchain_),
       resources_(device_, pipelineOpaque_)
 {
@@ -39,6 +41,8 @@ Renderer::Renderer(const Window& window)
         resources_.registerPipeline(pipelineBlend_.pipeline(), pipelineBlend_.pipelineLayout());
     skyboxPipelineHandle_ = resources_.registerPipeline(skyboxPipeline_.pipeline(),
                                                         skyboxPipeline_.pipelineLayout());
+    shadowPipelineHandle_ = resources_.registerPipeline(shadowPipeline_.pipeline(),
+                                                        shadowPipeline_.pipelineLayout());
     skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
     skyboxDescSets_ = resources_.createSingleUboDescriptors(
         skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO));
@@ -47,6 +51,11 @@ Renderer::Renderer(const Window& window)
 
     lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
     resources_.lightBuffers(lightUbo_.buffers);
+
+    shadowMapHandle_ = resources_.createShadowMap(shadowMapSize_);
+    shadowPass_.createShadowFramebuffer(
+        device_, resources_.vulkanImageView(shadowMapHandle_), shadowMapSize_);
+    resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -61,11 +70,17 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     cmd.reset();
     cmd.begin(vk::CommandBufferBeginInfo{});
 
-    // Shared directional light. Direction normalised from (1,1,1), colour
-    // matches the pre-UBO hardcoded constants. lightViewProj stays identity
-    // in phase A; phase B fills it with the shadow light-space matrix.
-    LightUBO lightData{};
+    // Directional light — fixed orthographic volume fitted around the origin.
+    // Light position is the light direction scaled out so the frustum captures
+    // the scene. Phase C consumes lightViewProj_ in the forward frag shader
+    // via LightUBO to project fragments into shadow-map space.
     Vec3 lightDir = Vec3::normalise({1.0f, 1.0f, 1.0f});
+    Vec3 lightPos = lightDir * 15.0f;
+    Mat4 lightView = Mat4::lookAt(lightPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
+    Mat4 lightProj = Mat4::ortho(-10.0f, 10.0f, -10.0f, 10.0f, -20.0f, 20.0f);
+    lightViewProj_ = lightProj * lightView;
+
+    LightUBO lightData{};
     lightData.direction[0] = lightDir.x();
     lightData.direction[1] = lightDir.y();
     lightData.direction[2] = lightDir.z();
@@ -74,10 +89,8 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     lightData.colour[1] = 1.5f;
     lightData.colour[2] = 1.5f;
     lightData.colour[3] = 1.0f;
-    lightData.lightViewProj = Mat4::identity();
+    lightData.lightViewProj = lightViewProj_;
     std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
-
-    beginRenderPass(cmd, *imageIndex);
 
     std::vector<DrawCommand> drawCommands;
     recordSkybox(cameraPosition, cameraTarget, drawCommands);
@@ -86,18 +99,24 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                              forwardBlendHandle_};
     RenderContext ctx{device_,       swapchain_,    frame_,         pipelineOpaque_,
                       cmd,           currentFrame_, cameraPosition, cameraTarget,
-                      &drawCommands, pipelines};
+                      &drawCommands, pipelines,     shadowPipelineHandle_, lightViewProj_};
     scene.render(ctx);
 
-    // Split draws into opaque (includes skybox + MASK) and blend buckets.
-    // Blend is sorted back-to-front by world-space centroid depth so straight
-    // alpha composites in the right order. Opaque keeps emission order.
+    // Split draws into shadow / opaque (skybox + MASK) / blend buckets.
+    // Shadow draws go through the shadow render pass; everything else
+    // replays inside the forward pass. Blend is sorted back-to-front so
+    // straight alpha composites in order.
+    std::vector<DrawCommand> shadowDraws;
     std::vector<DrawCommand> opaqueDraws;
     std::vector<DrawCommand> blendDraws;
     opaqueDraws.reserve(drawCommands.size());
     for (const auto& dc : drawCommands)
     {
-        if (dc.pipeline == forwardBlendHandle_)
+        if (dc.pipeline == shadowPipelineHandle_)
+        {
+            shadowDraws.push_back(dc);
+        }
+        else if (dc.pipeline == forwardBlendHandle_)
         {
             blendDraws.push_back(dc);
         }
@@ -111,9 +130,6 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                   return a.sortDepth > b.sortDepth;
               });
 
-    // Record draw commands. Pipeline is bound via the DrawCommand-carried
-    // PipelineHandle so passes with different pipelines interleave without
-    // changing this loop.
     auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
     auto recordBucket = [&](const std::vector<DrawCommand>& bucket) {
         for (const auto& dc : bucket)
@@ -137,6 +153,28 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
             cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
         }
     };
+
+    // Shadow pass — offscreen depth attachment, scissor/viewport sized to the
+    // shadow map. The render pass's implicit dependency transitions the depth
+    // image to eShaderReadOnlyOptimal on endRenderPass.
+    {
+        vk::ClearValue shadowClear{};
+        shadowClear.depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+        vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(), shadowPass_.framebuffer(0),
+                                            vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}),
+                                            shadowClear);
+        cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
+        vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
+                              static_cast<float>(shadowMapSize_), 0, 1);
+        cmd.setViewport(0, shadowVp);
+        cmd.setScissor(0, vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}));
+        lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+        recordBucket(shadowDraws);
+        cmd.endRenderPass();
+    }
+
+    beginRenderPass(cmd, *imageIndex);
+    lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
     recordBucket(opaqueDraws);
     recordBucket(blendDraws);
 

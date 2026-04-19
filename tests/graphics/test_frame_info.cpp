@@ -50,6 +50,34 @@ TEST(FrameInfo, DefaultAlphaPipelinesAreNull)
     EXPECT_EQ(info.pipelines.blend, NullPipeline);
 }
 
+TEST(FrameInfo, DefaultShadowPipelineIsNull)
+{
+    FrameInfo info;
+    EXPECT_EQ(info.shadowPipeline, NullPipeline);
+}
+
+TEST(FrameInfo, DefaultLightViewProjIsZero)
+{
+    FrameInfo info;
+    Mat4 zero;
+    EXPECT_EQ(info.lightViewProj, zero);
+}
+
+TEST(FrameInfo, AssignShadowPipelineRoundTrip)
+{
+    FrameInfo info;
+    info.shadowPipeline = PipelineHandle{7};
+    EXPECT_EQ(info.shadowPipeline, PipelineHandle{7});
+}
+
+TEST(FrameInfo, AssignLightViewProjRoundTrip)
+{
+    FrameInfo info;
+    Mat4 id = Mat4::identity();
+    info.lightViewProj = id;
+    EXPECT_EQ(info.lightViewProj, id);
+}
+
 // ---------------------------------------------------------------------------
 // Aggregate initialization
 // ---------------------------------------------------------------------------

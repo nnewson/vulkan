@@ -72,4 +72,11 @@ struct LightUBO
     alignas(16) Mat4 lightViewProj{};
 };
 
+struct ShadowUBO
+{
+    alignas(16) Mat4 model;
+    alignas(16) Mat4 lightViewProj;
+    alignas(4) int hasSkin{0};
+};
+
 } // namespace fire_engine

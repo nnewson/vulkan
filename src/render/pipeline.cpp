@@ -57,6 +57,28 @@ PipelineConfig Pipeline::forwardBlendConfig(vk::RenderPass renderPass)
     return config;
 }
 
+PipelineConfig Pipeline::shadowConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "shadow.vert.spv";
+    config.fragShaderPath = "shadow.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+        {1, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+        {2, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+        {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex},
+    };
+    config.renderPass = renderPass;
+    config.depthWrite = true;
+    config.depthCompare = vk::CompareOp::eLess;
+    config.cullMode = vk::CullModeFlagBits::eFront;
+    config.writeColor = false;
+    config.depthBiasEnable = true;
+    config.depthBiasConstant = 1.25f;
+    config.depthBiasSlope = 1.75f;
+    return config;
+}
+
 PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
 {
     PipelineConfig config;
@@ -112,7 +134,8 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
 
     vk::PipelineRasterizationStateCreateInfo raster(
         {}, false, false, vk::PolygonMode::eFill, config.cullMode,
-        vk::FrontFace::eCounterClockwise, false, 0, 0, 0, 1.0f);
+        vk::FrontFace::eCounterClockwise, config.depthBiasEnable, config.depthBiasConstant, 0,
+        config.depthBiasSlope, 1.0f);
 
     vk::PipelineMultisampleStateCreateInfo ms({}, vk::SampleCountFlagBits::e1);
 
@@ -126,11 +149,15 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
             vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
 
     vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
+    vk::PipelineColorBlendStateCreateInfo emptyColorBlend({}, false, {}, {});
 
     createPipelineLayout();
 
+    const vk::PipelineColorBlendStateCreateInfo* colorBlendPtr =
+        config.writeColor ? &colorBlend : &emptyColorBlend;
+
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
-                                       &raster, &ms, &depthStencil, &colorBlend, &dynamicState,
+                                       &raster, &ms, &depthStencil, colorBlendPtr, &dynamicState,
                                        *pipelineLayout_, config.renderPass, 0);
 
     pipeline_ = vk::raii::Pipeline(*device_, nullptr, pci);

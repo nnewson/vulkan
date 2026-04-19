@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include <fire_engine/graphics/gpu_handle.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -26,6 +27,8 @@ struct FrameInfo
     Vec3 cameraPosition;
     Vec3 cameraTarget;
     AlphaPipelines pipelines{};
+    PipelineHandle shadowPipeline{NullPipeline};
+    Mat4 lightViewProj{};
 };
 
 } // namespace fire_engine

@@ -7,6 +7,7 @@
 
 #include <fire_engine/graphics/draw_command.hpp>
 #include <fire_engine/graphics/frame_info.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -29,6 +30,8 @@ struct RenderContext
     Vec3 cameraTarget;
     std::vector<DrawCommand>* drawCommands{nullptr};
     AlphaPipelines pipelines{};
+    PipelineHandle shadowPipeline{NullPipeline};
+    Mat4 lightViewProj{};
 
     [[nodiscard]] FrameInfo frameInfo() const noexcept;
 };

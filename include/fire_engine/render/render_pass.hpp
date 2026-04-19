@@ -35,6 +35,17 @@ public:
     // swapchain's color views and depth view. Safe to call repeatedly.
     void createForwardFramebuffers(const Device& device, const Swapchain& swapchain);
 
+    // Creates a depth-only shadow render pass. A single D32_SFLOAT attachment
+    // with eClear loadOp / eStore storeOp and a finalLayout of
+    // eShaderReadOnlyOptimal so the implicit transition exposes the depth map
+    // to the forward fragment shader without an explicit pipeline barrier.
+    [[nodiscard]] static RenderPass createShadow(const Device& device);
+
+    // Builds a single framebuffer over an offscreen depth view, sized by
+    // extent. Owned framebuffer list is replaced on every call.
+    void createShadowFramebuffer(const Device& device, vk::ImageView depthView,
+                                 uint32_t extent);
+
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {
         return *renderPass_;

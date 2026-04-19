@@ -26,6 +26,10 @@ struct PipelineConfig
     vk::BlendFactor dstColorBlend{vk::BlendFactor::eZero};
     vk::BlendFactor srcAlphaBlend{vk::BlendFactor::eOne};
     vk::BlendFactor dstAlphaBlend{vk::BlendFactor::eZero};
+    bool writeColor{true};
+    bool depthBiasEnable{false};
+    float depthBiasConstant{0.0f};
+    float depthBiasSlope{0.0f};
 };
 
 class Pipeline
@@ -73,6 +77,13 @@ public:
     // triangle via gl_VertexIndex), and disables depth writes with LEQUAL
     // compare so it only writes where no forward geometry has drawn.
     [[nodiscard]] static PipelineConfig skyboxConfig(vk::RenderPass renderPass);
+
+    // Factory producing the PipelineConfig for a depth-only shadow pipeline.
+    // Writes only depth into an offscreen D32_SFLOAT attachment (no colour
+    // attachment). Uses front-face culling and depth bias to eliminate
+    // receiver shadow acne. Bindings 0..3 are ShadowUBO / SkinUBO / MorphUBO /
+    // MorphTargets SSBO, all vertex stage.
+    [[nodiscard]] static PipelineConfig shadowConfig(vk::RenderPass renderPass);
 
 private:
     void createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings);

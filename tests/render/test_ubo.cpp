@@ -8,6 +8,7 @@
 using fire_engine::LightUBO;
 using fire_engine::MaterialUBO;
 using fire_engine::MorphUBO;
+using fire_engine::ShadowUBO;
 using fire_engine::SkinUBO;
 using fire_engine::UniformBufferObject;
 
@@ -212,6 +213,46 @@ TEST(UBO, LightUBODirectionAligned16)
     static_assert(offsetof(LightUBO, colour) % 16 == 0,
                   "colour must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, lightViewProj) % 16 == 0,
+                  "lightViewProj must be 16-byte aligned for std140 mat4");
+    SUCCEED();
+}
+
+// ---------------------------------------------------------------------------
+// ShadowUBO structure tests
+// ---------------------------------------------------------------------------
+
+TEST(UBO, ShadowUBOSize)
+{
+    EXPECT_EQ(sizeof(ShadowUBO) % 16, 0u);
+}
+
+TEST(UBO, ShadowUBODefaultHasSkinIsZero)
+{
+    ShadowUBO ubo{};
+    EXPECT_EQ(ubo.hasSkin, 0);
+}
+
+TEST(UBO, ShadowUBOHasSkinCanBeSet)
+{
+    ShadowUBO ubo{};
+    ubo.hasSkin = 1;
+    EXPECT_EQ(ubo.hasSkin, 1);
+}
+
+TEST(UBO, ShadowUBOFieldOrder)
+{
+    static_assert(offsetof(ShadowUBO, model) < offsetof(ShadowUBO, lightViewProj),
+                  "model must precede lightViewProj to match shader layout");
+    static_assert(offsetof(ShadowUBO, lightViewProj) < offsetof(ShadowUBO, hasSkin),
+                  "lightViewProj must precede hasSkin to match shader layout");
+    SUCCEED();
+}
+
+TEST(UBO, ShadowUBOMatricesAligned16)
+{
+    static_assert(offsetof(ShadowUBO, model) % 16 == 0,
+                  "model must be 16-byte aligned for std140 mat4");
+    static_assert(offsetof(ShadowUBO, lightViewProj) % 16 == 0,
                   "lightViewProj must be 16-byte aligned for std140 mat4");
     SUCCEED();
 }

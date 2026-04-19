@@ -297,3 +297,58 @@ TEST(MaterialAlphaFields, BlendMapsThrough)
     EXPECT_EQ(material.alphaMode(), AlphaMode::Blend);
     EXPECT_TRUE(material.doubleSided());
 }
+
+// ==========================================================================
+// Vertex colour extraction (mirrors GltfLoader::extractPrimitive)
+// ==========================================================================
+
+// Mirrors the per-vertex colour logic: when COLOR_0 data is present, use it;
+// when absent, default to white (1,1,1) per the glTF spec.
+static fire_engine::Colour3 extractVertexColour(
+    const std::vector<fastgltf::math::fvec4>& colors, std::size_t index)
+{
+    if (index < colors.size())
+    {
+        return {colors[index].x(), colors[index].y(), colors[index].z()};
+    }
+    return {1.0f, 1.0f, 1.0f};
+}
+
+TEST(VertexColourExtraction, DefaultsToWhiteWhenAbsent)
+{
+    std::vector<fastgltf::math::fvec4> colors;
+    auto c = extractVertexColour(colors, 0);
+    EXPECT_FLOAT_EQ(c.r(), 1.0f);
+    EXPECT_FLOAT_EQ(c.g(), 1.0f);
+    EXPECT_FLOAT_EQ(c.b(), 1.0f);
+}
+
+TEST(VertexColourExtraction, UsesProvidedColour)
+{
+    std::vector<fastgltf::math::fvec4> colors;
+    colors.push_back(fastgltf::math::fvec4{0.2f, 0.4f, 0.6f, 1.0f});
+    auto c = extractVertexColour(colors, 0);
+    EXPECT_FLOAT_EQ(c.r(), 0.2f);
+    EXPECT_FLOAT_EQ(c.g(), 0.4f);
+    EXPECT_FLOAT_EQ(c.b(), 0.6f);
+}
+
+TEST(VertexColourExtraction, IndexOutOfRangeFallsBackToWhite)
+{
+    std::vector<fastgltf::math::fvec4> colors;
+    colors.push_back(fastgltf::math::fvec4{1.0f, 0.0f, 0.0f, 1.0f});
+    auto c = extractVertexColour(colors, 5);
+    EXPECT_FLOAT_EQ(c.r(), 1.0f);
+    EXPECT_FLOAT_EQ(c.g(), 1.0f);
+    EXPECT_FLOAT_EQ(c.b(), 1.0f);
+}
+
+TEST(VertexColourExtraction, IgnoresAlphaChannel)
+{
+    std::vector<fastgltf::math::fvec4> colors;
+    colors.push_back(fastgltf::math::fvec4{0.1f, 0.2f, 0.3f, 0.5f});
+    auto c = extractVertexColour(colors, 0);
+    EXPECT_FLOAT_EQ(c.r(), 0.1f);
+    EXPECT_FLOAT_EQ(c.g(), 0.2f);
+    EXPECT_FLOAT_EQ(c.b(), 0.3f);
+}

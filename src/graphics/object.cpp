@@ -201,6 +201,40 @@ void Object::load(Resources& resources)
     {
         bindings_[g].descSets = descResult.descSets[g];
     }
+
+    // Shadow descriptor sets reuse the forward skin / morph / morphSsbo
+    // buffers allocated above — no duplicate uploads — plus a new per-geometry
+    // ShadowUBO buffer carrying model + lightViewProj + hasSkin.
+    Resources::ShadowDescriptorRequest shadowReq;
+    shadowReq.geometries.reserve(bindings_.size());
+    for (std::size_t g = 0; g < bindings_.size(); ++g)
+    {
+        auto& binding = bindings_[g];
+        Resources::ShadowGeometryDescriptorInfo shadowInfo;
+
+        ShadowUBO initialShadow{};
+        initialShadow.model = Mat4::identity();
+        initialShadow.lightViewProj = Mat4::identity();
+        auto shadowSet = resources.createMappedUniformBuffers(sizeof(ShadowUBO));
+        for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+        {
+            binding.shadowMapped[i] = shadowSet.mapped[i];
+            shadowInfo.shadowUboBufs[i] = shadowSet.buffers[i];
+            std::memcpy(shadowSet.mapped[i], &initialShadow, sizeof(initialShadow));
+            shadowInfo.skinBufs[i] = req.geometries[g].skinBufs[i];
+            shadowInfo.morphUboBufs[i] = req.geometries[g].morphUboBufs[i];
+        }
+        shadowInfo.morphSsbo = req.geometries[g].morphSsbo;
+        shadowInfo.morphSsboSize = req.geometries[g].morphSsboSize;
+
+        shadowReq.geometries.push_back(shadowInfo);
+    }
+
+    auto shadowDescResult = resources.createShadowDescriptors(shadowReq);
+    for (std::size_t g = 0; g < bindings_.size(); ++g)
+    {
+        bindings_[g].shadowDescSets = shadowDescResult.descSets[g];
+    }
 }
 
 MaterialUBO Object::toMaterialUBO(const Material& mat)
@@ -302,9 +336,22 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     // future AABB-based centroid would be the natural upgrade.
     Vec3 forwardVec = Vec3::normalise(frame.cameraTarget - frame.cameraPosition);
 
+    // Write shadow UBO (model + lightViewProj + hasSkin) per geometry and
+    // emit a matching shadow DrawCommand alongside the forward command. The
+    // renderer later buckets by pipeline so shadow draws replay inside the
+    // shadow pass and forward draws replay inside the forward pass.
+    ShadowUBO shadowData{};
+    shadowData.model = world;
+    shadowData.lightViewProj = frame.lightViewProj;
+    shadowData.hasSkin = ubo.hasSkin;
+    for (auto& binding : bindings_)
+    {
+        std::memcpy(binding.shadowMapped[frame.currentFrame], &shadowData, sizeof(shadowData));
+    }
+
     // Build draw commands
     std::vector<DrawCommand> commands;
-    commands.reserve(bindings_.size());
+    commands.reserve(bindings_.size() * 2);
     for (const auto& binding : bindings_)
     {
         const Material& mat = binding.geometry->material();
@@ -333,6 +380,16 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
         cmd.pipeline = pipe;
         cmd.sortDepth = depth;
         commands.push_back(cmd);
+
+        if (frame.shadowPipeline != NullPipeline &&
+            binding.shadowDescSets[frame.currentFrame] != NullDescriptorSet)
+        {
+            DrawCommand shadowCmd = cmd;
+            shadowCmd.pipeline = frame.shadowPipeline;
+            shadowCmd.descriptorSet = binding.shadowDescSets[frame.currentFrame];
+            shadowCmd.sortDepth = 0.0f;
+            commands.push_back(shadowCmd);
+        }
     }
     return commands;
 }

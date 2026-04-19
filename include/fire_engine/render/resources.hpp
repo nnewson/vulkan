@@ -84,6 +84,46 @@ public:
     [[nodiscard]] ObjectDescriptorResult
     createObjectDescriptors(const ObjectDescriptorRequest& req);
 
+    // --- Shadow map + shadow descriptors ---
+
+    // Allocates a 2D D32_SFLOAT image + view usable as a depth attachment and
+    // as a sampled texture. Sampler uses comparison mode (CompareOp::eLess,
+    // eClampToBorder, white border) so the forward shader can do hardware PCF
+    // via sampler2DShadow. Returned handle slots into the existing texture
+    // registry — retrieve view/sampler via the vulkan* accessors.
+    [[nodiscard]] TextureHandle createShadowMap(uint32_t extent);
+
+    struct ShadowGeometryDescriptorInfo
+    {
+        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> shadowUboBufs{NullBuffer, NullBuffer};
+        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> skinBufs{NullBuffer, NullBuffer};
+        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> morphUboBufs{NullBuffer, NullBuffer};
+        BufferHandle morphSsbo{NullBuffer};
+        std::size_t morphSsboSize{0};
+    };
+
+    struct ShadowDescriptorRequest
+    {
+        std::vector<ShadowGeometryDescriptorInfo> geometries;
+    };
+
+    struct ShadowDescriptorResult
+    {
+        std::vector<std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>> descSets;
+    };
+
+    [[nodiscard]] ShadowDescriptorResult
+    createShadowDescriptors(const ShadowDescriptorRequest& req);
+
+    void shadowDescriptorSetLayout(vk::DescriptorSetLayout layout) noexcept
+    {
+        shadowDescLayout_ = layout;
+    }
+    [[nodiscard]] vk::DescriptorSetLayout shadowDescriptorSetLayout() const noexcept
+    {
+        return shadowDescLayout_;
+    }
+
     // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout that has a
     // single uniform-buffer binding at slot 0. Writes one UBO descriptor per
     // frame from the provided MappedBufferSet. Used by passes whose layout is
@@ -165,6 +205,7 @@ private:
     std::vector<PipelineEntry> pipelines_;
 
     std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
+    vk::DescriptorSetLayout shadowDescLayout_{};
 };
 
 } // namespace fire_engine

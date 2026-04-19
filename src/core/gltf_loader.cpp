@@ -619,6 +619,7 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
     const auto* posAttr = primitive.findAttribute("POSITION");
     const auto* normAttr = primitive.findAttribute("NORMAL");
     const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
+    const auto* colorAttr = primitive.findAttribute("COLOR_0");
     const auto* jointsAttr = primitive.findAttribute("JOINTS_0");
     const auto* weightsAttr = primitive.findAttribute("WEIGHTS_0");
     const auto* tangentAttr = primitive.findAttribute("TANGENT");
@@ -685,7 +686,15 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
             [&](fastgltf::math::fvec4 t, std::size_t idx) { tangents[idx] = t; });
     }
 
-    Colour3 vertexColour = matPtr->diffuse();
+    std::vector<fastgltf::math::fvec4> colors;
+    if (colorAttr != primitive.attributes.end())
+    {
+        const auto& colorAccessor = asset.accessors[colorAttr->accessorIndex];
+        colors.resize(colorAccessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
+            asset, colorAccessor,
+            [&](fastgltf::math::fvec4 c, std::size_t idx) { colors[idx] = c; });
+    }
 
     std::vector<Vertex> verts;
     verts.reserve(positions.size());
@@ -696,6 +705,12 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
                                          : Vec3{0.0f, 1.0f, 0.0f};
         float u = (i < texcoords.size()) ? texcoords[i].x() : 0.0f;
         float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
+
+        Colour3 vertexColour{1.0f, 1.0f, 1.0f};
+        if (i < colors.size())
+        {
+            vertexColour = Colour3{colors[i].x(), colors[i].y(), colors[i].z()};
+        }
 
         Joints4 jt{};
         if (i < joints.size())
