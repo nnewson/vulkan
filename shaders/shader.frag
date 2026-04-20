@@ -37,6 +37,7 @@ layout(binding = 6) uniform sampler2D emissiveMap;
 layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
+layout(binding = 10) uniform sampler2DShadow shadowMap;
 
 layout(binding = 11) uniform LightUBO {
     vec4 direction;
@@ -79,6 +80,17 @@ float geometrySmith(float NdotV, float NdotL, float roughness)
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+float computeShadow(vec3 worldPos)
+{
+    vec4 lightSpace = light.lightViewProj * vec4(worldPos, 1.0);
+    vec3 proj = lightSpace.xyz / lightSpace.w;
+    proj.xy = proj.xy * 0.5 + 0.5;
+    if (proj.z > 1.0 || proj.z < 0.0)
+        return 1.0;
+    float bias = 0.0015;
+    return texture(shadowMap, vec3(proj.xy, proj.z - bias));
 }
 
 void main() {
@@ -179,6 +191,12 @@ void main() {
     if (material.hasEmissiveTexture == 1) {
         emissiveTerm *= texture(emissiveMap, fragTexCoord).rgb;
     }
+
+    float shadow = computeShadow(fragWorldPos);
+    diffuseTerm *= shadow;
+    specularTerm *= shadow;
+
+    ambientTerm *= mix(0.5, 1.0, shadow);
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
     outColor = vec4(color, alpha);

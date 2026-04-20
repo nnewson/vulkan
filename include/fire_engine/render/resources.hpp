@@ -75,6 +75,7 @@ public:
     {
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> uniformBufs{NullBuffer, NullBuffer};
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBufs{NullBuffer, NullBuffer};
+        TextureHandle shadowMap{NullTexture};
         std::vector<GeometryDescriptorInfo> geometries;
     };
 
@@ -95,6 +96,11 @@ public:
     // via sampler2DShadow. Returned handle slots into the existing texture
     // registry — retrieve view/sampler via the vulkan* accessors.
     [[nodiscard]] TextureHandle createShadowMap(uint32_t extent);
+
+    // MoltenVK workaround: depth-only render passes fail to store on Metal
+    // TBDR. Creates a throwaway B8G8R8A8 colour attachment so the shadow pass
+    // becomes a real (colour + depth) render pass. Contents are never read.
+    [[nodiscard]] TextureHandle createShadowColorAttachment(uint32_t extent);
 
     struct ShadowGeometryDescriptorInfo
     {
@@ -148,6 +154,18 @@ public:
         return lightBuffers_;
     }
 
+    // --- Shared shadow map (bound to every forward descriptor set) ---
+
+    void shadowMap(TextureHandle handle) noexcept
+    {
+        shadowMap_ = handle;
+    }
+
+    [[nodiscard]] TextureHandle shadowMap() const noexcept
+    {
+        return shadowMap_;
+    }
+
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
     // handles so Renderer can resolve PipelineHandle values stamped on
@@ -159,6 +177,7 @@ public:
     // --- Vulkan accessors (for Renderer command recording) ---
 
     [[nodiscard]] vk::Buffer vulkanBuffer(BufferHandle handle) const noexcept;
+    [[nodiscard]] vk::Image vulkanImage(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::ImageView vulkanImageView(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
@@ -208,6 +227,7 @@ private:
     std::vector<PipelineEntry> pipelines_;
 
     std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
+    TextureHandle shadowMap_{NullTexture};
     vk::DescriptorSetLayout shadowDescLayout_{};
 };
 

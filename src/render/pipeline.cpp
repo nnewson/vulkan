@@ -31,6 +31,7 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         {7, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {8, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {9, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        {10, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {11, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
@@ -70,7 +71,7 @@ PipelineConfig Pipeline::shadowConfig(vk::RenderPass renderPass)
     };
     config.renderPass = renderPass;
     config.depthWrite = true;
-    config.depthCompare = vk::CompareOp::eLess;
+    config.depthCompare = vk::CompareOp::eLessOrEqual;
     config.cullMode = vk::CullModeFlagBits::eFront;
     config.writeColor = false;
     config.depthBiasEnable = true;
@@ -142,19 +143,19 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
     vk::PipelineDepthStencilStateCreateInfo depthStencil({}, true, config.depthWrite,
                                                          config.depthCompare);
 
+    vk::ColorComponentFlags writeMask =
+        config.writeColor ? vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+                                vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA
+                          : vk::ColorComponentFlags{};
     vk::PipelineColorBlendAttachmentState colorBlendAtt(
         config.blendEnable, config.srcColorBlend, config.dstColorBlend, vk::BlendOp::eAdd,
-        config.srcAlphaBlend, config.dstAlphaBlend, vk::BlendOp::eAdd,
-        vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
-            vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA);
+        config.srcAlphaBlend, config.dstAlphaBlend, vk::BlendOp::eAdd, writeMask);
 
     vk::PipelineColorBlendStateCreateInfo colorBlend({}, false, {}, colorBlendAtt);
-    vk::PipelineColorBlendStateCreateInfo emptyColorBlend({}, false, {}, {});
 
     createPipelineLayout();
 
-    const vk::PipelineColorBlendStateCreateInfo* colorBlendPtr =
-        config.writeColor ? &colorBlend : &emptyColorBlend;
+    const vk::PipelineColorBlendStateCreateInfo* colorBlendPtr = &colorBlend;
 
     vk::GraphicsPipelineCreateInfo pci({}, stages, &vertInput, &inputAsm, nullptr, &vpState,
                                        &raster, &ms, &depthStencil, colorBlendPtr, &dynamicState,

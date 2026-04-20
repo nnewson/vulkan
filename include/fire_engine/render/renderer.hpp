@@ -106,6 +106,7 @@ private:
     PipelineHandle skyboxPipelineHandle_{NullPipeline};
     PipelineHandle shadowPipelineHandle_{NullPipeline};
     TextureHandle shadowMapHandle_{NullTexture};
+    TextureHandle shadowColorHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};

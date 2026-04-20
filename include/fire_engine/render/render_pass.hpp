@@ -43,8 +43,8 @@ public:
 
     // Builds a single framebuffer over an offscreen depth view, sized by
     // extent. Owned framebuffer list is replaced on every call.
-    void createShadowFramebuffer(const Device& device, vk::ImageView depthView,
-                                 uint32_t extent);
+    void createShadowFramebuffer(const Device& device, vk::ImageView colorView,
+                                 vk::ImageView depthView, uint32_t extent);
 
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {

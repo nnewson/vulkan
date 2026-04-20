@@ -24,8 +24,7 @@ Renderer::Renderer(const Window& window)
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
       pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
-      pipelineBlend_(device_,
-                     Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
+      pipelineBlend_(device_, Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
       skyboxPipeline_(device_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       shadowPipeline_(device_, Pipeline::shadowConfig(shadowPass_.renderPass())),
       frame_(device_, swapchain_),
@@ -39,13 +38,13 @@ Renderer::Renderer(const Window& window)
         pipelineOpaqueDoubleSided_.pipeline(), pipelineOpaqueDoubleSided_.pipelineLayout());
     forwardBlendHandle_ =
         resources_.registerPipeline(pipelineBlend_.pipeline(), pipelineBlend_.pipelineLayout());
-    skyboxPipelineHandle_ = resources_.registerPipeline(skyboxPipeline_.pipeline(),
-                                                        skyboxPipeline_.pipelineLayout());
-    shadowPipelineHandle_ = resources_.registerPipeline(shadowPipeline_.pipeline(),
-                                                        shadowPipeline_.pipelineLayout());
+    skyboxPipelineHandle_ =
+        resources_.registerPipeline(skyboxPipeline_.pipeline(), skyboxPipeline_.pipelineLayout());
+    shadowPipelineHandle_ =
+        resources_.registerPipeline(shadowPipeline_.pipeline(), shadowPipeline_.pipelineLayout());
     skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
-    skyboxDescSets_ = resources_.createSingleUboDescriptors(
-        skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO));
+    skyboxDescSets_ = resources_.createSingleUboDescriptors(skyboxPipeline_.descriptorSetLayout(),
+                                                            skyboxUbo_, sizeof(SkyboxUBO));
     std::array<uint16_t, 3> skyboxIndices{0, 1, 2};
     skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
 
@@ -53,9 +52,12 @@ Renderer::Renderer(const Window& window)
     resources_.lightBuffers(lightUbo_.buffers);
 
     shadowMapHandle_ = resources_.createShadowMap(shadowMapSize_);
-    shadowPass_.createShadowFramebuffer(
-        device_, resources_.vulkanImageView(shadowMapHandle_), shadowMapSize_);
+    shadowColorHandle_ = resources_.createShadowColorAttachment(shadowMapSize_);
+    shadowPass_.createShadowFramebuffer(device_, resources_.vulkanImageView(shadowColorHandle_),
+                                        resources_.vulkanImageView(shadowMapHandle_),
+                                        shadowMapSize_);
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
+    resources_.shadowMap(shadowMapHandle_);
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -74,7 +76,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     // Light position is the light direction scaled out so the frustum captures
     // the scene. Phase C consumes lightViewProj_ in the forward frag shader
     // via LightUBO to project fragments into shadow-map space.
-    Vec3 lightDir = Vec3::normalise({1.0f, 1.0f, 1.0f});
+    Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
     Vec3 lightPos = lightDir * 15.0f;
     Mat4 lightView = Mat4::lookAt(lightPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
     Mat4 lightProj = Mat4::ortho(-10.0f, 10.0f, -10.0f, 10.0f, -20.0f, 20.0f);
@@ -97,9 +99,18 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
     AlphaPipelines pipelines{forwardOpaqueHandle_, forwardOpaqueDoubleSidedHandle_,
                              forwardBlendHandle_};
-    RenderContext ctx{device_,       swapchain_,    frame_,         pipelineOpaque_,
-                      cmd,           currentFrame_, cameraPosition, cameraTarget,
-                      &drawCommands, pipelines,     shadowPipelineHandle_, lightViewProj_};
+    RenderContext ctx{device_,
+                      swapchain_,
+                      frame_,
+                      pipelineOpaque_,
+                      cmd,
+                      currentFrame_,
+                      cameraPosition,
+                      cameraTarget,
+                      &drawCommands,
+                      pipelines,
+                      shadowPipelineHandle_,
+                      lightViewProj_};
     scene.render(ctx);
 
     // Split draws into shadow / opaque (skybox + MASK) / blend buckets.
@@ -126,12 +137,11 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
         }
     }
     std::sort(blendDraws.begin(), blendDraws.end(),
-              [](const DrawCommand& a, const DrawCommand& b) {
-                  return a.sortDepth > b.sortDepth;
-              });
+              [](const DrawCommand& a, const DrawCommand& b) { return a.sortDepth > b.sortDepth; });
 
     auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-    auto recordBucket = [&](const std::vector<DrawCommand>& bucket) {
+    auto recordBucket = [&](const std::vector<DrawCommand>& bucket)
+    {
         for (const auto& dc : bucket)
         {
             if (dc.pipeline != lastBoundPipeline)
@@ -145,8 +155,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                 cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer),
                                       {vk::DeviceSize{0}});
             }
-            cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0,
-                                vk::IndexType::eUint16);
+            cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
             vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
             cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                                    resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
@@ -154,15 +163,13 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
         }
     };
 
-    // Shadow pass — offscreen depth attachment, scissor/viewport sized to the
-    // shadow map. The render pass's implicit dependency transitions the depth
-    // image to eShaderReadOnlyOptimal on endRenderPass.
     {
-        vk::ClearValue shadowClear{};
-        shadowClear.depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+        std::array<vk::ClearValue, 2> shadowClears;
+        shadowClears[0].color = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
+        shadowClears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
         vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(), shadowPass_.framebuffer(0),
                                             vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}),
-                                            shadowClear);
+                                            shadowClears);
         cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
         vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
                               static_cast<float>(shadowMapSize_), 0, 1);
@@ -214,14 +221,13 @@ void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(),
-                                    forwardPass_.framebuffer(imageIndex),
+    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(), forwardPass_.framebuffer(imageIndex),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
 
-    vk::Viewport viewport(0, 0, static_cast<float>(extent.width),
-                          static_cast<float>(extent.height), 0, 1);
+    vk::Viewport viewport(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
+                          0, 1);
     cmd.setViewport(0, viewport);
     cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
 }

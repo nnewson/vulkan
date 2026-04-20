@@ -30,6 +30,7 @@ void Object::load(Resources& resources)
 
     Resources::ObjectDescriptorRequest req;
     const auto& lightBufs = resources.lightBuffers();
+    req.shadowMap = resources.shadowMap();
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         req.uniformBufs[i] = uniformSet.buffers[i];

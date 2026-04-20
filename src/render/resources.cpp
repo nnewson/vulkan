@@ -183,7 +183,8 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     vk::ImageCreateInfo imgCi(
         {}, vk::ImageType::e2D, vk::Format::eD32Sfloat, vk::Extent3D(extent, extent, 1), 1, 1,
         vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled,
+        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled |
+            vk::ImageUsageFlagBits::eTransferDst,
         vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
@@ -199,14 +200,40 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
-    // Comparison sampler for sampler2DShadow: hardware PCF via eLess compare,
-    // clamp-to-border with white border so off-map samples return "lit".
     vk::SamplerCreateInfo samplerCi(
         {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
         vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
         vk::SamplerAddressMode::eClampToBorder, 0.0f, vk::False, 1.0f, vk::True,
         vk::CompareOp::eLess, 0.0f, 1.0f, vk::BorderColor::eFloatOpaqueWhite, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
+}
+
+TextureHandle Resources::createShadowColorAttachment(uint32_t extent)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+
+    vk::ImageCreateInfo imgCi(
+        {}, vk::ImageType::e2D, vk::Format::eB8G8R8A8Unorm, vk::Extent3D(extent, extent, 1), 1, 1,
+        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransientAttachment,
+        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eB8G8R8A8Unorm, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
     return TextureHandle{id};
 }
@@ -266,7 +293,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     // Create descriptor pool
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 5},
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 6},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
@@ -334,7 +361,12 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
             vk::DescriptorBufferInfo lightBufInfo(
                 *buffers_[static_cast<uint32_t>(req.lightBufs[i])].buffer, 0, sizeof(LightUBO));
 
-            std::array<vk::WriteDescriptorSet, 11> writes = {{
+            auto shadowTexIdx = static_cast<uint32_t>(req.shadowMap);
+            vk::DescriptorImageInfo shadowTexInfo(
+                *textures_[shadowTexIdx].sampler, *textures_[shadowTexIdx].view,
+                vk::ImageLayout::eDepthStencilReadOnlyOptimal);
+
+            std::array<vk::WriteDescriptorSet, 12> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -347,6 +379,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 7, 0, 1, vk::DescriptorType::eCombinedImageSampler, &normalTexInfo},
                 {*sets[i], 8, 0, 1, vk::DescriptorType::eCombinedImageSampler, &mrTexInfo},
                 {*sets[i], 9, 0, 1, vk::DescriptorType::eCombinedImageSampler, &occTexInfo},
+                {*sets[i], 10, 0, 1, vk::DescriptorType::eCombinedImageSampler, &shadowTexInfo},
                 {*sets[i], 11, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
@@ -489,6 +522,11 @@ vk::Buffer Resources::vulkanBuffer(BufferHandle handle) const noexcept
 vk::ImageView Resources::vulkanImageView(TextureHandle handle) const noexcept
 {
     return *textures_[static_cast<uint32_t>(handle)].view;
+}
+
+vk::Image Resources::vulkanImage(TextureHandle handle) const noexcept
+{
+    return *textures_[static_cast<uint32_t>(handle)].image;
 }
 
 vk::Sampler Resources::vulkanSampler(TextureHandle handle) const noexcept

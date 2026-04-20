@@ -47,44 +47,53 @@ RenderPass RenderPass::createForward(const Device& device, const Swapchain& swap
 
 RenderPass RenderPass::createShadow(const Device& device)
 {
-    vk::AttachmentDescription depthAtt(
-        {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::eShaderReadOnlyOptimal);
+    // MoltenVK quirk: depth-only render passes don't commit storeOp on TBDR.
+    // Attach a throwaway B8G8R8A8 colour target so Metal treats this as a real
+    // render pass. loadOp=DontCare/storeOp=DontCare keeps it free.
+    std::array<vk::AttachmentDescription, 2> attachments = {
+        vk::AttachmentDescription({}, vk::Format::eB8G8R8A8Unorm, vk::SampleCountFlagBits::e1,
+                                  vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+                                  vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eColorAttachmentOptimal),
+        vk::AttachmentDescription({}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1,
+                                  vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
+                                  vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+                                  vk::ImageLayout::eUndefined,
+                                  vk::ImageLayout::eDepthStencilReadOnlyOptimal),
+    };
 
-    vk::AttachmentReference depthRef(0, vk::ImageLayout::eDepthStencilAttachmentOptimal);
+    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, {}, {}, &depthRef);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
+                                   &depthRef);
 
-    // Gate shadow writes behind previous-frame forward reads, and drive the
-    // implicit transition to shader-read-only on pass end so the forward
-    // fragment shader sees a sampleable depth image.
-    std::array<vk::SubpassDependency, 2> deps{
-        vk::SubpassDependency{VK_SUBPASS_EXTERNAL, 0,
+    std::array<vk::SubpassDependency, 2> deps = {
+        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0,
                               vk::PipelineStageFlagBits::eFragmentShader,
                               vk::PipelineStageFlagBits::eEarlyFragmentTests,
                               vk::AccessFlagBits::eShaderRead,
-                              vk::AccessFlagBits::eDepthStencilAttachmentWrite},
-        vk::SubpassDependency{0, VK_SUBPASS_EXTERNAL,
+                              vk::AccessFlagBits::eDepthStencilAttachmentWrite),
+        vk::SubpassDependency(0, VK_SUBPASS_EXTERNAL,
                               vk::PipelineStageFlagBits::eLateFragmentTests,
                               vk::PipelineStageFlagBits::eFragmentShader,
                               vk::AccessFlagBits::eDepthStencilAttachmentWrite,
-                              vk::AccessFlagBits::eShaderRead},
+                              vk::AccessFlagBits::eShaderRead),
     };
-
-    vk::RenderPassCreateInfo ci({}, depthAtt, subpass, deps);
+    vk::RenderPassCreateInfo ci({}, attachments, subpass, deps);
 
     RenderPass pass;
     pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
     return pass;
 }
 
-void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView depthView,
-                                         uint32_t extent)
+void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView colorView,
+                                         vk::ImageView depthView, uint32_t extent)
 {
     framebuffers_.clear();
-    vk::FramebufferCreateInfo ci({}, *renderPass_, depthView, extent, extent, 1);
+    std::array<vk::ImageView, 2> views = {colorView, depthView};
+    vk::FramebufferCreateInfo ci({}, *renderPass_, views, extent, extent, 1);
     framebuffers_.emplace_back(device.device(), ci);
 }
 
