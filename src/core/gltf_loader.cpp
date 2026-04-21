@@ -430,9 +430,29 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 
     if (gltfNode.meshIndex.has_value())
     {
-        auto object = loadMesh(asset, asset.meshes[gltfNode.meshIndex.value()], baseDir, resources,
-                               assets, gltfNode.meshIndex.value());
+        const auto& gltfMesh = asset.meshes[gltfNode.meshIndex.value()];
+        auto object =
+            loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
+
+        // Static meshes with morph targets still honour mesh.weights (e.g.
+        // MorphPrimitivesTest). Without this, weights stay at zero and the
+        // base geometry renders unmorphed.
+        std::size_t numMorphTargets = 0;
+        if (!gltfMesh.primitives.empty() && !gltfMesh.primitives[0].targets.empty())
+        {
+            numMorphTargets = gltfMesh.primitives[0].targets.size();
+        }
+        if (numMorphTargets > 0)
+        {
+            auto& mesh = std::get<Mesh>(node.component());
+            std::vector<float> initialWeights(numMorphTargets, 0.0f);
+            for (std::size_t w = 0; w < gltfMesh.weights.size() && w < numMorphTargets; ++w)
+            {
+                initialWeights[w] = gltfMesh.weights[w];
+            }
+            mesh.initialMorphWeights(std::move(initialWeights));
+        }
     }
 
     for (auto childIndex : gltfNode.children)
