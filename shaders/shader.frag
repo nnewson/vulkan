@@ -54,6 +54,10 @@ layout(location = 4) in mat3 fragTBN;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
+// Keep a little fill light so materials stay readable without flattening contrast.
+const float ambientStrength = 0.08;
+// Shadows should stay legible, but the ambient floor must not erase separation.
+const float shadowAmbientFloor = 0.25;
 
 // GGX/Trowbridge-Reitz normal distribution
 float distributionGGX(float NdotH, float alpha)
@@ -180,7 +184,7 @@ void main() {
     } else {
         ambientBase = material.ambient;
     }
-    vec3 ambientTerm = ambientBase * 0.15;
+    vec3 ambientTerm = ambientBase * ambientStrength;
     if (material.hasOcclusionTexture == 1) {
         float ao = texture(occlusionMap, fragTexCoord).r;
         ambientTerm *= ao;
@@ -196,7 +200,7 @@ void main() {
     diffuseTerm *= shadow;
     specularTerm *= shadow;
 
-    ambientTerm *= mix(0.5, 1.0, shadow);
+    ambientTerm *= mix(shadowAmbientFloor, 1.0, shadow);
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
     outColor = vec4(color, alpha);

@@ -10,6 +10,7 @@
 #include <fastgltf/core.hpp>
 
 #include <fire_engine/animation/animation.hpp>
+#include <fire_engine/graphics/image.hpp>
 
 namespace fire_engine
 {
@@ -25,6 +26,7 @@ class Resources;
 class SceneGraph;
 class Skin;
 class Texture;
+class Mesh;
 
 class GltfLoader
 {
@@ -44,6 +46,7 @@ public:
     };
 
     using NodeMap = std::unordered_map<std::size_t, Node*>;
+    using MeshMap = std::unordered_map<std::size_t, Mesh*>;
 
 private:
     // Asset parsing and setup
@@ -64,17 +67,19 @@ private:
 
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                       Node& node, const std::string& baseDir, Resources& resources,
-                                      Assets& assets, NodeMap& nodeMap, std::size_t& nextAnimSlot);
+                                      Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
+                                      std::size_t& nextAnimSlot);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, Resources& resources, Assets& assets,
-                         NodeMap& nodeMap, std::size_t& nextAnimSlot);
+                         NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
                          const NodeMap& nodeMap, Assets& assets);
 
-    static void applySkins(const fastgltf::Asset& asset, const NodeMap& nodeMap, Assets& assets);
+    static void applySkins(const fastgltf::Asset& asset, const NodeMap& nodeMap,
+                           const MeshMap& meshMap, Assets& assets);
 
     // Mesh loading
     [[nodiscard]]
@@ -85,28 +90,28 @@ private:
     [[nodiscard]]
     static const Texture*
     resolveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                   const std::string& texturePath, Resources& resources, Assets& assets);
+                   const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
     resolveEmissiveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                           const std::string& texturePath, Resources& resources, Assets& assets);
+                           const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
     resolveNormalTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                         const std::string& texturePath, Resources& resources, Assets& assets);
+                         const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture* resolveMetallicRoughnessTexture(const fastgltf::Asset& asset,
                                                           const fastgltf::Primitive& primitive,
-                                                          const std::string& texturePath,
+                                                          const std::string& baseDir,
                                                           Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
     resolveOcclusionTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                            const std::string& texturePath, Resources& resources, Assets& assets);
+                            const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static Material* resolveMaterial(const fastgltf::Asset& asset,
@@ -120,13 +125,12 @@ private:
                              std::size_t geoIdx);
 
     [[nodiscard]]
-    static std::pair<Material, TexturePaths> loadMaterial(const fastgltf::Asset& asset,
-                                                          const fastgltf::Primitive& primitive,
-                                                          const std::string& baseDir);
+    static Material loadMaterial(const fastgltf::Asset& asset,
+                                 const fastgltf::Primitive& primitive);
 
     [[nodiscard]]
-    static std::string resolveTextureURI(const fastgltf::Asset& asset, std::size_t textureIndex,
-                                         const std::string& baseDir);
+    static Image loadImage(const fastgltf::Asset& asset, std::size_t imageIndex,
+                           const std::string& baseDir);
 
     // Animation
     static void applyRestTRS(const fastgltf::Node& gltfNode, Animation& anim);

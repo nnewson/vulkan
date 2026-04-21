@@ -10,23 +10,48 @@ namespace fire_engine
 
 Image Image::load_from_file(const std::string& path)
 {
-    Image img;
+    int width = 0;
+    int height = 0;
     int fileChannels = 0;
-    constexpr int desiredChannels = 4; // Always load as RGBA
+    constexpr int desiredChannels = 4;
 
-    stbi_uc* raw =
-        stbi_load(path.c_str(), &img.width_, &img.height_, &fileChannels, desiredChannels);
-    if (!raw)
+    stbi_uc* raw = stbi_load(path.c_str(), &width, &height, &fileChannels, desiredChannels);
+    if (raw == nullptr)
     {
         throw std::runtime_error("Failed to load image: " + path);
     }
 
+    Image img;
+    img.width_ = width;
+    img.height_ = height;
     img.channels_ = desiredChannels;
-    std::size_t byteCount = static_cast<std::size_t>(img.width_) * img.height_ * desiredChannels;
+    std::size_t byteCount = static_cast<std::size_t>(width) * height * desiredChannels;
     img.pixels_.assign(raw, raw + byteCount);
-
     stbi_image_free(raw);
+    return img;
+}
 
+Image Image::load_from_memory(const uint8_t* data, std::size_t size_bytes, const std::string& label)
+{
+    int width = 0;
+    int height = 0;
+    int fileChannels = 0;
+    constexpr int desiredChannels = 4;
+
+    stbi_uc* raw = stbi_load_from_memory(data, static_cast<int>(size_bytes), &width, &height,
+                                         &fileChannels, desiredChannels);
+    if (raw == nullptr)
+    {
+        throw std::runtime_error("Failed to decode image: " + label);
+    }
+
+    Image img;
+    img.width_ = width;
+    img.height_ = height;
+    img.channels_ = desiredChannels;
+    std::size_t byteCount = static_cast<std::size_t>(width) * height * desiredChannels;
+    img.pixels_.assign(raw, raw + byteCount);
+    stbi_image_free(raw);
     return img;
 }
 

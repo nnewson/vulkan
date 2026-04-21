@@ -8,12 +8,9 @@
 namespace fire_engine
 {
 
-RenderPass RenderPass::createForward(const Device& device, const Swapchain& swapchain)
+RenderPass RenderPass::createForward(const Device& device)
 {
     // Forward writes into an offscreen HDR target (post-process reads it).
-    // Swapchain format is no longer used here; it belongs to the post-process
-    // render pass.
-    (void)swapchain;
     vk::AttachmentDescription colorAtt(
         {}, vk::Format::eR16G16B16A16Sfloat, vk::SampleCountFlagBits::e1,
         vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
@@ -32,17 +29,23 @@ RenderPass RenderPass::createForward(const Device& device, const Swapchain& swap
     vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
                                    &depthRef);
 
-    vk::SubpassDependency dep(VK_SUBPASS_EXTERNAL, 0,
+    std::array<vk::SubpassDependency, 2> deps = {
+        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0,
                               vk::PipelineStageFlagBits::eColorAttachmentOutput |
                                   vk::PipelineStageFlagBits::eEarlyFragmentTests,
                               vk::PipelineStageFlagBits::eColorAttachmentOutput |
                                   vk::PipelineStageFlagBits::eEarlyFragmentTests,
                               {},
                               vk::AccessFlagBits::eColorAttachmentWrite |
-                                  vk::AccessFlagBits::eDepthStencilAttachmentWrite);
+                                  vk::AccessFlagBits::eDepthStencilAttachmentWrite),
+        vk::SubpassDependency(
+            0, VK_SUBPASS_EXTERNAL, vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eColorAttachmentWrite,
+            vk::AccessFlagBits::eShaderRead),
+    };
 
     std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
-    vk::RenderPassCreateInfo ci({}, attachments, subpass, dep);
+    vk::RenderPassCreateInfo ci({}, attachments, subpass, deps);
 
     RenderPass pass;
     pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);

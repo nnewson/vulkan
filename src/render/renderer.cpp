@@ -16,10 +16,19 @@
 namespace fire_engine
 {
 
+namespace
+{
+
+// Calibrated against the current ACES post-process so direct light stays crisp without washing out
+// midtones.
+constexpr float directionalLightIntensity = 0.85f;
+
+} // namespace
+
 Renderer::Renderer(const Window& window)
     : device_(window),
       swapchain_(device_, window),
-      forwardPass_(RenderPass::createForward(device_, swapchain_)),
+      forwardPass_(RenderPass::createForward(device_)),
       shadowPass_(RenderPass::createShadow(device_)),
       postProcessPass_(RenderPass::createPostProcess(device_, swapchain_)),
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
@@ -70,6 +79,147 @@ Renderer::Renderer(const Window& window)
                                         shadowMapSize_);
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
     resources_.shadowMap(shadowMapHandle_);
+    imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
+}
+
+void Renderer::updateLightData()
+{
+    Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
+    Vec3 lightPos = lightDir * 15.0f;
+    Mat4 lightView = Mat4::lookAt(lightPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
+    Mat4 lightProj = Mat4::ortho(-10.0f, 10.0f, -10.0f, 10.0f, -20.0f, 20.0f);
+    lightViewProj_ = lightProj * lightView;
+
+    LightUBO lightData{};
+    lightData.direction[0] = lightDir.x();
+    lightData.direction[1] = lightDir.y();
+    lightData.direction[2] = lightDir.z();
+    lightData.direction[3] = 0.0f;
+    lightData.colour[0] = 1.0f;
+    lightData.colour[1] = 1.0f;
+    lightData.colour[2] = 1.0f;
+    lightData.colour[3] = directionalLightIntensity;
+    lightData.lightViewProj = lightViewProj_;
+    std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
+}
+
+Renderer::DrawBuckets Renderer::buildDrawBuckets(const std::vector<DrawCommand>& drawCommands) const
+{
+    DrawBuckets buckets;
+    buckets.opaque.reserve(drawCommands.size());
+    for (const auto& dc : drawCommands)
+    {
+        if (dc.pipeline == shadowPipelineHandle_)
+        {
+            buckets.shadow.push_back(dc);
+        }
+        else if (dc.pipeline == forwardBlendHandle_)
+        {
+            buckets.blend.push_back(dc);
+        }
+        else
+        {
+            buckets.opaque.push_back(dc);
+        }
+    }
+
+    std::sort(buckets.blend.begin(), buckets.blend.end(),
+              [](const DrawCommand& a, const DrawCommand& b) { return a.sortDepth > b.sortDepth; });
+    return buckets;
+}
+
+void Renderer::recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
+                                PipelineHandle& lastBoundPipeline) const
+{
+    for (const auto& dc : bucket)
+    {
+        if (dc.pipeline != lastBoundPipeline)
+        {
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                             resources_.vulkanPipeline(dc.pipeline));
+            lastBoundPipeline = dc.pipeline;
+        }
+        if (dc.vertexBuffer != NullBuffer)
+        {
+            cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer), {vk::DeviceSize{0}});
+        }
+
+        vk::IndexType indexType =
+            dc.indexType == DrawIndexType::UInt32 ? vk::IndexType::eUint32 : vk::IndexType::eUint16;
+        cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, indexType);
+
+        vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
+        cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
+    }
+}
+
+void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCommand>& shadowDraws)
+{
+    std::array<vk::ClearValue, 2> shadowClears;
+    shadowClears[0].color = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
+    shadowClears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+    vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(), shadowPass_.framebuffer(0),
+                                        vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}),
+                                        shadowClears);
+    cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
+
+    vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
+                          static_cast<float>(shadowMapSize_), 0, 1);
+    cmd.setViewport(0, shadowVp);
+    cmd.setScissor(0, vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}));
+
+    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+    recordDrawBucket(cmd, shadowDraws, lastBoundPipeline);
+    cmd.endRenderPass();
+}
+
+void Renderer::recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets)
+{
+    beginRenderPass(cmd);
+    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+    recordDrawBucket(cmd, buckets.opaque, lastBoundPipeline);
+    recordDrawBucket(cmd, buckets.blend, lastBoundPipeline);
+    cmd.endRenderPass();
+}
+
+void Renderer::transitionOffscreenForSampling(vk::CommandBuffer cmd)
+{
+    vk::ImageMemoryBarrier offscreenReadyForSampling(
+        vk::AccessFlagBits::eColorAttachmentWrite, vk::AccessFlagBits::eShaderRead,
+        vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
+        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
+        resources_.vulkanImage(offscreenColorHandle_),
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {},
+                        offscreenReadyForSampling);
+}
+
+void Renderer::recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex)
+{
+    auto extent = swapchain_.extent();
+    vk::RenderPassBeginInfo ppBegin(postProcessPass_.renderPass(),
+                                    postProcessPass_.framebuffer(imageIndex),
+                                    vk::Rect2D({0, 0}, extent), {});
+    cmd.beginRenderPass(ppBegin, vk::SubpassContents::eInline);
+
+    vk::Viewport vp(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height), 0,
+                    1);
+    cmd.setViewport(0, vp);
+    cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
+    cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                     resources_.vulkanPipeline(postProcessPipelineHandle_));
+
+    vk::DescriptorSet ppSet = resources_.vulkanDescriptorSet(postProcessDescSets_[currentFrame_]);
+    cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                           resources_.vulkanPipelineLayout(postProcessPipelineHandle_), 0, ppSet,
+                           {});
+    cmd.bindIndexBuffer(resources_.vulkanBuffer(postProcessIndexBuffer_), 0,
+                        vk::IndexType::eUint16);
+    cmd.drawIndexed(3, 1, 0, 0, 0);
+    cmd.endRenderPass();
 }
 
 void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition, Vec3 cameraTarget)
@@ -86,25 +236,9 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
     // Directional light — fixed orthographic volume fitted around the origin.
     // Light position is the light direction scaled out so the frustum captures
-    // the scene. Phase C consumes lightViewProj_ in the forward frag shader
-    // via LightUBO to project fragments into shadow-map space.
-    Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
-    Vec3 lightPos = lightDir * 15.0f;
-    Mat4 lightView = Mat4::lookAt(lightPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
-    Mat4 lightProj = Mat4::ortho(-10.0f, 10.0f, -10.0f, 10.0f, -20.0f, 20.0f);
-    lightViewProj_ = lightProj * lightView;
-
-    LightUBO lightData{};
-    lightData.direction[0] = lightDir.x();
-    lightData.direction[1] = lightDir.y();
-    lightData.direction[2] = lightDir.z();
-    lightData.direction[3] = 0.0f;
-    lightData.colour[0] = 1.0f;
-    lightData.colour[1] = 1.0f;
-    lightData.colour[2] = 1.0f;
-    lightData.colour[3] = 1.0f;
-    lightData.lightViewProj = lightViewProj_;
-    std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
+    // the scene. The forward fragment shader consumes lightViewProj_ to project
+    // fragments into shadow-map space.
+    updateLightData();
 
     std::vector<DrawCommand> drawCommands;
     recordSkybox(cameraPosition, cameraTarget, drawCommands);
@@ -125,102 +259,11 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                       lightViewProj_};
     scene.render(ctx);
 
-    // Split draws into shadow / opaque (skybox + MASK) / blend buckets.
-    // Shadow draws go through the shadow render pass; everything else
-    // replays inside the forward pass. Blend is sorted back-to-front so
-    // straight alpha composites in order.
-    std::vector<DrawCommand> shadowDraws;
-    std::vector<DrawCommand> opaqueDraws;
-    std::vector<DrawCommand> blendDraws;
-    opaqueDraws.reserve(drawCommands.size());
-    for (const auto& dc : drawCommands)
-    {
-        if (dc.pipeline == shadowPipelineHandle_)
-        {
-            shadowDraws.push_back(dc);
-        }
-        else if (dc.pipeline == forwardBlendHandle_)
-        {
-            blendDraws.push_back(dc);
-        }
-        else
-        {
-            opaqueDraws.push_back(dc);
-        }
-    }
-    std::sort(blendDraws.begin(), blendDraws.end(),
-              [](const DrawCommand& a, const DrawCommand& b) { return a.sortDepth > b.sortDepth; });
-
-    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-    auto recordBucket = [&](const std::vector<DrawCommand>& bucket)
-    {
-        for (const auto& dc : bucket)
-        {
-            if (dc.pipeline != lastBoundPipeline)
-            {
-                cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                                 resources_.vulkanPipeline(dc.pipeline));
-                lastBoundPipeline = dc.pipeline;
-            }
-            if (dc.vertexBuffer != NullBuffer)
-            {
-                cmd.bindVertexBuffers(0, resources_.vulkanBuffer(dc.vertexBuffer),
-                                      {vk::DeviceSize{0}});
-            }
-            cmd.bindIndexBuffer(resources_.vulkanBuffer(dc.indexBuffer), 0, vk::IndexType::eUint16);
-            vk::DescriptorSet ds = resources_.vulkanDescriptorSet(dc.descriptorSet);
-            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                                   resources_.vulkanPipelineLayout(dc.pipeline), 0, ds, {});
-            cmd.drawIndexed(dc.indexCount, 1, 0, 0, 0);
-        }
-    };
-
-    {
-        std::array<vk::ClearValue, 2> shadowClears;
-        shadowClears[0].color = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
-        shadowClears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
-        vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(), shadowPass_.framebuffer(0),
-                                            vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}),
-                                            shadowClears);
-        cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
-        vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
-                              static_cast<float>(shadowMapSize_), 0, 1);
-        cmd.setViewport(0, shadowVp);
-        cmd.setScissor(0, vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}));
-        lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-        recordBucket(shadowDraws);
-        cmd.endRenderPass();
-    }
-
-    beginRenderPass(cmd);
-    lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-    recordBucket(opaqueDraws);
-    recordBucket(blendDraws);
-
-    cmd.endRenderPass();
-
-    {
-        auto extent = swapchain_.extent();
-        vk::RenderPassBeginInfo ppBegin(postProcessPass_.renderPass(),
-                                        postProcessPass_.framebuffer(*imageIndex),
-                                        vk::Rect2D({0, 0}, extent), {});
-        cmd.beginRenderPass(ppBegin, vk::SubpassContents::eInline);
-        vk::Viewport vp(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
-                        0, 1);
-        cmd.setViewport(0, vp);
-        cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
-        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                         resources_.vulkanPipeline(postProcessPipelineHandle_));
-        vk::DescriptorSet ppSet =
-            resources_.vulkanDescriptorSet(postProcessDescSets_[currentFrame_]);
-        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
-                               resources_.vulkanPipelineLayout(postProcessPipelineHandle_), 0,
-                               ppSet, {});
-        cmd.bindIndexBuffer(resources_.vulkanBuffer(postProcessIndexBuffer_), 0,
-                            vk::IndexType::eUint16);
-        cmd.drawIndexed(3, 1, 0, 0, 0);
-        cmd.endRenderPass();
-    }
+    DrawBuckets buckets = buildDrawBuckets(drawCommands);
+    recordShadowPass(cmd, buckets.shadow);
+    recordForwardPass(cmd, buckets);
+    transitionOffscreenForSampling(cmd);
+    recordPostProcessPass(cmd, *imageIndex);
 
     cmd.end();
 
@@ -246,7 +289,14 @@ std::optional<uint32_t> Renderer::acquireNextImage(Window& display)
         throw std::runtime_error("failed to acquire swap chain image");
     }
 
-    dev.resetFences(frame_.inFlightFence(currentFrame_));
+    vk::Fence currentFrameFence = frame_.inFlightFence(currentFrame_);
+    if (imagesInFlight_[imageIndex])
+    {
+        (void)dev.waitForFences(imagesInFlight_[imageIndex], vk::True, UINT64_MAX);
+    }
+
+    dev.resetFences(currentFrameFence);
+    imagesInFlight_[imageIndex] = currentFrameFence;
     return imageIndex;
 }
 
@@ -324,6 +374,7 @@ void Renderer::recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
     dc.vertexBuffer = NullBuffer;
     dc.indexBuffer = skyboxIndexBuffer_;
     dc.indexCount = 3;
+    dc.indexType = DrawIndexType::UInt16;
     dc.descriptorSet = skyboxDescSets_[currentFrame_];
     dc.pipeline = skyboxPipelineHandle_;
     drawCommands.push_back(dc);
@@ -349,8 +400,8 @@ void Renderer::recreateSwapchain(const Window& display)
                                           swapchain_.depthView(), swapchain_.extent());
     postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
     resources_.updateSingleImageSamplerDescriptors(postProcessDescSets_, offscreenColorHandle_);
-
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
+    imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }
 
 } // namespace fire_engine

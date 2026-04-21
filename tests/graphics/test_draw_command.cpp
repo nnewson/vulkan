@@ -28,6 +28,12 @@ TEST(DrawCommand, DefaultIndexCountIsZero)
     EXPECT_EQ(cmd.indexCount, 0u);
 }
 
+TEST(DrawCommand, DefaultIndexTypeIsUInt16)
+{
+    DrawCommand cmd;
+    EXPECT_EQ(cmd.indexType, DrawIndexType::UInt16);
+}
+
 TEST(DrawCommand, DefaultDescriptorSetIsNull)
 {
     DrawCommand cmd;
@@ -76,6 +82,13 @@ TEST(DrawCommand, AssignIndexCount)
     DrawCommand cmd;
     cmd.indexCount = 36;
     EXPECT_EQ(cmd.indexCount, 36u);
+}
+
+TEST(DrawCommand, AssignIndexType)
+{
+    DrawCommand cmd;
+    cmd.indexType = DrawIndexType::UInt32;
+    EXPECT_EQ(cmd.indexType, DrawIndexType::UInt32);
 }
 
 TEST(DrawCommand, AssignDescriptorSet)
@@ -144,10 +157,12 @@ TEST(DrawCommand, CopyPreservesAllFields)
 {
     DrawCommand original{BufferHandle{1}, BufferHandle{2}, 36, DescriptorSetHandle{4},
                          PipelineHandle{5}};
+    original.indexType = DrawIndexType::UInt32;
     DrawCommand copy = original;
     EXPECT_EQ(copy.vertexBuffer, original.vertexBuffer);
     EXPECT_EQ(copy.indexBuffer, original.indexBuffer);
     EXPECT_EQ(copy.indexCount, original.indexCount);
+    EXPECT_EQ(copy.indexType, original.indexType);
     EXPECT_EQ(copy.descriptorSet, original.descriptorSet);
     EXPECT_EQ(copy.pipeline, original.pipeline);
 }

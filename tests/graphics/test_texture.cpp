@@ -20,6 +20,12 @@ TEST(Texture, DefaultHandleIsNull)
     EXPECT_EQ(tex.handle(), NullTexture);
 }
 
+TEST(Texture, DefaultEncodingIsSrgb)
+{
+    Texture tex;
+    EXPECT_EQ(tex.encoding(), TextureEncoding::Srgb);
+}
+
 // ---------------------------------------------------------------------------
 // Move semantics
 // ---------------------------------------------------------------------------

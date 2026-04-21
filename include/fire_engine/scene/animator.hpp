@@ -13,6 +13,12 @@ class Animation;
 class Animator : public Component
 {
 public:
+    struct AnimationEntry
+    {
+        std::size_t id{0};
+        Animation* animation{nullptr};
+    };
+
     Animator() = default;
     ~Animator() override = default;
 
@@ -32,13 +38,17 @@ public:
         return modelMatrix_;
     }
 
-    void addAnimation(Animation* anim);
+    void addAnimation(std::size_t id, Animation* anim);
+    void addAnimation(Animation* anim)
+    {
+        addAnimation(animations_.size(), anim);
+    }
 
-    void activeAnimation(std::size_t index) noexcept;
+    void activeAnimation(std::size_t id) noexcept;
 
     [[nodiscard]] std::size_t activeAnimation() const noexcept
     {
-        return activeIndex_;
+        return activeAnimationId_;
     }
 
     [[nodiscard]] std::size_t animationCount() const noexcept
@@ -52,7 +62,7 @@ public:
         {
             return nullptr;
         }
-        return animations_[activeIndex_];
+        return animations_[activeIndex_].animation;
     }
 
     [[nodiscard]] const Animation* animation() const noexcept
@@ -61,12 +71,15 @@ public:
         {
             return nullptr;
         }
-        return animations_[activeIndex_];
+        return animations_[activeIndex_].animation;
     }
 
 private:
-    std::vector<Animation*> animations_;
+    [[nodiscard]] std::size_t findAnimationIndex(std::size_t id) const noexcept;
+
+    std::vector<AnimationEntry> animations_;
     std::size_t activeIndex_{0};
+    std::size_t activeAnimationId_{0};
     Mat4 modelMatrix_{Mat4::identity()};
     double startTime_{0.0};
     bool initialized_{false};

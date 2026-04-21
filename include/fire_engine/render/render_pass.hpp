@@ -25,10 +25,10 @@ public:
     RenderPass(RenderPass&&) noexcept = default;
     RenderPass& operator=(RenderPass&&) noexcept = default;
 
-    // Creates the forward-lit render pass (color + depth, presents to
-    // swapchain). Framebuffers are not yet built — call
-    // createForwardFramebuffers once the swapchain has depth resources.
-    [[nodiscard]] static RenderPass createForward(const Device& device, const Swapchain& swapchain);
+    // Creates the forward-lit render pass (color + depth) that writes into
+    // the offscreen HDR target. Framebuffers are not yet built — call
+    // createForwardFramebuffers once the render targets exist.
+    [[nodiscard]] static RenderPass createForward(const Device& device);
 
     // Builds a single framebuffer using an offscreen HDR colour view and the
     // shared depth view at the given extent. Safe to call repeatedly.

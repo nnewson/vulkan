@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <vector>
 
+#include <fire_engine/graphics/draw_command.hpp>
 #include <fire_engine/graphics/gpu_handle.hpp>
 #include <fire_engine/graphics/vertex.hpp>
 
@@ -39,13 +40,17 @@ public:
         vertices_ = std::move(v);
     }
 
-    [[nodiscard]] const std::vector<uint16_t>& indices() const noexcept
+    [[nodiscard]] const std::vector<uint32_t>& indices() const noexcept
     {
         return indices_;
     }
-    void indices(std::vector<uint16_t> v) noexcept
+    void indices(std::vector<uint32_t> v) noexcept
     {
         indices_ = std::move(v);
+    }
+    void indices(std::vector<uint16_t> v) noexcept
+    {
+        indices_.assign(v.begin(), v.end());
     }
 
     [[nodiscard]] const Material& material() const noexcept
@@ -70,6 +75,11 @@ public:
     [[nodiscard]] uint32_t indexCount() const noexcept
     {
         return static_cast<uint32_t>(indices_.size());
+    }
+
+    [[nodiscard]] DrawIndexType indexType() const noexcept
+    {
+        return DrawIndexType::UInt32;
     }
 
     [[nodiscard]] const std::vector<std::vector<Vec3>>& morphPositions() const noexcept
@@ -97,7 +107,7 @@ public:
 
 private:
     std::vector<Vertex> vertices_;
-    std::vector<uint16_t> indices_;
+    std::vector<uint32_t> indices_;
     const Material* material_{nullptr};
 
     std::vector<std::vector<Vec3>> morphPositions_;

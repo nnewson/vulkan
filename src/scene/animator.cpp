@@ -1,22 +1,29 @@
 #include <fire_engine/scene/animator.hpp>
 
 #include <fire_engine/animation/animation.hpp>
+#include <fire_engine/animation/animation_selection.hpp>
 
 namespace fire_engine
 {
 
-void Animator::addAnimation(Animation* anim)
+std::size_t Animator::findAnimationIndex(std::size_t id) const noexcept
 {
-    animations_.push_back(anim);
+    return findAnimationEntryIndex(animations_, id);
 }
 
-void Animator::activeAnimation(std::size_t index) noexcept
+void Animator::addAnimation(std::size_t id, Animation* anim)
 {
-    if (index < animations_.size())
+    animations_.push_back({id, anim});
+    if (animations_.size() == 1)
     {
-        activeIndex_ = index;
-        initialized_ = false;
+        activeIndex_ = 0;
+        activeAnimationId_ = id;
     }
+}
+
+void Animator::activeAnimation(std::size_t id) noexcept
+{
+    (void)selectAnimationEntry(animations_, id, activeIndex_, activeAnimationId_, initialized_);
 }
 
 void Animator::update(const InputState& input_state, const Transform& /*transform*/)
@@ -29,10 +36,12 @@ void Animator::update(const InputState& input_state, const Transform& /*transfor
     const auto& animState = input_state.animationState();
     if (animState.hasActiveAnimation())
     {
-        auto index = *animState.activeAnimation();
+        auto id = *animState.activeAnimation();
+        auto index = findAnimationIndex(id);
         if (index < animations_.size() && index != activeIndex_)
         {
-            activeAnimation(index);
+            (void)selectAnimationEntry(animations_, id, activeIndex_, activeAnimationId_,
+                                       initialized_);
         }
     }
 
@@ -43,7 +52,7 @@ void Animator::update(const InputState& input_state, const Transform& /*transfor
     }
 
     float t = static_cast<float>(input_state.time() - startTime_);
-    modelMatrix_ = animations_[activeIndex_]->sample(t);
+    modelMatrix_ = animations_[activeIndex_].animation->sample(t);
 }
 
 Mat4 Animator::render(const RenderContext& /*ctx*/, const Mat4& world)

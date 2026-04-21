@@ -1,6 +1,8 @@
 #include <fire_engine/graphics/image.hpp>
 
+#include <fstream>
 #include <stdexcept>
+#include <vector>
 
 #include <gtest/gtest.h>
 
@@ -51,6 +53,25 @@ TEST(ImageLoading, DataIsNotNull)
 {
     Image img = Image::load_from_file("test_assets/test_2x2.png");
     EXPECT_NE(img.data(), nullptr);
+}
+
+TEST(ImageLoading, LoadValidPngFromMemory)
+{
+    std::ifstream file("test_assets/test_2x2.png", std::ios::binary | std::ios::ate);
+    ASSERT_TRUE(file.is_open());
+
+    auto size = static_cast<std::size_t>(file.tellg());
+    file.seekg(0, std::ios::beg);
+
+    std::vector<uint8_t> bytes(size);
+    file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(size));
+    ASSERT_TRUE(file.good() || file.eof());
+
+    Image img = Image::load_from_memory(bytes.data(), bytes.size(), "embedded-test");
+    EXPECT_EQ(img.width(), 2);
+    EXPECT_EQ(img.height(), 2);
+    EXPECT_EQ(img.channels(), 4);
+    EXPECT_FALSE(img.empty());
 }
 
 TEST(ImageLoading, PixelDataIsCorrect)

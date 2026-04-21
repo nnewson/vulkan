@@ -11,14 +11,26 @@ namespace fire_engine
 
 class Resources;
 
+enum class TextureEncoding : uint8_t
+{
+    Srgb,
+    Linear,
+};
+
 class Texture
 {
 public:
+    static Texture load_from_image(const Image& image, Resources& resources,
+                                   const SamplerSettings& sampler = {},
+                                   TextureEncoding encoding = TextureEncoding::Srgb);
+
     static Texture load_from_file(const std::string& path, Resources& resources,
-                                  const SamplerSettings& sampler = {});
+                                  const SamplerSettings& sampler = {},
+                                  TextureEncoding encoding = TextureEncoding::Srgb);
 
     static Texture load_from_data(const uint8_t* pixels, int width, int height,
-                                  Resources& resources, const SamplerSettings& sampler = {});
+                                  Resources& resources, const SamplerSettings& sampler = {},
+                                  TextureEncoding encoding = TextureEncoding::Srgb);
 
     Texture() = default;
     ~Texture() = default;
@@ -43,9 +55,15 @@ public:
         return samplerSettings_;
     }
 
+    [[nodiscard]] TextureEncoding encoding() const noexcept
+    {
+        return encoding_;
+    }
+
 private:
     TextureHandle handle_{NullTexture};
     SamplerSettings samplerSettings_{};
+    TextureEncoding encoding_{TextureEncoding::Srgb};
 };
 
 } // namespace fire_engine

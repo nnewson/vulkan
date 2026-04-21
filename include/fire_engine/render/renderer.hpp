@@ -80,6 +80,21 @@ public:
     }
 
 private:
+    struct DrawBuckets
+    {
+        std::vector<DrawCommand> shadow;
+        std::vector<DrawCommand> opaque;
+        std::vector<DrawCommand> blend;
+    };
+
+    void updateLightData();
+    [[nodiscard]] DrawBuckets buildDrawBuckets(const std::vector<DrawCommand>& drawCommands) const;
+    void recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
+                          PipelineHandle& lastBoundPipeline) const;
+    void recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCommand>& shadowDraws);
+    void recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
+    void transitionOffscreenForSampling(vk::CommandBuffer cmd);
+    void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
@@ -118,6 +133,7 @@ private:
     BufferHandle postProcessIndexBuffer_{NullBuffer};
     Resources::MappedBufferSet lightUbo_;
     Mat4 lightViewProj_{};
+    std::vector<vk::Fence> imagesInFlight_{};
     uint32_t currentFrame_{0};
 };
 

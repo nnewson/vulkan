@@ -75,6 +75,17 @@ TEST(Geometry, IndicesMoveSemantics)
     EXPECT_EQ(geo.indexCount(), 3);
 }
 
+TEST(Geometry, SetAndGetUInt32Indices)
+{
+    Geometry geo;
+    std::vector<uint32_t> idxs = {0u, 65536u, 70000u};
+    geo.indices(idxs);
+    EXPECT_EQ(geo.indices().size(), 3u);
+    EXPECT_EQ(geo.indices()[1], 65536u);
+    EXPECT_EQ(geo.indices()[2], 70000u);
+    EXPECT_EQ(geo.indexType(), DrawIndexType::UInt32);
+}
+
 // ---------------------------------------------------------------------------
 // Material pointer
 // ---------------------------------------------------------------------------

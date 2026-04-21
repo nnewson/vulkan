@@ -1,6 +1,7 @@
 #include <fire_engine/scene/mesh.hpp>
 
 #include <fire_engine/animation/animation.hpp>
+#include <fire_engine/animation/animation_selection.hpp>
 #include <fire_engine/render/render_context.hpp>
 
 namespace fire_engine
@@ -11,18 +12,25 @@ Mesh::Mesh(Object object)
 {
 }
 
-void Mesh::addMorphAnimation(Animation* anim)
+std::size_t Mesh::findMorphAnimationIndex(std::size_t id) const noexcept
 {
-    morphAnimations_.push_back(anim);
+    return findAnimationEntryIndex(morphAnimations_, id);
 }
 
-void Mesh::activeMorphAnimation(std::size_t index) noexcept
+void Mesh::addMorphAnimation(std::size_t id, Animation* anim)
 {
-    if (index < morphAnimations_.size())
+    morphAnimations_.push_back({id, anim});
+    if (morphAnimations_.size() == 1)
     {
-        activeMorphIndex_ = index;
-        morphInitialized_ = false;
+        activeMorphIndex_ = 0;
+        activeMorphAnimationId_ = id;
     }
+}
+
+void Mesh::activeMorphAnimation(std::size_t id) noexcept
+{
+    (void)selectAnimationEntry(morphAnimations_, id, activeMorphIndex_, activeMorphAnimationId_,
+                               morphInitialized_);
 }
 
 void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
@@ -32,10 +40,12 @@ void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
     const auto& animState = input_state.animationState();
     if (animState.hasActiveAnimation())
     {
-        auto index = *animState.activeAnimation();
+        auto id = *animState.activeAnimation();
+        auto index = findMorphAnimationIndex(id);
         if (index < morphAnimations_.size() && index != activeMorphIndex_)
         {
-            activeMorphAnimation(index);
+            (void)selectAnimationEntry(morphAnimations_, id, activeMorphIndex_,
+                                       activeMorphAnimationId_, morphInitialized_);
         }
     }
 
@@ -48,7 +58,8 @@ void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
         }
 
         float t = static_cast<float>(input_state.time() - startTime_);
-        morphWeights_ = morphAnimations_[activeMorphIndex_]->sampleWeights(t, morphWeights_.size());
+        morphWeights_ =
+            morphAnimations_[activeMorphIndex_].animation->sampleWeights(t, morphWeights_.size());
     }
 
     if (!morphWeights_.empty())

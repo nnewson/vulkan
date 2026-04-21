@@ -15,6 +15,12 @@ class Skin;
 class Mesh : public Component
 {
 public:
+    struct MorphAnimationEntry
+    {
+        std::size_t id{0};
+        Animation* animation{nullptr};
+    };
+
     explicit Mesh(Object object);
     ~Mesh() override = default;
 
@@ -28,13 +34,17 @@ public:
         object_.skin(s);
     }
 
-    void addMorphAnimation(Animation* anim);
+    void addMorphAnimation(std::size_t id, Animation* anim);
+    void addMorphAnimation(Animation* anim)
+    {
+        addMorphAnimation(morphAnimations_.size(), anim);
+    }
 
-    void activeMorphAnimation(std::size_t index) noexcept;
+    void activeMorphAnimation(std::size_t id) noexcept;
 
     [[nodiscard]] std::size_t activeMorphAnimation() const noexcept
     {
-        return activeMorphIndex_;
+        return activeMorphAnimationId_;
     }
 
     [[nodiscard]] std::size_t morphAnimationCount() const noexcept
@@ -48,7 +58,7 @@ public:
         {
             return nullptr;
         }
-        return morphAnimations_[activeMorphIndex_];
+        return morphAnimations_[activeMorphIndex_].animation;
     }
 
     [[nodiscard]] const Animation* morphAnimation() const noexcept
@@ -57,7 +67,7 @@ public:
         {
             return nullptr;
         }
-        return morphAnimations_[activeMorphIndex_];
+        return morphAnimations_[activeMorphIndex_].animation;
     }
 
     void initialMorphWeights(std::vector<float> w) noexcept
@@ -71,9 +81,12 @@ public:
     Mat4 render(const RenderContext& ctx, const Mat4& world) override;
 
 private:
+    [[nodiscard]] std::size_t findMorphAnimationIndex(std::size_t id) const noexcept;
+
     Object object_;
-    std::vector<Animation*> morphAnimations_;
+    std::vector<MorphAnimationEntry> morphAnimations_;
     std::size_t activeMorphIndex_{0};
+    std::size_t activeMorphAnimationId_{0};
     std::vector<float> morphWeights_;
     double startTime_{0.0};
     bool morphInitialized_{false};

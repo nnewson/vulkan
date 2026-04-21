@@ -55,6 +55,18 @@ BufferHandle Resources::createIndexBuffer(std::span<const uint16_t> indices)
     return storeBuffer(std::move(buf), std::move(mem));
 }
 
+BufferHandle Resources::createIndexBuffer(std::span<const uint32_t> indices)
+{
+    vk::DeviceSize size = indices.size_bytes();
+    auto [buf, mem] = device_->createBuffer(size, vk::BufferUsageFlagBits::eIndexBuffer,
+                                            vk::MemoryPropertyFlagBits::eHostVisible |
+                                                vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* data = mem.mapMemory(0, size);
+    std::memcpy(data, indices.data(), size);
+    mem.unmapMemory();
+    return storeBuffer(std::move(buf), std::move(mem));
+}
+
 // --- Texture creation ---
 
 static vk::SamplerAddressMode toVkAddressMode(WrapMode mode)
@@ -81,17 +93,30 @@ static vk::Filter toVkFilter(FilterMode mode)
     }
 }
 
-TextureHandle Resources::createTexture(const Image& image, const SamplerSettings& sampler)
+static vk::Format toVkTextureFormat(TextureEncoding encoding)
 {
-    return createTexture(image.data(), image.width(), image.height(), sampler);
+    return encoding == TextureEncoding::Srgb ? vk::Format::eR8G8B8A8Srgb
+                                             : vk::Format::eR8G8B8A8Unorm;
+}
+
+static std::size_t fallbackTextureIndex(Resources::FallbackTextureKind kind)
+{
+    return static_cast<std::size_t>(kind);
+}
+
+TextureHandle Resources::createTexture(const Image& image, const SamplerSettings& sampler,
+                                       TextureEncoding encoding)
+{
+    return createTexture(image.data(), image.width(), image.height(), sampler, encoding);
 }
 
 TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int height,
-                                       const SamplerSettings& sampler)
+                                       const SamplerSettings& sampler, TextureEncoding encoding)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
     auto& entry = textures_.back();
+    entry.format = toVkTextureFormat(encoding);
 
     vk::DeviceSize imageSize =
         static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
@@ -106,7 +131,7 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
 
     // Create image
     vk::ImageCreateInfo imgCi(
-        {}, vk::ImageType::e2D, vk::Format::eR8G8B8A8Srgb,
+        {}, vk::ImageType::e2D, entry.format,
         vk::Extent3D(static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1), 1, 1,
         vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
         vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled,
@@ -159,7 +184,7 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
 
     // Create image view
     vk::ImageViewCreateInfo viewCi(
-        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eR8G8B8A8Srgb, {},
+        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
@@ -176,6 +201,46 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
     return TextureHandle{id};
 }
 
+TextureHandle Resources::fallbackTexture(FallbackTextureKind kind)
+{
+    auto index = fallbackTextureIndex(kind);
+    if (fallbackTextures_[index] == NullTexture)
+    {
+        fallbackTextures_[index] = createFallbackTexture(kind);
+    }
+    return fallbackTextures_[index];
+}
+
+TextureHandle Resources::createFallbackTexture(FallbackTextureKind kind)
+{
+    switch (kind)
+    {
+    case FallbackTextureKind::BaseColor:
+    {
+        static const uint8_t white[] = {255, 255, 255, 255};
+        return createTexture(white, 1, 1, {}, TextureEncoding::Srgb);
+    }
+    case FallbackTextureKind::Emissive:
+    {
+        static const uint8_t black[] = {0, 0, 0, 255};
+        return createTexture(black, 1, 1, {}, TextureEncoding::Srgb);
+    }
+    case FallbackTextureKind::Normal:
+    {
+        static const uint8_t flatNormal[] = {128, 128, 255, 255};
+        return createTexture(flatNormal, 1, 1, {}, TextureEncoding::Linear);
+    }
+    case FallbackTextureKind::MetallicRoughness:
+    case FallbackTextureKind::Occlusion:
+    {
+        static const uint8_t white[] = {255, 255, 255, 255};
+        return createTexture(white, 1, 1, {}, TextureEncoding::Linear);
+    }
+    }
+
+    return NullTexture;
+}
+
 // --- Shadow map ---
 
 TextureHandle Resources::createShadowMap(uint32_t extent)
@@ -183,13 +248,14 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
     auto& entry = textures_.back();
+    entry.format = vk::Format::eD32Sfloat;
 
-    vk::ImageCreateInfo imgCi(
-        {}, vk::ImageType::e2D, vk::Format::eD32Sfloat, vk::Extent3D(extent, extent, 1), 1, 1,
-        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-        vk::ImageUsageFlagBits::eDepthStencilAttachment | vk::ImageUsageFlagBits::eSampled |
-            vk::ImageUsageFlagBits::eTransferDst,
-        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, entry.format, vk::Extent3D(extent, extent, 1),
+                              1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                              vk::ImageUsageFlagBits::eDepthStencilAttachment |
+                                  vk::ImageUsageFlagBits::eSampled |
+                                  vk::ImageUsageFlagBits::eTransferDst,
+                              vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
     auto imgReq = entry.image.getMemoryRequirements();
@@ -200,7 +266,7 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     entry.image.bindMemory(*entry.memory, 0);
 
     vk::ImageViewCreateInfo viewCi(
-        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eD32Sfloat, {},
+        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
@@ -219,40 +285,12 @@ TextureHandle Resources::createShadowColorAttachment(uint32_t extent)
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
     auto& entry = textures_.back();
+    entry.format = vk::Format::eB8G8R8A8Unorm;
 
-    vk::ImageCreateInfo imgCi(
-        {}, vk::ImageType::e2D, vk::Format::eB8G8R8A8Unorm, vk::Extent3D(extent, extent, 1), 1, 1,
-        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eTransientAttachment,
-        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
-    entry.image = vk::raii::Image(device_->device(), imgCi);
-
-    auto imgReq = entry.image.getMemoryRequirements();
-    vk::MemoryAllocateInfo imgAi(
-        imgReq.size,
-        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
-    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
-    entry.image.bindMemory(*entry.memory, 0);
-
-    vk::ImageViewCreateInfo viewCi(
-        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eB8G8R8A8Unorm, {},
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
-    entry.view = vk::raii::ImageView(device_->device(), viewCi);
-
-    return TextureHandle{id};
-}
-
-TextureHandle Resources::createOffscreenColorTarget(vk::Extent2D extent)
-{
-    auto id = static_cast<uint32_t>(textures_.size());
-    textures_.emplace_back();
-    auto& entry = textures_.back();
-
-    vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, vk::Format::eR16G16B16A16Sfloat,
-                              vk::Extent3D(extent.width, extent.height, 1), 1, 1,
-                              vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+    vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, entry.format, vk::Extent3D(extent, extent, 1),
+                              1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eColorAttachment |
-                                  vk::ImageUsageFlagBits::eSampled,
+                                  vk::ImageUsageFlagBits::eTransientAttachment,
                               vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
@@ -264,7 +302,36 @@ TextureHandle Resources::createOffscreenColorTarget(vk::Extent2D extent)
     entry.image.bindMemory(*entry.memory, 0);
 
     vk::ImageViewCreateInfo viewCi(
-        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eR16G16B16A16Sfloat, {},
+        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    return TextureHandle{id};
+}
+
+TextureHandle Resources::createOffscreenColorTarget(vk::Extent2D extent)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+    entry.format = vk::Format::eR16G16B16A16Sfloat;
+
+    vk::ImageCreateInfo imgCi(
+        {}, vk::ImageType::e2D, entry.format, vk::Extent3D(extent.width, extent.height, 1), 1, 1,
+        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
@@ -285,6 +352,42 @@ void Resources::releaseTexture(TextureHandle handle)
     entry.view = vk::raii::ImageView{nullptr};
     entry.image = vk::raii::Image{nullptr};
     entry.memory = vk::raii::DeviceMemory{nullptr};
+    entry.format = vk::Format::eUndefined;
+}
+
+Resources::DescriptorPoolEntry&
+Resources::createDescriptorPool(std::span<const vk::DescriptorPoolSize> poolSizes, uint32_t maxSets)
+{
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, maxSets,
+                                    poolSizes);
+    auto& poolEntry = descriptorPools_.emplace_back();
+    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+    return poolEntry;
+}
+
+std::vector<vk::raii::DescriptorSet>
+Resources::allocateDescriptorSets(vk::DescriptorPool pool, vk::DescriptorSetLayout layout,
+                                  uint32_t count) const
+{
+    std::vector<vk::DescriptorSetLayout> layouts(count, layout);
+    vk::DescriptorSetAllocateInfo ai(pool, layouts);
+    return device_->device().allocateDescriptorSets(ai);
+}
+
+DescriptorSetHandle Resources::registerDescriptorSet(vk::DescriptorSet set)
+{
+    auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
+    descriptorSetTable_.push_back(set);
+    return DescriptorSetHandle{dsHandle};
+}
+
+void Resources::retainDescriptorSets(DescriptorPoolEntry& poolEntry,
+                                     std::vector<vk::raii::DescriptorSet>& sets)
+{
+    for (auto& s : sets)
+    {
+        poolEntry.sets.push_back(std::move(s));
+    }
 }
 
 // --- Mapped buffer sets ---
@@ -335,16 +438,12 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     auto numGeometries = static_cast<uint32_t>(req.geometries.size());
     uint32_t totalSets = numGeometries * MAX_FRAMES_IN_FLIGHT;
 
-    // Create descriptor pool
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
         {vk::DescriptorType::eCombinedImageSampler, totalSets * 6},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
-    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
-                                    poolSizes);
-    auto& poolEntry = descriptorPools_.emplace_back();
-    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+    auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
 
     ObjectDescriptorResult result;
     result.descSets.resize(numGeometries);
@@ -353,10 +452,8 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
     {
         const auto& geo = req.geometries[g];
 
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT,
-                                                     pipeline_->descriptorSetLayout());
-        vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
-        auto sets = device_->device().allocateDescriptorSets(ai);
+        auto sets = allocateDescriptorSets(*poolEntry.pool, pipeline_->descriptorSetLayout(),
+                                           MAX_FRAMES_IN_FLIGHT);
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
@@ -426,16 +523,10 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
             }};
             device_->device().updateDescriptorSets(writes, {});
 
-            auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
-            descriptorSetTable_.push_back(*sets[i]);
-            result.descSets[g][i] = DescriptorSetHandle{dsHandle};
+            result.descSets[g][i] = registerDescriptorSet(*sets[i]);
         }
 
-        // Store RAII ownership
-        for (auto& s : sets)
-        {
-            poolEntry.sets.push_back(std::move(s));
-        }
+        retainDescriptorSets(poolEntry, sets);
     }
 
     return result;
@@ -451,10 +542,7 @@ Resources::createShadowDescriptors(const ShadowDescriptorRequest& req)
         {vk::DescriptorType::eUniformBuffer, totalSets * 3},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
-    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet, totalSets,
-                                    poolSizes);
-    auto& poolEntry = descriptorPools_.emplace_back();
-    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+    auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
 
     ShadowDescriptorResult result;
     result.descSets.resize(numGeometries);
@@ -463,9 +551,8 @@ Resources::createShadowDescriptors(const ShadowDescriptorRequest& req)
     {
         const auto& geo = req.geometries[g];
 
-        std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, shadowDescLayout_);
-        vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
-        auto sets = device_->device().allocateDescriptorSets(ai);
+        auto sets =
+            allocateDescriptorSets(*poolEntry.pool, shadowDescLayout_, MAX_FRAMES_IN_FLIGHT);
 
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
@@ -491,15 +578,10 @@ Resources::createShadowDescriptors(const ShadowDescriptorRequest& req)
             }};
             device_->device().updateDescriptorSets(writes, {});
 
-            auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
-            descriptorSetTable_.push_back(*sets[i]);
-            result.descSets[g][i] = DescriptorSetHandle{dsHandle};
+            result.descSets[g][i] = registerDescriptorSet(*sets[i]);
         }
 
-        for (auto& s : sets)
-        {
-            poolEntry.sets.push_back(std::move(s));
-        }
+        retainDescriptorSets(poolEntry, sets);
     }
 
     return result;
@@ -512,14 +594,8 @@ Resources::createSingleUboDescriptors(vk::DescriptorSetLayout layout, const Mapp
     std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT},
     }};
-    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                    MAX_FRAMES_IN_FLIGHT, poolSizes);
-    auto& poolEntry = descriptorPools_.emplace_back();
-    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
-
-    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, layout);
-    vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
-    auto sets = device_->device().allocateDescriptorSets(ai);
+    auto& poolEntry = createDescriptorPool(poolSizes, MAX_FRAMES_IN_FLIGHT);
+    auto sets = allocateDescriptorSets(*poolEntry.pool, layout, MAX_FRAMES_IN_FLIGHT);
 
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -530,15 +606,10 @@ Resources::createSingleUboDescriptors(vk::DescriptorSetLayout layout, const Mapp
                                      &bufInfo);
         device_->device().updateDescriptorSets(write, {});
 
-        auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
-        descriptorSetTable_.push_back(*sets[i]);
-        result[i] = DescriptorSetHandle{dsHandle};
+        result[i] = registerDescriptorSet(*sets[i]);
     }
 
-    for (auto& s : sets)
-    {
-        poolEntry.sets.push_back(std::move(s));
-    }
+    retainDescriptorSets(poolEntry, sets);
 
     return result;
 }
@@ -550,27 +621,16 @@ Resources::createSingleImageSamplerDescriptors(vk::DescriptorSetLayout layout,
     std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
         {vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT},
     }};
-    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
-                                    MAX_FRAMES_IN_FLIGHT, poolSizes);
-    auto& poolEntry = descriptorPools_.emplace_back();
-    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
-
-    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, layout);
-    vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
-    auto sets = device_->device().allocateDescriptorSets(ai);
+    auto& poolEntry = createDescriptorPool(poolSizes, MAX_FRAMES_IN_FLIGHT);
+    auto sets = allocateDescriptorSets(*poolEntry.pool, layout, MAX_FRAMES_IN_FLIGHT);
 
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
-        descriptorSetTable_.push_back(*sets[i]);
-        result[i] = DescriptorSetHandle{dsHandle};
+        result[i] = registerDescriptorSet(*sets[i]);
     }
 
-    for (auto& s : sets)
-    {
-        poolEntry.sets.push_back(std::move(s));
-    }
+    retainDescriptorSets(poolEntry, sets);
 
     updateSingleImageSamplerDescriptors(result, texture);
     return result;
@@ -619,6 +679,11 @@ vk::Image Resources::vulkanImage(TextureHandle handle) const noexcept
 vk::Sampler Resources::vulkanSampler(TextureHandle handle) const noexcept
 {
     return *textures_[static_cast<uint32_t>(handle)].sampler;
+}
+
+vk::Format Resources::textureFormat(TextureHandle handle) const noexcept
+{
+    return textures_[static_cast<uint32_t>(handle)].format;
 }
 
 vk::DescriptorSet Resources::vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept

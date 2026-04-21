@@ -11,6 +11,8 @@ class Image
 {
 public:
     static Image load_from_file(const std::string& path);
+    static Image load_from_memory(const uint8_t* data, std::size_t size_bytes,
+                                  const std::string& label = "memory");
 
     Image() = default;
     ~Image() = default;

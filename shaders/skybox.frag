@@ -11,6 +11,11 @@ layout(location = 0) in vec2 fragUv;
 
 layout(location = 0) out vec4 outColor;
 
+// Calibrated against the current ACES pass to keep the sky present without lifting the frame.
+const vec3 horizonColor = vec3(0.56, 0.48, 0.36);
+const vec3 zenithColor = vec3(0.12, 0.28, 0.56);
+const vec3 nadirColor = vec3(0.05, 0.05, 0.05);
+
 void main() {
     vec2 ndc = fragUv * 2.0 - 1.0;
 
@@ -25,10 +30,6 @@ void main() {
     vec3 dir = normalize(forward
                          + ndc.x * aspect * tanHalfFov * right
                          - ndc.y * tanHalfFov * up);
-
-    vec3 horizonColor = vec3(0.72, 0.58, 0.42);
-    vec3 zenithColor  = vec3(0.18, 0.38, 0.72);
-    vec3 nadirColor   = vec3(0.08, 0.07, 0.06);
 
     vec3 sky_color;
     if (dir.y >= 0.0) {

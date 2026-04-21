@@ -140,8 +140,7 @@ void Object::load(Resources& resources)
         }
         else
         {
-            static const uint8_t white[] = {255, 255, 255, 255};
-            geoInfo.texture = resources.createTexture(white, 1, 1);
+            geoInfo.texture = resources.fallbackTexture(Resources::FallbackTextureKind::BaseColor);
         }
 
         // Emissive texture — use a 1x1 black dummy when material has no emissive texture
@@ -151,8 +150,8 @@ void Object::load(Resources& resources)
         }
         else
         {
-            static const uint8_t black[] = {0, 0, 0, 255};
-            geoInfo.emissiveTexture = resources.createTexture(black, 1, 1);
+            geoInfo.emissiveTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::Emissive);
         }
 
         // Normal texture — use a 1x1 flat-normal dummy (128,128,255 = z-up in tangent space)
@@ -162,8 +161,8 @@ void Object::load(Resources& resources)
         }
         else
         {
-            static const uint8_t flatNormal[] = {128, 128, 255, 255};
-            geoInfo.normalTexture = resources.createTexture(flatNormal, 1, 1);
+            geoInfo.normalTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
         }
 
         // MetallicRoughness texture — use a 1x1 white dummy (1.0 metallic, 1.0 roughness)
@@ -174,8 +173,8 @@ void Object::load(Resources& resources)
         }
         else
         {
-            static const uint8_t white[] = {255, 255, 255, 255};
-            geoInfo.metallicRoughnessTexture = resources.createTexture(white, 1, 1);
+            geoInfo.metallicRoughnessTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::MetallicRoughness);
         }
 
         // Occlusion texture — use a 1x1 white dummy (1.0 = no occlusion)
@@ -185,8 +184,8 @@ void Object::load(Resources& resources)
         }
         else
         {
-            static const uint8_t white[] = {255, 255, 255, 255};
-            geoInfo.occlusionTexture = resources.createTexture(white, 1, 1);
+            geoInfo.occlusionTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
         }
 
         req.geometries.push_back(geoInfo);
@@ -372,6 +371,7 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
         cmd.vertexBuffer = binding.geometry->vertexBuffer();
         cmd.indexBuffer = binding.geometry->indexBuffer();
         cmd.indexCount = binding.geometry->indexCount();
+        cmd.indexType = binding.geometry->indexType();
         cmd.descriptorSet = binding.descSets[frame.currentFrame];
         cmd.pipeline = pipe;
         cmd.sortDepth = depth;

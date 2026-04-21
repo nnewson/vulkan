@@ -280,6 +280,39 @@ TEST(Animator, InputStateSwitchesAnimation)
     EXPECT_NEAR((result[0, 3]), 0.0f, 1e-4f);
 }
 
+TEST(Animator, InputStateUsesStableAnimationIds)
+{
+    Animator a;
+
+    Animation anim10;
+    anim10.translationKeyframes({
+        {0.0f, {0.0f, 0.0f, 0.0f}},
+        {1.0f, {10.0f, 0.0f, 0.0f}},
+    });
+
+    Animation anim20;
+    anim20.translationKeyframes({
+        {0.0f, {0.0f, 0.0f, 0.0f}},
+        {1.0f, {0.0f, 20.0f, 0.0f}},
+    });
+
+    a.addAnimation(10, &anim10);
+    a.addAnimation(20, &anim20);
+
+    InputState state;
+    Transform transform;
+
+    state.time(0.0);
+    a.update(state, transform);
+
+    state.time(1.0);
+    state.animationState().activeAnimation(20);
+    a.update(state, transform);
+
+    EXPECT_EQ(a.activeAnimation(), 20u);
+    EXPECT_EQ(a.animation(), &anim20);
+}
+
 TEST(Animator, InputStateOutOfRangeIndexIsIgnored)
 {
     Animator a;

@@ -10,6 +10,7 @@
 
 #include <fire_engine/graphics/gpu_handle.hpp>
 #include <fire_engine/graphics/sampler_settings.hpp>
+#include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/render/constants.hpp>
 
 namespace fire_engine
@@ -23,6 +24,15 @@ class Vertex;
 class Resources
 {
 public:
+    enum class FallbackTextureKind
+    {
+        BaseColor,
+        Emissive,
+        Normal,
+        MetallicRoughness,
+        Occlusion,
+    };
+
     Resources(const Device& device, const Pipeline& pipeline);
     ~Resources() = default;
 
@@ -35,13 +45,17 @@ public:
 
     [[nodiscard]] BufferHandle createVertexBuffer(std::span<const Vertex> vertices);
     [[nodiscard]] BufferHandle createIndexBuffer(std::span<const uint16_t> indices);
+    [[nodiscard]] BufferHandle createIndexBuffer(std::span<const uint32_t> indices);
 
     // --- Texture creation ---
 
     [[nodiscard]] TextureHandle createTexture(const Image& image,
-                                              const SamplerSettings& sampler = {});
+                                              const SamplerSettings& sampler = {},
+                                              TextureEncoding encoding = TextureEncoding::Srgb);
     [[nodiscard]] TextureHandle createTexture(const uint8_t* pixels, int width, int height,
-                                              const SamplerSettings& sampler = {});
+                                              const SamplerSettings& sampler = {},
+                                              TextureEncoding encoding = TextureEncoding::Srgb);
+    [[nodiscard]] TextureHandle fallbackTexture(FallbackTextureKind kind);
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
 
@@ -203,12 +217,24 @@ public:
     [[nodiscard]] vk::Image vulkanImage(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::ImageView vulkanImageView(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
+    [[nodiscard]] vk::Format textureFormat(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
     [[nodiscard]] vk::Pipeline vulkanPipeline(PipelineHandle handle) const noexcept;
     [[nodiscard]] vk::PipelineLayout vulkanPipelineLayout(PipelineHandle handle) const noexcept;
 
 private:
+    struct DescriptorPoolEntry;
+
     BufferHandle storeBuffer(vk::raii::Buffer buf, vk::raii::DeviceMemory mem);
+    DescriptorPoolEntry& createDescriptorPool(std::span<const vk::DescriptorPoolSize> poolSizes,
+                                              uint32_t maxSets);
+    [[nodiscard]] std::vector<vk::raii::DescriptorSet>
+    allocateDescriptorSets(vk::DescriptorPool pool, vk::DescriptorSetLayout layout,
+                           uint32_t count) const;
+    [[nodiscard]] DescriptorSetHandle registerDescriptorSet(vk::DescriptorSet set);
+    void retainDescriptorSets(DescriptorPoolEntry& poolEntry,
+                              std::vector<vk::raii::DescriptorSet>& sets);
+    [[nodiscard]] TextureHandle createFallbackTexture(FallbackTextureKind kind);
 
     const Device* device_;
     const Pipeline* pipeline_;
@@ -228,8 +254,11 @@ private:
         vk::raii::DeviceMemory memory{nullptr};
         vk::raii::ImageView view{nullptr};
         vk::raii::Sampler sampler{nullptr};
+        vk::Format format{vk::Format::eUndefined};
     };
     std::vector<TextureEntry> textures_;
+    std::array<TextureHandle, 5> fallbackTextures_{NullTexture, NullTexture, NullTexture,
+                                                   NullTexture, NullTexture};
 
     struct DescriptorPoolEntry
     {
