@@ -55,7 +55,7 @@ layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
 // Keep a little fill light so materials stay readable without flattening contrast.
-const float ambientStrength = 0.08;
+const float ambientStrength = 0.04;
 // Shadows should stay legible, but the ambient floor must not erase separation.
 const float shadowAmbientFloor = 0.25;
 
