@@ -23,7 +23,7 @@ public:
     ~FireEngine();
 
     void run(size_t width, size_t height, std::string_view app_name,
-             std::string_view scene_path = "");
+             std::string_view scene_path = "", std::string_view skybox_path = "");
 
 private:
     std::unique_ptr<Window> window_;

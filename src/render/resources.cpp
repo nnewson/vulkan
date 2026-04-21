@@ -1,5 +1,6 @@
 #include <fire_engine/render/resources.hpp>
 
+#include <algorithm>
 #include <cstring>
 
 #include <fire_engine/graphics/image.hpp>
@@ -284,14 +285,27 @@ TextureHandle Resources::createTexture(const float* pixels, int width, int heigh
 TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t faceExtent,
                                               const SamplerSettings& sampler)
 {
+    return createCubemapTexture(pixels, faceExtent, 1, sampler);
+}
+
+TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t faceExtent,
+                                              uint32_t mipLevels,
+                                              const SamplerSettings& sampler)
+{
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
     auto& entry = textures_.back();
     entry.format = vk::Format::eR32G32B32A32Sfloat;
 
-    vk::DeviceSize faceSize =
-        static_cast<vk::DeviceSize>(faceExtent) * faceExtent * 4 * sizeof(float);
-    vk::DeviceSize imageSize = faceSize * 6;
+    vk::DeviceSize imageSize = 0;
+    uint32_t levelExtent = faceExtent;
+    for (uint32_t level = 0; level < mipLevels; ++level)
+    {
+        vk::DeviceSize faceSize =
+            static_cast<vk::DeviceSize>(levelExtent) * levelExtent * 4 * sizeof(float);
+        imageSize += faceSize * 6;
+        levelExtent = std::max(1u, levelExtent / 2);
+    }
 
     auto [stagingBuf, stagingMem] = device_->createBuffer(
         imageSize, vk::BufferUsageFlagBits::eTransferSrc,
@@ -301,7 +315,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
     stagingMem.unmapMemory();
 
     vk::ImageCreateInfo imgCi(vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
-                              entry.format, vk::Extent3D(faceExtent, faceExtent, 1), 1, 6,
+                              entry.format, vk::Extent3D(faceExtent, faceExtent, 1), mipLevels, 6,
                               vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eTransferDst |
                                   vk::ImageUsageFlagBits::eSampled,
@@ -323,17 +337,28 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
     vk::ImageMemoryBarrier toTransfer(
         {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined,
         vk::ImageLayout::eTransferDstOptimal, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-        *entry.image, vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6));
+        *entry.image,
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 6));
     cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer,
                         {}, {}, {}, toTransfer);
 
-    std::array<vk::BufferImageCopy, 6> regions{};
-    for (uint32_t face = 0; face < 6; ++face)
+    std::vector<vk::BufferImageCopy> regions;
+    regions.reserve(static_cast<std::size_t>(mipLevels) * 6);
+    vk::DeviceSize offset = 0;
+    levelExtent = faceExtent;
+    for (uint32_t level = 0; level < mipLevels; ++level)
     {
-        regions[face] = vk::BufferImageCopy(
-            faceSize * face, 0, 0,
-            vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, 0, face, 1), {0, 0, 0},
-            {faceExtent, faceExtent, 1});
+        vk::DeviceSize faceSize =
+            static_cast<vk::DeviceSize>(levelExtent) * levelExtent * 4 * sizeof(float);
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            regions.emplace_back(
+                offset, 0, 0,
+                vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, level, face, 1),
+                vk::Offset3D{0, 0, 0}, vk::Extent3D{levelExtent, levelExtent, 1});
+            offset += faceSize;
+        }
+        levelExtent = std::max(1u, levelExtent / 2);
     }
     cmd.copyBufferToImage(*stagingBuf, *entry.image, vk::ImageLayout::eTransferDstOptimal, regions);
 
@@ -341,7 +366,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
         vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead,
         vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
         VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, *entry.image,
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6));
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 6));
     cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
                         vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toShader);
     cmd.end();
@@ -353,7 +378,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
 
     vk::ImageViewCreateInfo viewCi(
         {}, *entry.image, vk::ImageViewType::eCube, entry.format, {},
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 6));
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 6));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
 
     auto props = device_->physicalDevice().getProperties();
@@ -361,7 +386,8 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
         {}, toVkFilter(sampler.magFilter), toVkFilter(sampler.minFilter),
         vk::SamplerMipmapMode::eLinear, toVkAddressMode(sampler.wrapS),
         toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS), 0.0f, vk::True,
-        props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f, 0.0f,
+        props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f,
+        static_cast<float>(mipLevels - 1),
         vk::BorderColor::eFloatOpaqueBlack, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
@@ -607,7 +633,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
 
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 7},
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 9},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
@@ -679,7 +705,17 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 *textures_[irradianceTexIdx].sampler, *textures_[irradianceTexIdx].view,
                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 13> writes = {{
+            auto prefilteredTexIdx = static_cast<uint32_t>(req.prefilteredMap);
+            vk::DescriptorImageInfo prefilteredTexInfo(
+                *textures_[prefilteredTexIdx].sampler, *textures_[prefilteredTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            auto brdfLutTexIdx = static_cast<uint32_t>(req.brdfLut);
+            vk::DescriptorImageInfo brdfLutTexInfo(
+                *textures_[brdfLutTexIdx].sampler, *textures_[brdfLutTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            std::array<vk::WriteDescriptorSet, 15> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -694,6 +730,9 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 11, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
                 {*sets[i], 12, 0, 1, vk::DescriptorType::eCombinedImageSampler,
                  &irradianceTexInfo},
+                {*sets[i], 13, 0, 1, vk::DescriptorType::eCombinedImageSampler,
+                 &prefilteredTexInfo},
+                {*sets[i], 14, 0, 1, vk::DescriptorType::eCombinedImageSampler, &brdfLutTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 

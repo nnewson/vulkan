@@ -1035,6 +1035,11 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
                            static_cast<float>(gltfMat.emissiveFactor.y()),
                            static_cast<float>(gltfMat.emissiveFactor.z())});
 
+        if (gltfMat.normalTexture.has_value())
+        {
+            material.normalScale(static_cast<float>(gltfMat.normalTexture.value().scale));
+        }
+
         switch (gltfMat.alphaMode)
         {
         case fastgltf::AlphaMode::Opaque:

@@ -35,6 +35,7 @@ struct MaterialUBO
     float clearcoatRoughness;
     float anisotropy;
     float anisotropyRotation;
+    float normalScale;
     float alphaCutoff;
     int hasTexture{0};
     int hasEmissiveTexture{0};

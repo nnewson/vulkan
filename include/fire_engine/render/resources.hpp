@@ -59,6 +59,9 @@ public:
                                               const SamplerSettings& sampler = {});
     [[nodiscard]] TextureHandle createCubemapTexture(const float* pixels, uint32_t faceExtent,
                                                      const SamplerSettings& sampler = {});
+    [[nodiscard]] TextureHandle createCubemapTexture(const float* pixels, uint32_t faceExtent,
+                                                     uint32_t mipLevels,
+                                                     const SamplerSettings& sampler = {});
     [[nodiscard]] TextureHandle fallbackTexture(FallbackTextureKind kind);
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
@@ -95,6 +98,8 @@ public:
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBufs{NullBuffer, NullBuffer};
         TextureHandle shadowMap{NullTexture};
         TextureHandle irradianceMap{NullTexture};
+        TextureHandle prefilteredMap{NullTexture};
+        TextureHandle brdfLut{NullTexture};
         std::vector<GeometryDescriptorInfo> geometries;
     };
 
@@ -223,6 +228,26 @@ public:
         return irradianceMap_;
     }
 
+    void prefilteredMap(TextureHandle handle) noexcept
+    {
+        prefilteredMap_ = handle;
+    }
+
+    [[nodiscard]] TextureHandle prefilteredMap() const noexcept
+    {
+        return prefilteredMap_;
+    }
+
+    void brdfLut(TextureHandle handle) noexcept
+    {
+        brdfLut_ = handle;
+    }
+
+    [[nodiscard]] TextureHandle brdfLut() const noexcept
+    {
+        return brdfLut_;
+    }
+
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
     // handles so Renderer can resolve PipelineHandle values stamped on
@@ -299,6 +324,8 @@ private:
     std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
     TextureHandle shadowMap_{NullTexture};
     TextureHandle irradianceMap_{NullTexture};
+    TextureHandle prefilteredMap_{NullTexture};
+    TextureHandle brdfLut_{NullTexture};
     vk::DescriptorSetLayout shadowDescLayout_{};
 };
 

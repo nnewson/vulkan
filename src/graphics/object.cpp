@@ -32,6 +32,8 @@ void Object::load(Resources& resources)
     const auto& lightBufs = resources.lightBuffers();
     req.shadowMap = resources.shadowMap();
     req.irradianceMap = resources.irradianceMap();
+    req.prefilteredMap = resources.prefilteredMap();
+    req.brdfLut = resources.brdfLut();
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         req.uniformBufs[i] = uniformSet.buffers[i];
@@ -259,6 +261,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.clearcoatRoughness = mat.clearcoatRoughness();
     ubo.anisotropy = mat.anisotropy();
     ubo.anisotropyRotation = mat.anisotropyRotation();
+    ubo.normalScale = mat.normalScale();
     ubo.alphaCutoff = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
     ubo.hasTexture = mat.hasTexture() ? 1 : 0;
     ubo.hasEmissiveTexture = mat.hasEmissiveTexture() ? 1 : 0;

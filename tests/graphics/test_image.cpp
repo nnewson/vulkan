@@ -1,5 +1,6 @@
 #include <fire_engine/graphics/image.hpp>
 
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
 #include <vector>
@@ -76,6 +77,20 @@ TEST(ImageLoading, LoadValidPngFromMemory)
     EXPECT_EQ(img.height(), 2);
     EXPECT_EQ(img.channels(), 4);
     EXPECT_FALSE(img.empty());
+}
+
+TEST(ImageLoading, LoadHdrEnvironmentAsFloatImage)
+{
+    ASSERT_TRUE(std::filesystem::exists("skybox.hdr"));
+
+    Image img = Image::load_from_file("skybox.hdr");
+    EXPECT_GT(img.width(), 0);
+    EXPECT_GT(img.height(), 0);
+    EXPECT_EQ(img.channels(), 4);
+    EXPECT_FALSE(img.empty());
+    EXPECT_EQ(img.pixelType(), fire_engine::ImagePixelType::Float32);
+    EXPECT_EQ(img.data(), nullptr);
+    EXPECT_NE(img.dataf(), nullptr);
 }
 
 TEST(ImageLoading, PixelDataIsCorrect)

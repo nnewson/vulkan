@@ -82,6 +82,8 @@ TEST(UBO, MaterialUBOAlphaCutoffSitsBeforeHasTexture)
 {
     static_assert(offsetof(MaterialUBO, alphaCutoff) < offsetof(MaterialUBO, hasTexture),
                   "alphaCutoff must precede hasTexture to match shader layout");
+    static_assert(offsetof(MaterialUBO, normalScale) < offsetof(MaterialUBO, alphaCutoff),
+                  "normalScale must precede alphaCutoff to match shader layout");
     static_assert(offsetof(MaterialUBO, anisotropyRotation) < offsetof(MaterialUBO, alphaCutoff),
                   "alphaCutoff must sit after anisotropyRotation to match shader layout");
     SUCCEED();

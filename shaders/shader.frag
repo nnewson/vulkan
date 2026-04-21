@@ -23,6 +23,7 @@ layout(binding = 1) uniform MaterialUBO {
     float clearcoatRoughness;
     float anisotropy;
     float anisotropyRotation;
+    float normalScale;
     float alphaCutoff;
     int hasTexture;
     int hasEmissiveTexture;
@@ -39,6 +40,8 @@ layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
 layout(binding = 10) uniform sampler2DShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
+layout(binding = 13) uniform samplerCube prefilteredMap;
+layout(binding = 14) uniform sampler2D brdfLut;
 
 layout(binding = 11) uniform LightUBO {
     vec4 direction;
@@ -55,6 +58,8 @@ layout(location = 4) in mat3 fragTBN;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
+const float maxReflectionLod = 7.0;
+const float specularIblStrength = 0.7;
 // Keep a little fill light so materials stay readable without flattening contrast.
 const float ambientStrength = 0.04;
 // Shadows should stay legible, but the ambient floor must not erase separation.
@@ -108,6 +113,7 @@ void main() {
     vec3 N;
     if (material.hasNormalTexture == 1) {
         vec3 mapNormal = texture(normalMap, fragTexCoord).rgb * 2.0 - 1.0;
+        mapNormal.xy *= material.normalScale;
         N = normalize(fragTBN * mapNormal);
     } else {
         N = normalize(fragNormal);
@@ -187,7 +193,12 @@ void main() {
         vec3 F = fresnelSchlickRoughness(NdotV, F0, roughness);
         vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
         vec3 irradiance = texture(irradianceMap, N).rgb;
-        ambientBase = irradiance * baseColor * kD;
+        vec3 diffuseIbl = irradiance * baseColor * kD;
+        vec3 R = reflect(-V, N);
+        vec3 prefilteredColor = textureLod(prefilteredMap, R, roughness * maxReflectionLod).rgb;
+        vec2 envBrdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
+        vec3 specularIbl = prefilteredColor * (F * envBrdf.x + envBrdf.y) * specularIblStrength;
+        ambientBase = diffuseIbl + specularIbl;
     } else {
         if (material.ambient == vec3(0.0)) {
             vec3 F0 = mix(vec3(0.04), baseColor, metallic);

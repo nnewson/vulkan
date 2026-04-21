@@ -26,12 +26,12 @@ FireEngine::~FireEngine()
 }
 
 void FireEngine::run(size_t width, size_t height, std::string_view app_name,
-                     std::string_view scene_path)
+                     std::string_view scene_path, std::string_view skybox_path)
 {
     window_ = std::make_unique<Window>(width, height, app_name);
     input_.enable(*window_);
 
-    renderer_ = std::make_unique<Renderer>(*window_);
+    renderer_ = std::make_unique<Renderer>(*window_, std::string(skybox_path));
 
     loadScene(scene_path);
     mainLoop();

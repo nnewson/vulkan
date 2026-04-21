@@ -73,10 +73,11 @@ public:
     // alpha).
     [[nodiscard]] static PipelineConfig forwardBlendConfig(vk::RenderPass renderPass);
 
-    // Factory producing the PipelineConfig for a procedural skybox pipeline.
-    // Shares the forward render pass, uses no vertex buffers (fullscreen
-    // triangle via gl_VertexIndex), and disables depth writes with LEQUAL
-    // compare so it only writes where no forward geometry has drawn.
+    // Factory producing the PipelineConfig for the environment skybox
+    // pipeline. Shares the forward render pass, uses no vertex buffers
+    // (fullscreen triangle via gl_VertexIndex), and disables depth writes
+    // with LEQUAL compare so it only writes where no forward geometry has
+    // drawn.
     [[nodiscard]] static PipelineConfig skyboxConfig(vk::RenderPass renderPass);
 
     // Factory producing the PipelineConfig for a depth-only shadow pipeline.

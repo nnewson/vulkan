@@ -25,7 +25,7 @@ class SceneGraph;
 class Renderer
 {
 public:
-    explicit Renderer(const Window& window);
+    explicit Renderer(const Window& window, std::string environmentPath = {});
     ~Renderer() = default;
 
     Renderer(const Renderer&) = delete;
@@ -98,16 +98,14 @@ private:
     void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void createSkyboxEnvironment();
     void createIrradianceEnvironment();
+    void createPrefilteredEnvironment();
+    void createBrdfLut();
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
     void submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex);
     void recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
                       std::vector<DrawCommand>& drawCommands);
-
-    static constexpr uint32_t shadowMapSize_ = 2048;
-    static constexpr uint32_t skyboxCubemapExtent_ = 1024;
-    static constexpr uint32_t irradianceCubemapExtent_ = 32;
 
     Device device_;
     Swapchain swapchain_;
@@ -133,6 +131,8 @@ private:
     TextureHandle offscreenColourHandle_{NullTexture};
     TextureHandle skyboxCubemapHandle_{NullTexture};
     TextureHandle irradianceCubemapHandle_{NullTexture};
+    TextureHandle prefilteredCubemapHandle_{NullTexture};
+    TextureHandle brdfLutHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> postProcessDescSets_{};
@@ -142,6 +142,8 @@ private:
     Mat4 lightViewProj_{};
     std::vector<vk::Fence> imagesInFlight_{};
     uint32_t currentFrame_{0};
+    uint32_t shadowMapSize_{0};
+    std::string environmentPath_;
 };
 
 } // namespace fire_engine

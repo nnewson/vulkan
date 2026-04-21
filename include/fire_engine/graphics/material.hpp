@@ -246,6 +246,15 @@ public:
         anisotropyRotation_ = v;
     }
 
+    [[nodiscard]] float normalScale() const noexcept
+    {
+        return normalScale_;
+    }
+    void normalScale(float v) noexcept
+    {
+        normalScale_ = v;
+    }
+
     [[nodiscard]] AlphaMode alphaMode() const noexcept
     {
         return alphaMode_;
@@ -291,6 +300,7 @@ private:
     float clearcoatRoughness_{0.0f};
     float anisotropy_{0.0f};
     float anisotropyRotation_{0.0f};
+    float normalScale_{1.0f};
     AlphaMode alphaMode_{AlphaMode::Opaque};
     float alphaCutoff_{0.5f};
     bool doubleSided_{false};

@@ -25,7 +25,19 @@ namespace
 // Calibrated against the current ACES post-process so direct light stays crisp without washing out
 // midtones.
 constexpr float directionalLightIntensity = 0.95f;
-constexpr const char* skyboxFilename = "skybox.hdr";
+
+struct EnvironmentConfig
+{
+    const char* filename{"skybox.hdr"};
+    uint32_t shadowMapExtent{2048};
+    uint32_t skyboxCubemapExtent{1024};
+    uint32_t irradianceCubemapExtent{32};
+    uint32_t prefilteredCubemapExtent{128};
+    uint32_t prefilteredCubemapMipLevels{8};
+    uint32_t brdfLutExtent{256};
+};
+
+constexpr EnvironmentConfig environmentConfig{};
 
 #ifndef FIRE_ENGINE_SOURCE_ASSET_DIR
 #define FIRE_ENGINE_SOURCE_ASSET_DIR "assets"
@@ -35,15 +47,44 @@ constexpr const char* skyboxFilename = "skybox.hdr";
 #define FIRE_ENGINE_BUILD_ASSET_DIR "."
 #endif
 
-[[nodiscard]] std::string resolveSkyboxPath()
+[[nodiscard]] std::string resolveSkyboxPath(const std::string& requestedPath);
+[[nodiscard]] Image loadEnvironmentImage(const std::string& requestedPath, const char* stageName);
+
+[[nodiscard]] std::string resolveSkyboxPath(const std::string& requestedPath)
 {
     namespace fs = std::filesystem;
 
+    if (!requestedPath.empty())
+    {
+        fs::path requested{requestedPath};
+        if (fs::exists(requested))
+        {
+            return requested.string();
+        }
+
+        const std::array<fs::path, 3> requestedCandidates = {
+            fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / requested,
+            fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / requested,
+            fs::path("assets") / requested,
+        };
+
+        for (const auto& candidate : requestedCandidates)
+        {
+            if (fs::exists(candidate))
+            {
+                return candidate.string();
+            }
+        }
+
+        throw std::runtime_error("Failed to locate requested HDR environment asset: " +
+                                 requested.string());
+    }
+
     const std::array<fs::path, 4> candidates = {
-        fs::path(skyboxFilename),
-        fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / skyboxFilename,
-        fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / skyboxFilename,
-        fs::path("assets") / skyboxFilename,
+        fs::path(environmentConfig.filename),
+        fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / environmentConfig.filename,
+        fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / environmentConfig.filename,
+        fs::path("assets") / environmentConfig.filename,
     };
 
     for (const auto& candidate : candidates)
@@ -55,9 +96,30 @@ constexpr const char* skyboxFilename = "skybox.hdr";
     }
 
     throw std::runtime_error(
-        "Failed to locate skybox asset. Tried: skybox.hdr, " +
-        (fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / skyboxFilename).string() + ", " +
-        (fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / skyboxFilename).string() + ", assets/skybox.hdr");
+        "Failed to locate HDR environment asset. Tried: " +
+        fs::path(environmentConfig.filename).string() + ", " +
+        (fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / environmentConfig.filename).string() + ", " +
+        (fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / environmentConfig.filename).string() + ", " +
+        (fs::path("assets") / environmentConfig.filename).string());
+}
+
+[[nodiscard]] Image loadEnvironmentImage(const std::string& requestedPath, const char* stageName)
+{
+    try
+    {
+        std::string environmentPath = resolveSkyboxPath(requestedPath);
+        Image hdr = Image::load_from_file(environmentPath);
+        if (hdr.pixelType() != ImagePixelType::Float32)
+        {
+            throw std::runtime_error("decoded image is not HDR float data");
+        }
+        return hdr;
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Environment bootstrap failed during ") + stageName +
+                                 ": " + e.what());
+    }
 }
 
 [[nodiscard]] Vec3 directionForCubemapFace(uint32_t face, float u, float v)
@@ -84,7 +146,7 @@ constexpr const char* skyboxFilename = "skybox.hdr";
     const float* pixels = image.dataf();
     if (pixels == nullptr)
     {
-        throw std::runtime_error("skybox.hdr did not decode as HDR float data");
+        throw std::runtime_error("environment image did not decode as HDR float data");
     }
 
     float phi = std::atan2(dir.z(), dir.x());
@@ -161,9 +223,125 @@ constexpr const char* skyboxFilename = "skybox.hdr";
     return {irradiance.x(), irradiance.y(), irradiance.z(), 1.0f};
 }
 
+[[nodiscard]] float radicalInverseVdC(uint32_t bits)
+{
+    bits = (bits << 16) | (bits >> 16);
+    bits = ((bits & 0x55555555u) << 1) | ((bits & 0xAAAAAAAAu) >> 1);
+    bits = ((bits & 0x33333333u) << 2) | ((bits & 0xCCCCCCCCu) >> 2);
+    bits = ((bits & 0x0F0F0F0Fu) << 4) | ((bits & 0xF0F0F0F0u) >> 4);
+    bits = ((bits & 0x00FF00FFu) << 8) | ((bits & 0xFF00FF00u) >> 8);
+    return static_cast<float>(bits) * 2.3283064365386963e-10f;
+}
+
+[[nodiscard]] std::array<float, 2> hammersley(uint32_t index, uint32_t sampleCount)
+{
+    return {static_cast<float>(index) / static_cast<float>(sampleCount), radicalInverseVdC(index)};
+}
+
+[[nodiscard]] Vec3 importanceSampleGGX(const std::array<float, 2>& xi, const Vec3& normal,
+                                       float roughness)
+{
+    float a = roughness * roughness;
+    float phi = 2.0f * pi * xi[0];
+    float cosTheta = std::sqrt((1.0f - xi[1]) / (1.0f + (a * a - 1.0f) * xi[1]));
+    float sinTheta = std::sqrt(std::max(0.0f, 1.0f - cosTheta * cosTheta));
+
+    Vec3 halfVector{std::cos(phi) * sinTheta, std::sin(phi) * sinTheta, cosTheta};
+
+    Vec3 up = std::abs(normal.z()) < 0.999f ? Vec3{0.0f, 0.0f, 1.0f} : Vec3{1.0f, 0.0f, 0.0f};
+    Vec3 tangent = Vec3::normalise(Vec3::crossProduct(up, normal));
+    Vec3 bitangent = Vec3::crossProduct(normal, tangent);
+
+    return Vec3::normalise(tangent * halfVector.x() + bitangent * halfVector.y() +
+                           normal * halfVector.z());
+}
+
+[[nodiscard]] float geometrySchlickGGXForIbl(float nDotV, float roughness)
+{
+    float a = roughness;
+    float k = (a * a) * 0.5f;
+    return nDotV / (nDotV * (1.0f - k) + k);
+}
+
+[[nodiscard]] float geometrySmithForIbl(float nDotV, float nDotL, float roughness)
+{
+    return geometrySchlickGGXForIbl(nDotV, roughness) *
+           geometrySchlickGGXForIbl(nDotL, roughness);
+}
+
+[[nodiscard]] std::array<float, 4> prefilterSpecular(const Image& image, const Vec3& reflection,
+                                                     float roughness)
+{
+    constexpr uint32_t sampleCount = 64;
+
+    Vec3 normal = reflection;
+    Vec3 view = reflection;
+    Vec3 prefiltered{};
+    float totalWeight = 0.0f;
+
+    for (uint32_t i = 0; i < sampleCount; ++i)
+    {
+        auto xi = hammersley(i, sampleCount);
+        Vec3 halfVector = importanceSampleGGX(xi, normal, roughness);
+        Vec3 light = Vec3::normalise(halfVector * (2.0f * Vec3::dotProduct(view, halfVector)) -
+                                     view);
+
+        float nDotL = std::max(Vec3::dotProduct(normal, light), 0.0f);
+        if (nDotL > 0.0f)
+        {
+            auto sample = sampleEquirectangular(image, light);
+            prefiltered += Vec3{sample[0], sample[1], sample[2]} * nDotL;
+            totalWeight += nDotL;
+        }
+    }
+
+    if (totalWeight > 0.0f)
+    {
+        prefiltered /= totalWeight;
+    }
+
+    return {prefiltered.x(), prefiltered.y(), prefiltered.z(), 1.0f};
+}
+
+[[nodiscard]] std::array<float, 4> integrateBrdf(float nDotV, float roughness)
+{
+    constexpr uint32_t sampleCount = 128;
+
+    Vec3 view{std::sqrt(std::max(0.0f, 1.0f - nDotV * nDotV)), 0.0f, nDotV};
+    Vec3 normal{0.0f, 0.0f, 1.0f};
+
+    float scale = 0.0f;
+    float bias = 0.0f;
+
+    for (uint32_t i = 0; i < sampleCount; ++i)
+    {
+        auto xi = hammersley(i, sampleCount);
+        Vec3 halfVector = importanceSampleGGX(xi, normal, roughness);
+        Vec3 light = Vec3::normalise(
+            halfVector * (2.0f * Vec3::dotProduct(view, halfVector)) - view);
+
+        float nDotL = std::max(light.z(), 0.0f);
+        float nDotH = std::max(halfVector.z(), 0.0f);
+        float vDotH = std::max(Vec3::dotProduct(view, halfVector), 0.0f);
+
+        if (nDotL > 0.0f)
+        {
+            float visibility = geometrySmithForIbl(nDotV, nDotL, roughness) * vDotH /
+                               std::max(nDotH * nDotV, 0.0001f);
+            float fresnel = std::pow(1.0f - vDotH, 5.0f);
+            scale += (1.0f - fresnel) * visibility;
+            bias += fresnel * visibility;
+        }
+    }
+
+    scale /= static_cast<float>(sampleCount);
+    bias /= static_cast<float>(sampleCount);
+    return {scale, bias, 0.0f, 1.0f};
+}
+
 } // namespace
 
-Renderer::Renderer(const Window& window)
+Renderer::Renderer(const Window& window, std::string environmentPath)
     : device_(window),
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_)),
@@ -177,7 +355,9 @@ Renderer::Renderer(const Window& window)
       shadowPipeline_(device_, Pipeline::shadowConfig(shadowPass_.renderPass())),
       postProcessPipeline_(device_, Pipeline::postProcessConfig(postProcessPass_.renderPass())),
       frame_(device_, swapchain_),
-      resources_(device_, pipelineOpaque_)
+      resources_(device_, pipelineOpaque_),
+      shadowMapSize_(environmentConfig.shadowMapExtent),
+      environmentPath_(std::move(environmentPath))
 {
     swapchain_.createDepthResources(device_);
     offscreenColourHandle_ = resources_.createOffscreenColourTarget(swapchain_.extent());
@@ -217,40 +397,39 @@ Renderer::Renderer(const Window& window)
     resources_.shadowMap(shadowMapHandle_);
     createSkyboxEnvironment();
     createIrradianceEnvironment();
+    createPrefilteredEnvironment();
+    createBrdfLut();
     resources_.irradianceMap(irradianceCubemapHandle_);
+    resources_.prefilteredMap(prefilteredCubemapHandle_);
+    resources_.brdfLut(brdfLutHandle_);
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }
 
 void Renderer::createSkyboxEnvironment()
 {
-    std::string skyboxPath = resolveSkyboxPath();
-    Image hdr = Image::load_from_file(skyboxPath);
-    if (hdr.pixelType() != ImagePixelType::Float32)
-    {
-        throw std::runtime_error("Expected HDR float skybox image: " + skyboxPath);
-    }
-
-    std::vector<float> cubemapPixels(static_cast<std::size_t>(skyboxCubemapExtent_) *
-                                     skyboxCubemapExtent_ * 4 * 6);
+    Image hdr = loadEnvironmentImage(environmentPath_, "skybox cubemap creation");
+    std::vector<float> cubemapPixels(static_cast<std::size_t>(environmentConfig.skyboxCubemapExtent) *
+                                     environmentConfig.skyboxCubemapExtent * 4 * 6);
 
     for (uint32_t face = 0; face < 6; ++face)
     {
-        for (uint32_t y = 0; y < skyboxCubemapExtent_; ++y)
+        for (uint32_t y = 0; y < environmentConfig.skyboxCubemapExtent; ++y)
         {
-            for (uint32_t x = 0; x < skyboxCubemapExtent_; ++x)
+            for (uint32_t x = 0; x < environmentConfig.skyboxCubemapExtent; ++x)
             {
                 float u = (2.0f * (static_cast<float>(x) + 0.5f) /
-                           static_cast<float>(skyboxCubemapExtent_)) -
+                           static_cast<float>(environmentConfig.skyboxCubemapExtent)) -
                           1.0f;
                 float v = (2.0f * (static_cast<float>(y) + 0.5f) /
-                           static_cast<float>(skyboxCubemapExtent_)) -
+                           static_cast<float>(environmentConfig.skyboxCubemapExtent)) -
                           1.0f;
                 Vec3 dir = directionForCubemapFace(face, u, -v);
                 auto sample = sampleEquirectangular(hdr, dir);
 
                 std::size_t index =
-                    (static_cast<std::size_t>(face) * skyboxCubemapExtent_ * skyboxCubemapExtent_ +
-                     static_cast<std::size_t>(y) * skyboxCubemapExtent_ +
+                    (static_cast<std::size_t>(face) * environmentConfig.skyboxCubemapExtent *
+                         environmentConfig.skyboxCubemapExtent +
+                     static_cast<std::size_t>(y) * environmentConfig.skyboxCubemapExtent +
                      static_cast<std::size_t>(x)) *
                     4;
                 cubemapPixels[index + 0] = sample[0];
@@ -264,42 +443,46 @@ void Renderer::createSkyboxEnvironment()
     SamplerSettings sampler{};
     sampler.wrapS = WrapMode::ClampToEdge;
     sampler.wrapT = WrapMode::ClampToEdge;
-    skyboxCubemapHandle_ =
-        resources_.createCubemapTexture(cubemapPixels.data(), skyboxCubemapExtent_, sampler);
+    try
+    {
+        skyboxCubemapHandle_ = resources_.createCubemapTexture(
+            cubemapPixels.data(), environmentConfig.skyboxCubemapExtent, sampler);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Environment bootstrap failed during skybox cubemap "
+                                             "upload: ") +
+                                 e.what());
+    }
     skyboxDescSets_ = resources_.createUboImageSamplerDescriptors(
         skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_);
 }
 
 void Renderer::createIrradianceEnvironment()
 {
-    std::string skyboxPath = resolveSkyboxPath();
-    Image hdr = Image::load_from_file(skyboxPath);
-    if (hdr.pixelType() != ImagePixelType::Float32)
-    {
-        throw std::runtime_error("Expected HDR float skybox image: " + skyboxPath);
-    }
-
-    std::vector<float> cubemapPixels(static_cast<std::size_t>(irradianceCubemapExtent_) *
-                                     irradianceCubemapExtent_ * 4 * 6);
+    Image hdr = loadEnvironmentImage(environmentPath_, "irradiance precompute");
+    std::vector<float> cubemapPixels(static_cast<std::size_t>(environmentConfig.irradianceCubemapExtent) *
+                                     environmentConfig.irradianceCubemapExtent * 4 * 6);
 
     for (uint32_t face = 0; face < 6; ++face)
     {
-        for (uint32_t y = 0; y < irradianceCubemapExtent_; ++y)
+        for (uint32_t y = 0; y < environmentConfig.irradianceCubemapExtent; ++y)
         {
-            for (uint32_t x = 0; x < irradianceCubemapExtent_; ++x)
+            for (uint32_t x = 0; x < environmentConfig.irradianceCubemapExtent; ++x)
             {
                 float u = (2.0f * (static_cast<float>(x) + 0.5f) /
-                           static_cast<float>(irradianceCubemapExtent_)) -
+                           static_cast<float>(environmentConfig.irradianceCubemapExtent)) -
                           1.0f;
                 float v = (2.0f * (static_cast<float>(y) + 0.5f) /
-                           static_cast<float>(irradianceCubemapExtent_)) -
+                           static_cast<float>(environmentConfig.irradianceCubemapExtent)) -
                           1.0f;
                 Vec3 dir = directionForCubemapFace(face, u, -v);
                 auto sample = convolveIrradiance(hdr, dir);
 
-                std::size_t index = (static_cast<std::size_t>(face) * irradianceCubemapExtent_ *
-                                         irradianceCubemapExtent_ +
-                                     static_cast<std::size_t>(y) * irradianceCubemapExtent_ +
+                std::size_t index =
+                    (static_cast<std::size_t>(face) * environmentConfig.irradianceCubemapExtent *
+                         environmentConfig.irradianceCubemapExtent +
+                     static_cast<std::size_t>(y) * environmentConfig.irradianceCubemapExtent +
                                      static_cast<std::size_t>(x)) *
                                     4;
                 cubemapPixels[index + 0] = sample[0];
@@ -313,8 +496,125 @@ void Renderer::createIrradianceEnvironment()
     SamplerSettings sampler{};
     sampler.wrapS = WrapMode::ClampToEdge;
     sampler.wrapT = WrapMode::ClampToEdge;
-    irradianceCubemapHandle_ =
-        resources_.createCubemapTexture(cubemapPixels.data(), irradianceCubemapExtent_, sampler);
+    try
+    {
+        irradianceCubemapHandle_ = resources_.createCubemapTexture(
+            cubemapPixels.data(), environmentConfig.irradianceCubemapExtent, sampler);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Environment bootstrap failed during irradiance "
+                                             "cubemap upload: ") +
+                                 e.what());
+    }
+}
+
+void Renderer::createPrefilteredEnvironment()
+{
+    Image hdr = loadEnvironmentImage(environmentPath_, "specular prefilter");
+
+    std::size_t totalFloatCount = 0;
+    uint32_t mipExtent = environmentConfig.prefilteredCubemapExtent;
+    for (uint32_t level = 0; level < environmentConfig.prefilteredCubemapMipLevels; ++level)
+    {
+        totalFloatCount += static_cast<std::size_t>(mipExtent) * mipExtent * 4 * 6;
+        mipExtent = std::max(1u, mipExtent / 2);
+    }
+
+    std::vector<float> cubemapPixels(totalFloatCount);
+    std::size_t writeOffset = 0;
+
+    mipExtent = environmentConfig.prefilteredCubemapExtent;
+    for (uint32_t level = 0; level < environmentConfig.prefilteredCubemapMipLevels; ++level)
+    {
+        float roughness = environmentConfig.prefilteredCubemapMipLevels > 1
+                              ? static_cast<float>(level) /
+                                    static_cast<float>(environmentConfig.prefilteredCubemapMipLevels - 1)
+                              : 0.0f;
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            for (uint32_t y = 0; y < mipExtent; ++y)
+            {
+                for (uint32_t x = 0; x < mipExtent; ++x)
+                {
+                    float u =
+                        (2.0f * (static_cast<float>(x) + 0.5f) / static_cast<float>(mipExtent)) -
+                        1.0f;
+                    float v =
+                        (2.0f * (static_cast<float>(y) + 0.5f) / static_cast<float>(mipExtent)) -
+                        1.0f;
+                    Vec3 dir = directionForCubemapFace(face, u, -v);
+                    auto sample = prefilterSpecular(hdr, dir, roughness);
+                    cubemapPixels[writeOffset + 0] = sample[0];
+                    cubemapPixels[writeOffset + 1] = sample[1];
+                    cubemapPixels[writeOffset + 2] = sample[2];
+                    cubemapPixels[writeOffset + 3] = 1.0f;
+                    writeOffset += 4;
+                }
+            }
+        }
+
+        mipExtent = std::max(1u, mipExtent / 2);
+    }
+
+    SamplerSettings sampler{};
+    sampler.wrapS = WrapMode::ClampToEdge;
+    sampler.wrapT = WrapMode::ClampToEdge;
+    try
+    {
+        prefilteredCubemapHandle_ = resources_.createCubemapTexture(
+            cubemapPixels.data(), environmentConfig.prefilteredCubemapExtent,
+            environmentConfig.prefilteredCubemapMipLevels, sampler);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Environment bootstrap failed during prefiltered "
+                                             "cubemap upload: ") +
+                                 e.what());
+    }
+}
+
+void Renderer::createBrdfLut()
+{
+    std::vector<float> pixels(static_cast<std::size_t>(environmentConfig.brdfLutExtent) *
+                              environmentConfig.brdfLutExtent * 4);
+
+    for (uint32_t y = 0; y < environmentConfig.brdfLutExtent; ++y)
+    {
+        for (uint32_t x = 0; x < environmentConfig.brdfLutExtent; ++x)
+        {
+            float nDotV =
+                (static_cast<float>(x) + 0.5f) / static_cast<float>(environmentConfig.brdfLutExtent);
+            float roughness =
+                (static_cast<float>(y) + 0.5f) / static_cast<float>(environmentConfig.brdfLutExtent);
+            auto sample = integrateBrdf(nDotV, roughness);
+            std::size_t index =
+                (static_cast<std::size_t>(y) * environmentConfig.brdfLutExtent +
+                 static_cast<std::size_t>(x)) *
+                4;
+            pixels[index + 0] = sample[0];
+            pixels[index + 1] = sample[1];
+            pixels[index + 2] = 0.0f;
+            pixels[index + 3] = 1.0f;
+        }
+    }
+
+    SamplerSettings sampler{};
+    sampler.wrapS = WrapMode::ClampToEdge;
+    sampler.wrapT = WrapMode::ClampToEdge;
+    try
+    {
+        brdfLutHandle_ =
+            resources_.createTexture(pixels.data(),
+                                     static_cast<int>(environmentConfig.brdfLutExtent),
+                                     static_cast<int>(environmentConfig.brdfLutExtent), sampler);
+    }
+    catch (const std::exception& e)
+    {
+        throw std::runtime_error(std::string("Environment bootstrap failed during BRDF LUT "
+                                             "upload: ") +
+                                 e.what());
+    }
 }
 
 void Renderer::updateLightData()

@@ -70,14 +70,15 @@ void main() {
     gl_Position = ubo.proj * ubo.view * worldPos;
     fragColor = inColor;
 
-    mat3 normalMatrix = mat3(transform);
+    mat3 normalMatrix = transpose(inverse(mat3(transform)));
     fragNormal = normalMatrix * normal;
     fragWorldPos = worldPos.xyz;
     fragTexCoord = inTexCoord;
 
     // TBN matrix for normal mapping
-    vec3 T = normalize(normalMatrix * inTangent.xyz);
     vec3 N = normalize(fragNormal);
-    vec3 B = cross(N, T) * inTangent.w;
+    vec3 T = normalMatrix * inTangent.xyz;
+    T = normalize(T - N * dot(N, T));
+    vec3 B = normalize(cross(N, T)) * inTangent.w;
     fragTBN = mat3(T, B, N);
 }

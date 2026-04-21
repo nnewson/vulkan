@@ -12,10 +12,11 @@ using namespace fire_engine;
 int main(int argc, char* argv[])
 {
     std::string_view scene_path = (argc >= 2) ? argv[1] : "";
+    std::string_view skybox_path = (argc >= 3) ? argv[2] : "";
     try
     {
         FireEngine app;
-        app.run(800, 600, "FireEngine Demo", scene_path);
+        app.run(800, 600, "FireEngine Demo", scene_path, skybox_path);
     }
     catch (const std::exception& e)
     {
