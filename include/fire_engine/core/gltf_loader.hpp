@@ -38,7 +38,7 @@ public:
 
     struct TexturePaths
     {
-        std::string baseColor;
+        std::string baseColour;
         std::string emissive;
         std::string normal;
         std::string metallicRoughness;

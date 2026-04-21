@@ -23,11 +23,11 @@ struct PipelineConfig
     vk::CompareOp depthCompare{vk::CompareOp::eLess};
     vk::CullModeFlags cullMode{vk::CullModeFlagBits::eBack};
     bool blendEnable{false};
-    vk::BlendFactor srcColorBlend{vk::BlendFactor::eOne};
-    vk::BlendFactor dstColorBlend{vk::BlendFactor::eZero};
+    vk::BlendFactor srcColourBlend{vk::BlendFactor::eOne};
+    vk::BlendFactor dstColourBlend{vk::BlendFactor::eZero};
     vk::BlendFactor srcAlphaBlend{vk::BlendFactor::eOne};
     vk::BlendFactor dstAlphaBlend{vk::BlendFactor::eZero};
-    bool writeColor{true};
+    bool writeColour{true};
     bool depthBiasEnable{false};
     float depthBiasConstant{0.0f};
     float depthBiasSlope{0.0f};

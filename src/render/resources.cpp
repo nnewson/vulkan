@@ -215,7 +215,7 @@ TextureHandle Resources::createFallbackTexture(FallbackTextureKind kind)
 {
     switch (kind)
     {
-    case FallbackTextureKind::BaseColor:
+    case FallbackTextureKind::BaseColour:
     {
         static const uint8_t white[] = {255, 255, 255, 255};
         return createTexture(white, 1, 1, {}, TextureEncoding::Srgb);
@@ -280,7 +280,7 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     return TextureHandle{id};
 }
 
-TextureHandle Resources::createShadowColorAttachment(uint32_t extent)
+TextureHandle Resources::createShadowColourAttachment(uint32_t extent)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
@@ -309,7 +309,7 @@ TextureHandle Resources::createShadowColorAttachment(uint32_t extent)
     return TextureHandle{id};
 }
 
-TextureHandle Resources::createOffscreenColorTarget(vk::Extent2D extent)
+TextureHandle Resources::createOffscreenColourTarget(vk::Extent2D extent)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();

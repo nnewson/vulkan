@@ -25,14 +25,14 @@ public:
     RenderPass(RenderPass&&) noexcept = default;
     RenderPass& operator=(RenderPass&&) noexcept = default;
 
-    // Creates the forward-lit render pass (color + depth) that writes into
+    // Creates the forward-lit render pass (colour + depth) that writes into
     // the offscreen HDR target. Framebuffers are not yet built — call
     // createForwardFramebuffers once the render targets exist.
     [[nodiscard]] static RenderPass createForward(const Device& device);
 
     // Builds a single framebuffer using an offscreen HDR colour view and the
     // shared depth view at the given extent. Safe to call repeatedly.
-    void createForwardFramebuffer(const Device& device, vk::ImageView colorView,
+    void createForwardFramebuffer(const Device& device, vk::ImageView colourView,
                                   vk::ImageView depthView, vk::Extent2D extent);
 
     // Creates a depth-only shadow render pass. A single D32_SFLOAT attachment
@@ -43,7 +43,7 @@ public:
 
     // Builds a single framebuffer over an offscreen depth view, sized by
     // extent. Owned framebuffer list is replaced on every call.
-    void createShadowFramebuffer(const Device& device, vk::ImageView colorView,
+    void createShadowFramebuffer(const Device& device, vk::ImageView colourView,
                                  vk::ImageView depthView, uint32_t extent);
 
     // Post-process render pass: a single colour attachment in swapchain

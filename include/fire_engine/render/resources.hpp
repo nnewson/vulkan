@@ -26,7 +26,7 @@ class Resources
 public:
     enum class FallbackTextureKind
     {
-        BaseColor,
+        BaseColour,
         Emissive,
         Normal,
         MetallicRoughness,
@@ -114,17 +114,17 @@ public:
     // MoltenVK workaround: depth-only render passes fail to store on Metal
     // TBDR. Creates a throwaway B8G8R8A8 colour attachment so the shadow pass
     // becomes a real (colour + depth) render pass. Contents are never read.
-    [[nodiscard]] TextureHandle createShadowColorAttachment(uint32_t extent);
+    [[nodiscard]] TextureHandle createShadowColourAttachment(uint32_t extent);
 
     // Allocates an R16G16B16A16_SFLOAT colour image sized to the given extent,
     // usable as both a colour attachment (forward pass target) and a sampled
     // texture (post-process input). Linear-filter sampler, ClampToEdge.
-    [[nodiscard]] TextureHandle createOffscreenColorTarget(vk::Extent2D extent);
+    [[nodiscard]] TextureHandle createOffscreenColourTarget(vk::Extent2D extent);
 
     // Releases an existing offscreen / shadow texture entry so it can be
     // rebuilt at a new extent (e.g. on swapchain resize). The handle is
     // invalidated; callers must replace it with the result of a subsequent
-    // createOffscreenColorTarget / createShadowColorAttachment call.
+    // createOffscreenColourTarget / createShadowColourAttachment call.
     void releaseTexture(TextureHandle handle);
 
     struct ShadowGeometryDescriptorInfo

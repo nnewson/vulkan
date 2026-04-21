@@ -42,9 +42,9 @@ Renderer::Renderer(const Window& window)
       resources_(device_, pipelineOpaque_)
 {
     swapchain_.createDepthResources(device_);
-    offscreenColorHandle_ = resources_.createOffscreenColorTarget(swapchain_.extent());
+    offscreenColourHandle_ = resources_.createOffscreenColourTarget(swapchain_.extent());
     forwardPass_.createForwardFramebuffer(device_,
-                                          resources_.vulkanImageView(offscreenColorHandle_),
+                                          resources_.vulkanImageView(offscreenColourHandle_),
                                           swapchain_.depthView(), swapchain_.extent());
     postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
     forwardOpaqueHandle_ =
@@ -67,14 +67,14 @@ Renderer::Renderer(const Window& window)
     std::array<uint16_t, 3> postProcessIndices{0, 1, 2};
     postProcessIndexBuffer_ = resources_.createIndexBuffer(postProcessIndices);
     postProcessDescSets_ = resources_.createSingleImageSamplerDescriptors(
-        postProcessPipeline_.descriptorSetLayout(), offscreenColorHandle_);
+        postProcessPipeline_.descriptorSetLayout(), offscreenColourHandle_);
 
     lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
     resources_.lightBuffers(lightUbo_.buffers);
 
     shadowMapHandle_ = resources_.createShadowMap(shadowMapSize_);
-    shadowColorHandle_ = resources_.createShadowColorAttachment(shadowMapSize_);
-    shadowPass_.createShadowFramebuffer(device_, resources_.vulkanImageView(shadowColorHandle_),
+    shadowColourHandle_ = resources_.createShadowColourAttachment(shadowMapSize_);
+    shadowPass_.createShadowFramebuffer(device_, resources_.vulkanImageView(shadowColourHandle_),
                                         resources_.vulkanImageView(shadowMapHandle_),
                                         shadowMapSize_);
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
@@ -190,7 +190,7 @@ void Renderer::transitionOffscreenForSampling(vk::CommandBuffer cmd)
         vk::AccessFlagBits::eColorAttachmentWrite, vk::AccessFlagBits::eShaderRead,
         vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
         VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-        resources_.vulkanImage(offscreenColorHandle_),
+        resources_.vulkanImage(offscreenColourHandle_),
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
     cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput,
                         vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {},
@@ -393,13 +393,13 @@ void Renderer::recreateSwapchain(const Window& display)
     frame_.destroyRenderFinishedSemaphores();
 
     swapchain_.recreate(device_, display);
-    resources_.releaseTexture(offscreenColorHandle_);
-    offscreenColorHandle_ = resources_.createOffscreenColorTarget(swapchain_.extent());
+    resources_.releaseTexture(offscreenColourHandle_);
+    offscreenColourHandle_ = resources_.createOffscreenColourTarget(swapchain_.extent());
     forwardPass_.createForwardFramebuffer(device_,
-                                          resources_.vulkanImageView(offscreenColorHandle_),
+                                          resources_.vulkanImageView(offscreenColourHandle_),
                                           swapchain_.depthView(), swapchain_.extent());
     postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
-    resources_.updateSingleImageSamplerDescriptors(postProcessDescSets_, offscreenColorHandle_);
+    resources_.updateSingleImageSamplerDescriptors(postProcessDescSets_, offscreenColourHandle_);
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }

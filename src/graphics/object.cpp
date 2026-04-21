@@ -140,7 +140,7 @@ void Object::load(Resources& resources)
         }
         else
         {
-            geoInfo.texture = resources.fallbackTexture(Resources::FallbackTextureKind::BaseColor);
+            geoInfo.texture = resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
         }
 
         // Emissive texture — use a 1x1 black dummy when material has no emissive texture

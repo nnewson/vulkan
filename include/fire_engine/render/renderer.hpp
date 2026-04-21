@@ -124,8 +124,8 @@ private:
     PipelineHandle shadowPipelineHandle_{NullPipeline};
     PipelineHandle postProcessPipelineHandle_{NullPipeline};
     TextureHandle shadowMapHandle_{NullTexture};
-    TextureHandle shadowColorHandle_{NullTexture};
-    TextureHandle offscreenColorHandle_{NullTexture};
+    TextureHandle shadowColourHandle_{NullTexture};
+    TextureHandle offscreenColourHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> postProcessDescSets_{};

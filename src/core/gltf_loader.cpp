@@ -803,7 +803,7 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
     const auto* posAttr = primitive.findAttribute("POSITION");
     const auto* normAttr = primitive.findAttribute("NORMAL");
     const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
-    const auto* colorAttr = primitive.findAttribute("COLOR_0");
+    const auto* colourAttr = primitive.findAttribute("COLOR_0");
     const auto* jointsAttr = primitive.findAttribute("JOINTS_0");
     const auto* weightsAttr = primitive.findAttribute("WEIGHTS_0");
     const auto* tangentAttr = primitive.findAttribute("TANGENT");
@@ -870,14 +870,14 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
             [&](fastgltf::math::fvec4 t, std::size_t idx) { tangents[idx] = t; });
     }
 
-    std::vector<fastgltf::math::fvec4> colors;
-    if (colorAttr != primitive.attributes.end())
+    std::vector<fastgltf::math::fvec4> colours;
+    if (colourAttr != primitive.attributes.end())
     {
-        const auto& colorAccessor = asset.accessors[colorAttr->accessorIndex];
-        colors.resize(colorAccessor.count);
+        const auto& colourAccessor = asset.accessors[colourAttr->accessorIndex];
+        colours.resize(colourAccessor.count);
         fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
-            asset, colorAccessor,
-            [&](fastgltf::math::fvec4 c, std::size_t idx) { colors[idx] = c; });
+            asset, colourAccessor,
+            [&](fastgltf::math::fvec4 c, std::size_t idx) { colours[idx] = c; });
     }
 
     std::vector<Vertex> verts;
@@ -891,9 +891,9 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         float v = (i < texcoords.size()) ? texcoords[i].y() : 0.0f;
 
         Colour3 vertexColour{1.0f, 1.0f, 1.0f};
-        if (i < colors.size())
+        if (i < colours.size())
         {
-            vertexColour = Colour3{colors[i].x(), colors[i].y(), colors[i].z()};
+            vertexColour = Colour3{colours[i].x(), colours[i].y(), colours[i].z()};
         }
 
         Joints4 jt{};

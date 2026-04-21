@@ -11,7 +11,7 @@ namespace fire_engine
 RenderPass RenderPass::createForward(const Device& device)
 {
     // Forward writes into an offscreen HDR target (post-process reads it).
-    vk::AttachmentDescription colorAtt(
+    vk::AttachmentDescription colourAtt(
         {}, vk::Format::eR16G16B16A16Sfloat, vk::SampleCountFlagBits::e1,
         vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
         vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
@@ -23,10 +23,10 @@ RenderPass RenderPass::createForward(const Device& device)
         vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
         vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
     vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef, {},
                                    &depthRef);
 
     std::array<vk::SubpassDependency, 2> deps = {
@@ -44,7 +44,7 @@ RenderPass RenderPass::createForward(const Device& device)
             vk::AccessFlagBits::eShaderRead),
     };
 
-    std::array<vk::AttachmentDescription, 2> attachments = {colorAtt, depthAtt};
+    std::array<vk::AttachmentDescription, 2> attachments = {colourAtt, depthAtt};
     vk::RenderPassCreateInfo ci({}, attachments, subpass, deps);
 
     RenderPass pass;
@@ -70,10 +70,10 @@ RenderPass RenderPass::createShadow(const Device& device)
                                   vk::ImageLayout::eDepthStencilReadOnlyOptimal),
     };
 
-    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
     vk::AttachmentReference depthRef(1, vk::ImageLayout::eDepthStencilAttachmentOptimal);
 
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef, {},
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef, {},
                                    &depthRef);
 
     std::array<vk::SubpassDependency, 2> deps = {
@@ -93,34 +93,34 @@ RenderPass RenderPass::createShadow(const Device& device)
     return pass;
 }
 
-void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView colorView,
+void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView colourView,
                                          vk::ImageView depthView, uint32_t extent)
 {
     framebuffers_.clear();
-    std::array<vk::ImageView, 2> views = {colorView, depthView};
+    std::array<vk::ImageView, 2> views = {colourView, depthView};
     vk::FramebufferCreateInfo ci({}, *renderPass_, views, extent, extent, 1);
     framebuffers_.emplace_back(device.device(), ci);
 }
 
-void RenderPass::createForwardFramebuffer(const Device& device, vk::ImageView colorView,
+void RenderPass::createForwardFramebuffer(const Device& device, vk::ImageView colourView,
                                           vk::ImageView depthView, vk::Extent2D extent)
 {
     framebuffers_.clear();
-    std::array<vk::ImageView, 2> attachments = {colorView, depthView};
+    std::array<vk::ImageView, 2> attachments = {colourView, depthView};
     vk::FramebufferCreateInfo ci({}, *renderPass_, attachments, extent.width, extent.height, 1);
     framebuffers_.emplace_back(device.device(), ci);
 }
 
 RenderPass RenderPass::createPostProcess(const Device& device, const Swapchain& swapchain)
 {
-    vk::AttachmentDescription colorAtt(
+    vk::AttachmentDescription colourAtt(
         {}, swapchain.format(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare,
         vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
         vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
         vk::ImageLayout::ePresentSrcKHR);
 
-    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
-    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef);
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef);
 
     // Wait for the forward pass to finish writing the HDR target before the
     // post-process fragment shader samples it.
@@ -129,7 +129,7 @@ RenderPass RenderPass::createPostProcess(const Device& device, const Swapchain& 
         vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eColorAttachmentWrite,
         vk::AccessFlagBits::eShaderRead);
 
-    vk::RenderPassCreateInfo ci({}, colorAtt, subpass, dep);
+    vk::RenderPassCreateInfo ci({}, colourAtt, subpass, dep);
     RenderPass pass;
     pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
     return pass;
@@ -140,12 +140,12 @@ void RenderPass::createPostProcessFramebuffers(const Device& device, const Swapc
     framebuffers_.clear();
 
     auto extent = swapchain.extent();
-    const auto& colorViews = swapchain.imageViews();
-    framebuffers_.reserve(colorViews.size());
+    const auto& colourViews = swapchain.imageViews();
+    framebuffers_.reserve(colourViews.size());
 
-    for (std::size_t i = 0; i < colorViews.size(); ++i)
+    for (std::size_t i = 0; i < colourViews.size(); ++i)
     {
-        vk::ImageView view = *colorViews[i];
+        vk::ImageView view = *colourViews[i];
         vk::FramebufferCreateInfo ci({}, *renderPass_, view, extent.width, extent.height, 1);
         framebuffers_.emplace_back(device.device(), ci);
     }
