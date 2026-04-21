@@ -4,8 +4,6 @@
 #include <filesystem>
 #include <string>
 #include <unordered_map>
-#include <utility>
-#include <vector>
 
 #include <fastgltf/core.hpp>
 
