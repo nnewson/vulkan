@@ -7,14 +7,11 @@ layout(binding = 0) uniform SkyboxUBO {
     vec4 viewParams; // x = tanHalfFov, y = aspect
 } sky;
 
+layout(binding = 1) uniform samplerCube skyboxMap;
+
 layout(location = 0) in vec2 fragUv;
 
 layout(location = 0) out vec4 outColor;
-
-// Calibrated against the current ACES pass to keep the sky present without lifting the frame.
-const vec3 horizonColor = vec3(0.56, 0.48, 0.36);
-const vec3 zenithColor = vec3(0.12, 0.28, 0.56);
-const vec3 nadirColor = vec3(0.05, 0.05, 0.05);
 
 void main() {
     vec2 ndc = fragUv * 2.0 - 1.0;
@@ -31,14 +28,6 @@ void main() {
                          + ndc.x * aspect * tanHalfFov * right
                          - ndc.y * tanHalfFov * up);
 
-    vec3 sky_color;
-    if (dir.y >= 0.0) {
-        float t = smoothstep(0.0, 0.6, dir.y);
-        sky_color = mix(horizonColor, zenithColor, t);
-    } else {
-        float t = smoothstep(0.0, 0.6, -dir.y);
-        sky_color = mix(horizonColor, nadirColor, t);
-    }
-
-    outColor = vec4(sky_color, 1.0);
+    vec3 skyColor = texture(skyboxMap, dir).rgb;
+    outColor = vec4(skyColor, 1.0);
 }

@@ -55,6 +55,10 @@ public:
     [[nodiscard]] TextureHandle createTexture(const uint8_t* pixels, int width, int height,
                                               const SamplerSettings& sampler = {},
                                               TextureEncoding encoding = TextureEncoding::Srgb);
+    [[nodiscard]] TextureHandle createTexture(const float* pixels, int width, int height,
+                                              const SamplerSettings& sampler = {});
+    [[nodiscard]] TextureHandle createCubemapTexture(const float* pixels, uint32_t faceExtent,
+                                                     const SamplerSettings& sampler = {});
     [[nodiscard]] TextureHandle fallbackTexture(FallbackTextureKind kind);
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
@@ -165,6 +169,10 @@ public:
     [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
     createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
                                vk::DeviceSize uboSize);
+
+    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+    createUboImageSamplerDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
+                                     vk::DeviceSize uboSize, TextureHandle texture);
 
     // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout with a
     // single combined-image-sampler binding at slot 0, writing the texture's

@@ -4,9 +4,12 @@
 #include <array>
 #include <cmath>
 #include <cstring>
+#include <filesystem>
 #include <limits>
+#include <stdexcept>
 #include <tuple>
 
+#include <fire_engine/graphics/image.hpp>
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/render/swapchain.hpp>
@@ -22,6 +25,108 @@ namespace
 // Calibrated against the current ACES post-process so direct light stays crisp without washing out
 // midtones.
 constexpr float directionalLightIntensity = 0.85f;
+constexpr const char* skyboxFilename = "skybox.hdr";
+
+#ifndef FIRE_ENGINE_SOURCE_ASSET_DIR
+#define FIRE_ENGINE_SOURCE_ASSET_DIR "assets"
+#endif
+
+#ifndef FIRE_ENGINE_BUILD_ASSET_DIR
+#define FIRE_ENGINE_BUILD_ASSET_DIR "."
+#endif
+
+[[nodiscard]] std::string resolveSkyboxPath()
+{
+    namespace fs = std::filesystem;
+
+    const std::array<fs::path, 4> candidates = {
+        fs::path(skyboxFilename),
+        fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / skyboxFilename,
+        fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / skyboxFilename,
+        fs::path("assets") / skyboxFilename,
+    };
+
+    for (const auto& candidate : candidates)
+    {
+        if (fs::exists(candidate))
+        {
+            return candidate.string();
+        }
+    }
+
+    throw std::runtime_error(
+        "Failed to locate skybox asset. Tried: skybox.hdr, " +
+        (fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / skyboxFilename).string() + ", " +
+        (fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / skyboxFilename).string() + ", assets/skybox.hdr");
+}
+
+[[nodiscard]] Vec3 directionForCubemapFace(uint32_t face, float u, float v)
+{
+    switch (face)
+    {
+    case 0:
+        return Vec3::normalise({1.0f, v, -u});
+    case 1:
+        return Vec3::normalise({-1.0f, v, u});
+    case 2:
+        return Vec3::normalise({u, 1.0f, -v});
+    case 3:
+        return Vec3::normalise({u, -1.0f, v});
+    case 4:
+        return Vec3::normalise({u, v, 1.0f});
+    default:
+        return Vec3::normalise({-u, v, -1.0f});
+    }
+}
+
+[[nodiscard]] std::array<float, 4> sampleEquirectangular(const Image& image, const Vec3& dir)
+{
+    const float* pixels = image.dataf();
+    if (pixels == nullptr)
+    {
+        throw std::runtime_error("skybox.hdr did not decode as HDR float data");
+    }
+
+    float phi = std::atan2(dir.z(), dir.x());
+    float theta = std::asin(std::clamp(dir.y(), -1.0f, 1.0f));
+    float u = 0.5f + phi / (2.0f * pi);
+    float v = 0.5f - theta / pi;
+
+    u -= std::floor(u);
+    v = std::clamp(v, 0.0f, 1.0f);
+
+    float x = u * static_cast<float>(image.width() - 1);
+    float y = v * static_cast<float>(image.height() - 1);
+
+    int x0 = static_cast<int>(std::floor(x));
+    int y0 = static_cast<int>(std::floor(y));
+    int x1 = std::min(x0 + 1, image.width() - 1);
+    int y1 = std::min(y0 + 1, image.height() - 1);
+
+    float tx = x - static_cast<float>(x0);
+    float ty = y - static_cast<float>(y0);
+
+    auto samplePixel = [&](int px, int py, int channel)
+    {
+        std::size_t index =
+            (static_cast<std::size_t>(py) * image.width() + static_cast<std::size_t>(px)) * 4 +
+            static_cast<std::size_t>(channel);
+        return pixels[index];
+    };
+
+    std::array<float, 4> result{};
+    for (int channel = 0; channel < 4; ++channel)
+    {
+        float c00 = samplePixel(x0, y0, channel);
+        float c10 = samplePixel(x1, y0, channel);
+        float c01 = samplePixel(x0, y1, channel);
+        float c11 = samplePixel(x1, y1, channel);
+        float c0 = c00 + (c10 - c00) * tx;
+        float c1 = c01 + (c11 - c01) * tx;
+        result[static_cast<std::size_t>(channel)] = c0 + (c1 - c0) * ty;
+    }
+    return result;
+}
 
 } // namespace
 
@@ -60,8 +165,6 @@ Renderer::Renderer(const Window& window)
     postProcessPipelineHandle_ = resources_.registerPipeline(postProcessPipeline_.pipeline(),
                                                              postProcessPipeline_.pipelineLayout());
     skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
-    skyboxDescSets_ = resources_.createSingleUboDescriptors(skyboxPipeline_.descriptorSetLayout(),
-                                                            skyboxUbo_, sizeof(SkyboxUBO));
     std::array<uint16_t, 3> skyboxIndices{0, 1, 2};
     skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
     std::array<uint16_t, 3> postProcessIndices{0, 1, 2};
@@ -79,7 +182,57 @@ Renderer::Renderer(const Window& window)
                                         shadowMapSize_);
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
     resources_.shadowMap(shadowMapHandle_);
+    createSkyboxEnvironment();
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
+}
+
+void Renderer::createSkyboxEnvironment()
+{
+    std::string skyboxPath = resolveSkyboxPath();
+    Image hdr = Image::load_from_file(skyboxPath);
+    if (hdr.pixelType() != ImagePixelType::Float32)
+    {
+        throw std::runtime_error("Expected HDR float skybox image: " + skyboxPath);
+    }
+
+    std::vector<float> cubemapPixels(static_cast<std::size_t>(skyboxCubemapExtent_) *
+                                     skyboxCubemapExtent_ * 4 * 6);
+
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        for (uint32_t y = 0; y < skyboxCubemapExtent_; ++y)
+        {
+            for (uint32_t x = 0; x < skyboxCubemapExtent_; ++x)
+            {
+                float u = (2.0f * (static_cast<float>(x) + 0.5f) /
+                           static_cast<float>(skyboxCubemapExtent_)) -
+                          1.0f;
+                float v = (2.0f * (static_cast<float>(y) + 0.5f) /
+                           static_cast<float>(skyboxCubemapExtent_)) -
+                          1.0f;
+                Vec3 dir = directionForCubemapFace(face, u, -v);
+                auto sample = sampleEquirectangular(hdr, dir);
+
+                std::size_t index =
+                    (static_cast<std::size_t>(face) * skyboxCubemapExtent_ * skyboxCubemapExtent_ +
+                     static_cast<std::size_t>(y) * skyboxCubemapExtent_ +
+                     static_cast<std::size_t>(x)) *
+                    4;
+                cubemapPixels[index + 0] = sample[0];
+                cubemapPixels[index + 1] = sample[1];
+                cubemapPixels[index + 2] = sample[2];
+                cubemapPixels[index + 3] = 1.0f;
+            }
+        }
+    }
+
+    SamplerSettings sampler{};
+    sampler.wrapS = WrapMode::ClampToEdge;
+    sampler.wrapT = WrapMode::ClampToEdge;
+    skyboxCubemapHandle_ =
+        resources_.createCubemapTexture(cubemapPixels.data(), skyboxCubemapExtent_, sampler);
+    skyboxDescSets_ = resources_.createUboImageSamplerDescriptors(
+        skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_);
 }
 
 void Renderer::updateLightData()

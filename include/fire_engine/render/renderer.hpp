@@ -2,6 +2,7 @@
 
 #include <array>
 #include <optional>
+#include <string>
 #include <vector>
 
 #include <fire_engine/graphics/draw_command.hpp>
@@ -95,6 +96,7 @@ private:
     void recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
     void transitionOffscreenForSampling(vk::CommandBuffer cmd);
     void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
+    void createSkyboxEnvironment();
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
@@ -103,6 +105,7 @@ private:
                       std::vector<DrawCommand>& drawCommands);
 
     static constexpr uint32_t shadowMapSize_ = 2048;
+    static constexpr uint32_t skyboxCubemapExtent_ = 1024;
 
     Device device_;
     Swapchain swapchain_;
@@ -126,6 +129,7 @@ private:
     TextureHandle shadowMapHandle_{NullTexture};
     TextureHandle shadowColourHandle_{NullTexture};
     TextureHandle offscreenColourHandle_{NullTexture};
+    TextureHandle skyboxCubemapHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> postProcessDescSets_{};

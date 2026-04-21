@@ -21,6 +21,8 @@ TEST(ImageConstruction, DefaultIsEmpty)
     EXPECT_EQ(img.size_bytes(), 0u);
     EXPECT_TRUE(img.empty());
     EXPECT_EQ(img.data(), nullptr);
+    EXPECT_EQ(img.dataf(), nullptr);
+    EXPECT_EQ(img.pixelType(), fire_engine::ImagePixelType::Uint8);
 }
 
 // ==========================================================================
@@ -34,6 +36,7 @@ TEST(ImageLoading, LoadValidPng)
     EXPECT_EQ(img.height(), 2);
     EXPECT_EQ(img.channels(), 4);
     EXPECT_FALSE(img.empty());
+    EXPECT_EQ(img.pixelType(), fire_engine::ImagePixelType::Uint8);
 }
 
 TEST(ImageLoading, SizeBytesMatchesDimensions)
@@ -53,6 +56,7 @@ TEST(ImageLoading, DataIsNotNull)
 {
     Image img = Image::load_from_file("test_assets/test_2x2.png");
     EXPECT_NE(img.data(), nullptr);
+    EXPECT_EQ(img.dataf(), nullptr);
 }
 
 TEST(ImageLoading, LoadValidPngFromMemory)
