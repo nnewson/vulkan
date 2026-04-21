@@ -31,8 +31,8 @@ class GltfLoader
 public:
     GltfLoader() = delete;
 
-    static void loadScene(const std::string& path, SceneGraph& scene,
-                          Resources& resources, Assets& assets);
+    static void loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
+                          Assets& assets);
 
     struct TexturePaths
     {
@@ -63,9 +63,8 @@ private:
     static std::string nodeName(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode);
 
     static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                                      Node& node, const std::string& baseDir,
-                                      Resources& resources, Assets& assets,
-                                      NodeMap& nodeMap, std::size_t& nextAnimSlot);
+                                      Node& node, const std::string& baseDir, Resources& resources,
+                                      Assets& assets, NodeMap& nodeMap, std::size_t& nextAnimSlot);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, Resources& resources, Assets& assets,
@@ -99,11 +98,10 @@ private:
                          const std::string& texturePath, Resources& resources, Assets& assets);
 
     [[nodiscard]]
-    static const Texture*
-    resolveMetallicRoughnessTexture(const fastgltf::Asset& asset,
-                                    const fastgltf::Primitive& primitive,
-                                    const std::string& texturePath, Resources& resources,
-                                    Assets& assets);
+    static const Texture* resolveMetallicRoughnessTexture(const fastgltf::Asset& asset,
+                                                          const fastgltf::Primitive& primitive,
+                                                          const std::string& texturePath,
+                                                          Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*

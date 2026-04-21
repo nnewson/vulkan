@@ -51,9 +51,12 @@ static WrapMode toWrapMode(fastgltf::Wrap w)
 {
     switch (w)
     {
-        case fastgltf::Wrap::MirroredRepeat: return WrapMode::MirroredRepeat;
-        case fastgltf::Wrap::ClampToEdge: return WrapMode::ClampToEdge;
-        default: return WrapMode::Repeat;
+    case fastgltf::Wrap::MirroredRepeat:
+        return WrapMode::MirroredRepeat;
+    case fastgltf::Wrap::ClampToEdge:
+        return WrapMode::ClampToEdge;
+    default:
+        return WrapMode::Repeat;
     }
 }
 
@@ -61,10 +64,12 @@ static FilterMode toFilterMode(fastgltf::Filter f)
 {
     switch (f)
     {
-        case fastgltf::Filter::Nearest:
-        case fastgltf::Filter::NearestMipMapNearest:
-        case fastgltf::Filter::NearestMipMapLinear: return FilterMode::Nearest;
-        default: return FilterMode::Linear;
+    case fastgltf::Filter::Nearest:
+    case fastgltf::Filter::NearestMipMapNearest:
+    case fastgltf::Filter::NearestMipMapLinear:
+        return FilterMode::Nearest;
+    default:
+        return FilterMode::Linear;
     }
 }
 

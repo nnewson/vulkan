@@ -85,7 +85,6 @@ struct std::formatter<fire_engine::Transform>
                               "pos({:.2f}, {:.2f}, {:.2f}) "
                               "rot({:.2f}, {:.2f}, {:.2f}, {:.2f}) "
                               "scale({:.2f}, {:.2f}, {:.2f})",
-                              p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), r.w(), s.x(), s.y(),
-                              s.z());
+                              p.x(), p.y(), p.z(), r.x(), r.y(), r.z(), r.w(), s.x(), s.y(), s.z());
     }
 };

@@ -22,9 +22,15 @@ static void applyAlphaFields(const fastgltf::Material& gltfMat, Material& materi
 {
     switch (gltfMat.alphaMode)
     {
-        case fastgltf::AlphaMode::Opaque: material.alphaMode(AlphaMode::Opaque); break;
-        case fastgltf::AlphaMode::Mask:   material.alphaMode(AlphaMode::Mask);   break;
-        case fastgltf::AlphaMode::Blend:  material.alphaMode(AlphaMode::Blend);  break;
+    case fastgltf::AlphaMode::Opaque:
+        material.alphaMode(AlphaMode::Opaque);
+        break;
+    case fastgltf::AlphaMode::Mask:
+        material.alphaMode(AlphaMode::Mask);
+        break;
+    case fastgltf::AlphaMode::Blend:
+        material.alphaMode(AlphaMode::Blend);
+        break;
     }
     material.alphaCutoff(static_cast<float>(gltfMat.alphaCutoff));
     material.doubleSided(gltfMat.doubleSided);
@@ -228,8 +234,8 @@ TEST(TRSRotation, DecalBlendQuaternionRoundTrip)
     fastgltf::Node gltf;
     fastgltf::TRS trsInit{};
     trsInit.translation = fastgltf::math::fvec3{0.0f, 0.0f, 0.4090209901332855f};
-    trsInit.rotation = fastgltf::math::fquat{-0.47185850143432617f, 0.0f, 0.0f,
-                                              0.88167440891265869f};
+    trsInit.rotation =
+        fastgltf::math::fquat{-0.47185850143432617f, 0.0f, 0.0f, 0.88167440891265869f};
     trsInit.scale = fastgltf::math::fvec3{1.0f, 1.0f, 1.0f};
     gltf.transform = trsInit;
 
@@ -239,8 +245,7 @@ TEST(TRSRotation, DecalBlendQuaternionRoundTrip)
     // private static.
     auto* trs = std::get_if<fastgltf::TRS>(&gltf.transform);
     ASSERT_NE(trs, nullptr);
-    node.transform().position(
-        {trs->translation.x(), trs->translation.y(), trs->translation.z()});
+    node.transform().position({trs->translation.x(), trs->translation.y(), trs->translation.z()});
     node.transform().rotation(
         {trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()});
     node.transform().scale({trs->scale.x(), trs->scale.y(), trs->scale.z()});
@@ -304,8 +309,8 @@ TEST(MaterialAlphaFields, BlendMapsThrough)
 
 // Mirrors the per-vertex colour logic: when COLOR_0 data is present, use it;
 // when absent, default to white (1,1,1) per the glTF spec.
-static fire_engine::Colour3 extractVertexColour(
-    const std::vector<fastgltf::math::fvec4>& colors, std::size_t index)
+static fire_engine::Colour3 extractVertexColour(const std::vector<fastgltf::math::fvec4>& colors,
+                                                std::size_t index)
 {
     if (index < colors.size())
     {

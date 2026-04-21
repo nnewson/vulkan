@@ -21,17 +21,23 @@ Renderer::Renderer(const Window& window)
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_, swapchain_)),
       shadowPass_(RenderPass::createShadow(device_)),
+      postProcessPass_(RenderPass::createPostProcess(device_, swapchain_)),
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
       pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
       pipelineBlend_(device_, Pipeline::forwardBlendConfig(forwardPass_.renderPass())),
       skyboxPipeline_(device_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       shadowPipeline_(device_, Pipeline::shadowConfig(shadowPass_.renderPass())),
+      postProcessPipeline_(device_, Pipeline::postProcessConfig(postProcessPass_.renderPass())),
       frame_(device_, swapchain_),
       resources_(device_, pipelineOpaque_)
 {
     swapchain_.createDepthResources(device_);
-    forwardPass_.createForwardFramebuffers(device_, swapchain_);
+    offscreenColorHandle_ = resources_.createOffscreenColorTarget(swapchain_.extent());
+    forwardPass_.createForwardFramebuffer(device_,
+                                          resources_.vulkanImageView(offscreenColorHandle_),
+                                          swapchain_.depthView(), swapchain_.extent());
+    postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
     forwardOpaqueHandle_ =
         resources_.registerPipeline(pipelineOpaque_.pipeline(), pipelineOpaque_.pipelineLayout());
     forwardOpaqueDoubleSidedHandle_ = resources_.registerPipeline(
@@ -42,11 +48,17 @@ Renderer::Renderer(const Window& window)
         resources_.registerPipeline(skyboxPipeline_.pipeline(), skyboxPipeline_.pipelineLayout());
     shadowPipelineHandle_ =
         resources_.registerPipeline(shadowPipeline_.pipeline(), shadowPipeline_.pipelineLayout());
+    postProcessPipelineHandle_ = resources_.registerPipeline(postProcessPipeline_.pipeline(),
+                                                             postProcessPipeline_.pipelineLayout());
     skyboxUbo_ = resources_.createMappedUniformBuffers(sizeof(SkyboxUBO));
     skyboxDescSets_ = resources_.createSingleUboDescriptors(skyboxPipeline_.descriptorSetLayout(),
                                                             skyboxUbo_, sizeof(SkyboxUBO));
     std::array<uint16_t, 3> skyboxIndices{0, 1, 2};
     skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
+    std::array<uint16_t, 3> postProcessIndices{0, 1, 2};
+    postProcessIndexBuffer_ = resources_.createIndexBuffer(postProcessIndices);
+    postProcessDescSets_ = resources_.createSingleImageSamplerDescriptors(
+        postProcessPipeline_.descriptorSetLayout(), offscreenColorHandle_);
 
     lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
     resources_.lightBuffers(lightUbo_.buffers);
@@ -87,9 +99,9 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     lightData.direction[1] = lightDir.y();
     lightData.direction[2] = lightDir.z();
     lightData.direction[3] = 0.0f;
-    lightData.colour[0] = 1.5f;
-    lightData.colour[1] = 1.5f;
-    lightData.colour[2] = 1.5f;
+    lightData.colour[0] = 1.0f;
+    lightData.colour[1] = 1.0f;
+    lightData.colour[2] = 1.0f;
     lightData.colour[3] = 1.0f;
     lightData.lightViewProj = lightViewProj_;
     std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
@@ -180,12 +192,36 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
         cmd.endRenderPass();
     }
 
-    beginRenderPass(cmd, *imageIndex);
+    beginRenderPass(cmd);
     lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
     recordBucket(opaqueDraws);
     recordBucket(blendDraws);
 
     cmd.endRenderPass();
+
+    {
+        auto extent = swapchain_.extent();
+        vk::RenderPassBeginInfo ppBegin(postProcessPass_.renderPass(),
+                                        postProcessPass_.framebuffer(*imageIndex),
+                                        vk::Rect2D({0, 0}, extent), {});
+        cmd.beginRenderPass(ppBegin, vk::SubpassContents::eInline);
+        vk::Viewport vp(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
+                        0, 1);
+        cmd.setViewport(0, vp);
+        cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                         resources_.vulkanPipeline(postProcessPipelineHandle_));
+        vk::DescriptorSet ppSet =
+            resources_.vulkanDescriptorSet(postProcessDescSets_[currentFrame_]);
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                               resources_.vulkanPipelineLayout(postProcessPipelineHandle_), 0,
+                               ppSet, {});
+        cmd.bindIndexBuffer(resources_.vulkanBuffer(postProcessIndexBuffer_), 0,
+                            vk::IndexType::eUint16);
+        cmd.drawIndexed(3, 1, 0, 0, 0);
+        cmd.endRenderPass();
+    }
+
     cmd.end();
 
     submitAndPresent(display, cmd, *imageIndex);
@@ -214,14 +250,14 @@ std::optional<uint32_t> Renderer::acquireNextImage(Window& display)
     return imageIndex;
 }
 
-void Renderer::beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex)
+void Renderer::beginRenderPass(vk::CommandBuffer cmd)
 {
     auto extent = swapchain_.extent();
     std::array<vk::ClearValue, 2> clears{};
     clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
     clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
 
-    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(), forwardPass_.framebuffer(imageIndex),
+    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(), forwardPass_.framebuffer(0),
                                     vk::Rect2D({0, 0}, extent), clears);
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
@@ -306,7 +342,13 @@ void Renderer::recreateSwapchain(const Window& display)
     frame_.destroyRenderFinishedSemaphores();
 
     swapchain_.recreate(device_, display);
-    forwardPass_.createForwardFramebuffers(device_, swapchain_);
+    resources_.releaseTexture(offscreenColorHandle_);
+    offscreenColorHandle_ = resources_.createOffscreenColorTarget(swapchain_.extent());
+    forwardPass_.createForwardFramebuffer(device_,
+                                          resources_.vulkanImageView(offscreenColorHandle_),
+                                          swapchain_.depthView(), swapchain_.extent());
+    postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
+    resources_.updateSingleImageSamplerDescriptors(postProcessDescSets_, offscreenColorHandle_);
 
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
 }

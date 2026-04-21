@@ -8,8 +8,7 @@ namespace fire_engine
 class Joints4
 {
 public:
-    constexpr Joints4(uint32_t j0 = 0, uint32_t j1 = 0, uint32_t j2 = 0,
-                      uint32_t j3 = 0) noexcept
+    constexpr Joints4(uint32_t j0 = 0, uint32_t j1 = 0, uint32_t j2 = 0, uint32_t j3 = 0) noexcept
         : j0_(j0),
           j1_(j1),
           j2_(j2),

@@ -16,9 +16,9 @@
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/object.hpp>
+#include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
-#include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/mesh.hpp>
 #include <fire_engine/scene/node.hpp>
@@ -35,9 +35,12 @@ static WrapMode toWrapMode(fastgltf::Wrap w)
 {
     switch (w)
     {
-        case fastgltf::Wrap::MirroredRepeat: return WrapMode::MirroredRepeat;
-        case fastgltf::Wrap::ClampToEdge: return WrapMode::ClampToEdge;
-        default: return WrapMode::Repeat;
+    case fastgltf::Wrap::MirroredRepeat:
+        return WrapMode::MirroredRepeat;
+    case fastgltf::Wrap::ClampToEdge:
+        return WrapMode::ClampToEdge;
+    default:
+        return WrapMode::Repeat;
     }
 }
 
@@ -45,10 +48,12 @@ static FilterMode toFilterMode(fastgltf::Filter f)
 {
     switch (f)
     {
-        case fastgltf::Filter::Nearest:
-        case fastgltf::Filter::NearestMipMapNearest:
-        case fastgltf::Filter::NearestMipMapLinear: return FilterMode::Nearest;
-        default: return FilterMode::Linear;
+    case fastgltf::Filter::Nearest:
+    case fastgltf::Filter::NearestMipMapNearest:
+    case fastgltf::Filter::NearestMipMapLinear:
+        return FilterMode::Nearest;
+    default:
+        return FilterMode::Linear;
     }
 }
 
@@ -96,8 +101,7 @@ void GltfLoader::applyTRS(const fastgltf::Node& gltfNode, Node& node)
         fastgltf::math::decomposeTransformMatrix(*mat, scale, rotation, translation);
 
         node.transform().position({translation.x(), translation.y(), translation.z()});
-        node.transform().rotation(
-            {rotation.x(), rotation.y(), rotation.z(), rotation.w()});
+        node.transform().rotation({rotation.x(), rotation.y(), rotation.z(), rotation.w()});
         node.transform().scale({scale.x(), scale.y(), scale.z()});
     }
 }
@@ -269,9 +273,8 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources
 }
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                                       Node& node, const std::string& baseDir,
-                                       Resources& resources, Assets& assets, NodeMap& nodeMap,
-                                       std::size_t& nextAnimSlot)
+                                       Node& node, const std::string& baseDir, Resources& resources,
+                                       Assets& assets, NodeMap& nodeMap, std::size_t& nextAnimSlot)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
@@ -361,8 +364,8 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
                                                          : std::string(gltfMesh.name);
             auto meshNode = std::make_unique<Node>(std::move(meshName));
             auto& meshRef = node.addChild(std::move(meshNode));
-            auto object = loadMesh(asset, gltfMesh, baseDir, resources, assets,
-                                   gltfNode.meshIndex.value());
+            auto object =
+                loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
             meshRef.component().emplace<Mesh>(std::move(object));
 
             if (hasWeightAnim)
@@ -518,9 +521,9 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
 }
 
 const Texture* GltfLoader::resolveEmissiveTexture(const fastgltf::Asset& asset,
-                                                   const fastgltf::Primitive& primitive,
-                                                   const std::string& texturePath,
-                                                   Resources& resources, Assets& assets)
+                                                  const fastgltf::Primitive& primitive,
+                                                  const std::string& texturePath,
+                                                  Resources& resources, Assets& assets)
 {
     if (primitive.materialIndex.has_value())
     {
@@ -623,8 +626,8 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
     {
         auto matIndex = primitive.materialIndex.value();
         auto& mat = assets.material(matIndex);
-        if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture()
-            && !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
+        if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture() &&
+            !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
         {
             mat = materialData;
             if (texPtr != nullptr)
@@ -652,8 +655,8 @@ Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
     }
 
     auto& mat = assets.material(0);
-    if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture()
-        && !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
+    if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture() &&
+        !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
     {
         if (texPtr != nullptr)
         {
@@ -843,15 +846,13 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
                 if (attr.name == "POSITION")
                 {
                     fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                        asset, accessor,
-                        [&](fastgltf::math::fvec3 p, std::size_t idx)
+                        asset, accessor, [&](fastgltf::math::fvec3 p, std::size_t idx)
                         { targetPos[idx] = Vec3{p.x(), p.y(), p.z()}; });
                 }
                 else if (attr.name == "NORMAL")
                 {
                     fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
-                        asset, accessor,
-                        [&](fastgltf::math::fvec3 n, std::size_t idx)
+                        asset, accessor, [&](fastgltf::math::fvec3 n, std::size_t idx)
                         { targetNorm[idx] = Vec3{n.x(), n.y(), n.z()}; });
                 }
             }
@@ -894,9 +895,8 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             asset, primitive, texPaths.metallicRoughness, resources, assets);
         const Texture* occTexPtr =
             resolveOcclusionTexture(asset, primitive, texPaths.occlusion, resources, assets);
-        Material* matPtr =
-            resolveMaterial(asset, primitive, materialData, texPtr, emissiveTexPtr, normalTexPtr,
-                            mrTexPtr, occTexPtr, assets);
+        Material* matPtr = resolveMaterial(asset, primitive, materialData, texPtr, emissiveTexPtr,
+                                           normalTexPtr, mrTexPtr, occTexPtr, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
         loadGeometry(asset, primitive, matPtr, resources, assets, geoIdx);
@@ -932,9 +932,15 @@ GltfLoader::loadMaterial(const fastgltf::Asset& asset, const fastgltf::Primitive
 
         switch (gltfMat.alphaMode)
         {
-            case fastgltf::AlphaMode::Opaque: material.alphaMode(AlphaMode::Opaque); break;
-            case fastgltf::AlphaMode::Mask:   material.alphaMode(AlphaMode::Mask);   break;
-            case fastgltf::AlphaMode::Blend:  material.alphaMode(AlphaMode::Blend);  break;
+        case fastgltf::AlphaMode::Opaque:
+            material.alphaMode(AlphaMode::Opaque);
+            break;
+        case fastgltf::AlphaMode::Mask:
+            material.alphaMode(AlphaMode::Mask);
+            break;
+        case fastgltf::AlphaMode::Blend:
+            material.alphaMode(AlphaMode::Blend);
+            break;
         }
         material.alphaCutoff(static_cast<float>(gltfMat.alphaCutoff));
         material.doubleSided(gltfMat.doubleSided);
@@ -1012,13 +1018,13 @@ Animation::Interpolation GltfLoader::mapInterpolation(fastgltf::AnimationInterpo
 {
     switch (m)
     {
-        case fastgltf::AnimationInterpolation::Step:
-            return Animation::Interpolation::Step;
-        case fastgltf::AnimationInterpolation::CubicSpline:
-            return Animation::Interpolation::CubicSpline;
-        case fastgltf::AnimationInterpolation::Linear:
-        default:
-            return Animation::Interpolation::Linear;
+    case fastgltf::AnimationInterpolation::Step:
+        return Animation::Interpolation::Step;
+    case fastgltf::AnimationInterpolation::CubicSpline:
+        return Animation::Interpolation::CubicSpline;
+    case fastgltf::AnimationInterpolation::Linear:
+    default:
+        return Animation::Interpolation::Linear;
     }
 }
 
@@ -1058,7 +1064,10 @@ void GltfLoader::loadRotationChannel(const fastgltf::Asset& asset,
     for (std::size_t i = 0; i < times.size(); ++i)
     {
         std::size_t vi = i * stride + valueOffset;
-        if (vi >= quats.size()) break;
+        if (vi >= quats.size())
+        {
+            break;
+        }
         kf.push_back({times[i], quats[vi].x(), quats[vi].y(), quats[vi].z(), quats[vi].w()});
     }
 
@@ -1075,9 +1084,12 @@ void GltfLoader::loadRotationChannel(const fastgltf::Asset& asset,
         {
             std::size_t inIdx = i * 3;
             std::size_t outIdx = i * 3 + 2;
-            if (outIdx >= quats.size()) break;
-            in.push_back(Quaternion{quats[inIdx].x(), quats[inIdx].y(), quats[inIdx].z(),
-                                    quats[inIdx].w()});
+            if (outIdx >= quats.size())
+            {
+                break;
+            }
+            in.push_back(
+                Quaternion{quats[inIdx].x(), quats[inIdx].y(), quats[inIdx].z(), quats[inIdx].w()});
             out.push_back(Quaternion{quats[outIdx].x(), quats[outIdx].y(), quats[outIdx].z(),
                                      quats[outIdx].w()});
         }
@@ -1109,9 +1121,11 @@ void GltfLoader::loadTranslationChannel(const fastgltf::Asset& asset,
     for (std::size_t i = 0; i < times.size(); ++i)
     {
         std::size_t vi = i * stride + valueOffset;
-        if (vi >= positions.size()) break;
-        kf.push_back(
-            {times[i], Vec3{positions[vi].x(), positions[vi].y(), positions[vi].z()}});
+        if (vi >= positions.size())
+        {
+            break;
+        }
+        kf.push_back({times[i], Vec3{positions[vi].x(), positions[vi].y(), positions[vi].z()}});
     }
 
     anim.translationKeyframes(std::move(kf));
@@ -1127,7 +1141,10 @@ void GltfLoader::loadTranslationChannel(const fastgltf::Asset& asset,
         {
             std::size_t inIdx = i * 3;
             std::size_t outIdx = i * 3 + 2;
-            if (outIdx >= positions.size()) break;
+            if (outIdx >= positions.size())
+            {
+                break;
+            }
             in.push_back(Vec3{positions[inIdx].x(), positions[inIdx].y(), positions[inIdx].z()});
             out.push_back(
                 Vec3{positions[outIdx].x(), positions[outIdx].y(), positions[outIdx].z()});
@@ -1159,7 +1176,10 @@ void GltfLoader::loadScaleChannel(const fastgltf::Asset& asset,
     for (std::size_t i = 0; i < times.size(); ++i)
     {
         std::size_t vi = i * stride + valueOffset;
-        if (vi >= scales.size()) break;
+        if (vi >= scales.size())
+        {
+            break;
+        }
         kf.push_back({times[i], Vec3{scales[vi].x(), scales[vi].y(), scales[vi].z()}});
     }
 
@@ -1176,7 +1196,10 @@ void GltfLoader::loadScaleChannel(const fastgltf::Asset& asset,
         {
             std::size_t inIdx = i * 3;
             std::size_t outIdx = i * 3 + 2;
-            if (outIdx >= scales.size()) break;
+            if (outIdx >= scales.size())
+            {
+                break;
+            }
             in.push_back(Vec3{scales[inIdx].x(), scales[inIdx].y(), scales[inIdx].z()});
             out.push_back(Vec3{scales[outIdx].x(), scales[outIdx].y(), scales[outIdx].z()});
         }
@@ -1199,8 +1222,8 @@ void GltfLoader::loadWeightChannel(const fastgltf::Asset& asset,
     // Output is a flat array of scalars. Linear/Step: numKeyframes * numTargets.
     // CubicSpline: numKeyframes * 3 * numTargets (in_tan, value, out_tan per key).
     std::vector<float> allWeights(outputAccessor.count);
-    fastgltf::iterateAccessorWithIndex<float>(
-        asset, outputAccessor, [&](float w, std::size_t idx) { allWeights[idx] = w; });
+    fastgltf::iterateAccessorWithIndex<float>(asset, outputAccessor, [&](float w, std::size_t idx)
+                                              { allWeights[idx] = w; });
 
     const std::size_t stride = outputStride(interp);
     const std::size_t valueOffset = (interp == Animation::Interpolation::CubicSpline) ? 1 : 0;
@@ -1241,8 +1264,14 @@ void GltfLoader::loadWeightChannel(const fastgltf::Asset& asset,
             std::size_t outBase = (i * 3 + 2) * numTargets;
             for (std::size_t w = 0; w < numTargets; ++w)
             {
-                if (inBase + w < allWeights.size()) inV[w] = allWeights[inBase + w];
-                if (outBase + w < allWeights.size()) outV[w] = allWeights[outBase + w];
+                if (inBase + w < allWeights.size())
+                {
+                    inV[w] = allWeights[inBase + w];
+                }
+                if (outBase + w < allWeights.size())
+                {
+                    outV[w] = allWeights[outBase + w];
+                }
             }
             in.push_back(std::move(inV));
             out.push_back(std::move(outV));
@@ -1252,8 +1281,7 @@ void GltfLoader::loadWeightChannel(const fastgltf::Asset& asset,
 }
 
 void GltfLoader::loadAnimation(const fastgltf::Asset& asset, std::size_t gltfAnimIndex,
-                               std::size_t nodeIndex, Animation& la,
-                               std::size_t numMorphTargets)
+                               std::size_t nodeIndex, Animation& la, std::size_t numMorphTargets)
 {
     float sharedDuration = computeSharedDuration(asset, gltfAnimIndex);
 

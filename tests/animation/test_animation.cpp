@@ -673,9 +673,8 @@ TEST(Animation, CubicSplineTranslationMatchesHermiteAtMidpoint)
     });
     anim.translationInterpolation(Animation::Interpolation::CubicSpline);
     // dt=1. Hermite with p0=0,p1=2,m0=1,m1=1 at a=0.5 -> x = 1.0
-    anim.translationTangents(
-        {Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}},
-        {Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}});
+    anim.translationTangents({Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}},
+                             {Vec3{1.0f, 0.0f, 0.0f}, Vec3{1.0f, 0.0f, 0.0f}});
     anim.duration(1.0f);
 
     Mat4 mid = anim.sample(0.5f);
@@ -690,9 +689,8 @@ TEST(Animation, CubicSplineTranslationMatchesEndpoints)
         {1.0f, Vec3{2.0f, 0.0f, 0.0f}},
     });
     anim.translationInterpolation(Animation::Interpolation::CubicSpline);
-    anim.translationTangents(
-        {Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}},
-        {Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}});
+    anim.translationTangents({Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}},
+                             {Vec3{5.0f, 0.0f, 0.0f}, Vec3{5.0f, 0.0f, 0.0f}});
     // Use a larger duration so t=1.0 is not wrapped back to 0 by loopTime.
     anim.duration(2.0f);
 
@@ -711,9 +709,8 @@ TEST(Animation, CubicSplineScaleMatchesHermiteAtMidpoint)
     });
     anim.scaleInterpolation(Animation::Interpolation::CubicSpline);
     // dt=1. Hermite with p0=1,p1=3,m0=1,m1=1 at a=0.5 -> 2.0
-    anim.scaleTangents(
-        {Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}},
-        {Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}});
+    anim.scaleTangents({Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}},
+                       {Vec3{1.0f, 1.0f, 1.0f}, Vec3{1.0f, 1.0f, 1.0f}});
     anim.duration(1.0f);
 
     Mat4 mid = anim.sample(0.5f);
@@ -730,9 +727,8 @@ TEST(Animation, CubicSplineScaleMatchesEndpoints)
         {1.0f, Vec3{3.0f, 3.0f, 3.0f}},
     });
     anim.scaleInterpolation(Animation::Interpolation::CubicSpline);
-    anim.scaleTangents(
-        {Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}},
-        {Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}});
+    anim.scaleTangents({Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}},
+                       {Vec3{5.0f, 5.0f, 5.0f}, Vec3{5.0f, 5.0f, 5.0f}});
     anim.duration(2.0f);
 
     Mat4 start = anim.sample(0.0f);
@@ -760,8 +756,8 @@ TEST(Animation, CubicSplineRotationProducesUnitQuaternion)
     // Hermite with zero tangents at midpoint -> 0.5*q0 + 0.5*q1, then normalised.
     // The rotation matrix's top-left column should be a unit vector.
     Mat4 mid = anim.sample(0.5f);
-    float col0Len = std::sqrt((mid[0, 0]) * (mid[0, 0]) + (mid[1, 0]) * (mid[1, 0])
-                              + (mid[2, 0]) * (mid[2, 0]));
+    float col0Len = std::sqrt((mid[0, 0]) * (mid[0, 0]) + (mid[1, 0]) * (mid[1, 0]) +
+                              (mid[2, 0]) * (mid[2, 0]));
     EXPECT_NEAR(col0Len, 1.0f, 1e-4f);
 }
 
@@ -778,9 +774,7 @@ TEST(SampleWeights, CubicSplineMatchesHermiteAtMidpoint)
     });
     anim.weightInterpolation(Animation::Interpolation::CubicSpline);
     // dt=1. Hermite with p0=0,p1=2,m0=1,m1=1 at a=0.5 -> 1.0
-    anim.weightTangents(
-        {{1.0f}, {1.0f}},
-        {{1.0f}, {1.0f}});
+    anim.weightTangents({{1.0f}, {1.0f}}, {{1.0f}, {1.0f}});
     anim.duration(1.0f);
 
     auto w = anim.sampleWeights(0.5f, 1);
@@ -795,9 +789,7 @@ TEST(SampleWeights, CubicSplineMatchesEndpoints)
         {1.0f, {2.0f}},
     });
     anim.weightInterpolation(Animation::Interpolation::CubicSpline);
-    anim.weightTangents(
-        {{5.0f}, {5.0f}},
-        {{5.0f}, {5.0f}});
+    anim.weightTangents({{5.0f}, {5.0f}}, {{5.0f}, {5.0f}});
     anim.duration(2.0f);
 
     auto w0 = anim.sampleWeights(0.0f, 1);

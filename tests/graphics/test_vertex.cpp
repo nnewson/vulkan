@@ -59,8 +59,8 @@ TEST(VertexConstruction, FullConstructor)
 
 TEST(VertexConstruction, FullConstructorWithTangent)
 {
-    Vertex v({1.0f, 2.0f, 3.0f}, {0.5f, 0.6f, 0.7f}, {0.0f, 1.0f, 0.0f}, {0.25f, 0.75f},
-             {}, {0.0f, 0.0f, 0.0f, 0.0f}, {0.1f, 0.2f, 0.3f, 1.0f});
+    Vertex v({1.0f, 2.0f, 3.0f}, {0.5f, 0.6f, 0.7f}, {0.0f, 1.0f, 0.0f}, {0.25f, 0.75f}, {},
+             {0.0f, 0.0f, 0.0f, 0.0f}, {0.1f, 0.2f, 0.3f, 1.0f});
     EXPECT_FLOAT_EQ(v.tangent().x(), 0.1f);
     EXPECT_FLOAT_EQ(v.tangent().y(), 0.2f);
     EXPECT_FLOAT_EQ(v.tangent().z(), 0.3f);
@@ -69,15 +69,14 @@ TEST(VertexConstruction, FullConstructorWithTangent)
 
 TEST(VertexConstruction, TangentHandednessNegative)
 {
-    Vertex v({0, 0, 0}, {0, 0, 0}, {0, 1, 0}, {0, 0},
-             {}, {0.0f, 0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f, -1.0f});
+    Vertex v({0, 0, 0}, {0, 0, 0}, {0, 1, 0}, {0, 0}, {}, {0.0f, 0.0f, 0.0f, 0.0f},
+             {1.0f, 0.0f, 0.0f, -1.0f});
     EXPECT_FLOAT_EQ(v.tangent().w(), -1.0f);
 }
 
 TEST(VertexConstruction, WeightsConstructor)
 {
-    Vertex v({0, 0, 0}, {0, 0, 0}, {0, 1, 0}, {0, 0},
-             {1, 2, 3, 4}, {0.4f, 0.3f, 0.2f, 0.1f});
+    Vertex v({0, 0, 0}, {0, 0, 0}, {0, 1, 0}, {0, 0}, {1, 2, 3, 4}, {0.4f, 0.3f, 0.2f, 0.1f});
     EXPECT_FLOAT_EQ(v.weights().x(), 0.4f);
     EXPECT_FLOAT_EQ(v.weights().y(), 0.3f);
     EXPECT_FLOAT_EQ(v.weights().z(), 0.2f);
@@ -277,5 +276,5 @@ TEST(VertexLayout, SizeAndOffsets)
     //            + Vec4(16) + Vec4(16) = 92 bytes
     static_assert(sizeof(Joints4) == sizeof(uint32_t) * 4);
     static_assert(sizeof(Vertex) == sizeof(Vec3) * 2 + sizeof(Colour3) + sizeof(Vec2) +
-                                         sizeof(Joints4) + sizeof(Vec4) * 2);
+                                        sizeof(Joints4) + sizeof(Vec4) * 2);
 }

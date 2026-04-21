@@ -102,6 +102,17 @@ public:
     // becomes a real (colour + depth) render pass. Contents are never read.
     [[nodiscard]] TextureHandle createShadowColorAttachment(uint32_t extent);
 
+    // Allocates an R16G16B16A16_SFLOAT colour image sized to the given extent,
+    // usable as both a colour attachment (forward pass target) and a sampled
+    // texture (post-process input). Linear-filter sampler, ClampToEdge.
+    [[nodiscard]] TextureHandle createOffscreenColorTarget(vk::Extent2D extent);
+
+    // Releases an existing offscreen / shadow texture entry so it can be
+    // rebuilt at a new extent (e.g. on swapchain resize). The handle is
+    // invalidated; callers must replace it with the result of a subsequent
+    // createOffscreenColorTarget / createShadowColorAttachment call.
+    void releaseTexture(TextureHandle handle);
+
     struct ShadowGeometryDescriptorInfo
     {
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> shadowUboBufs{NullBuffer, NullBuffer};
@@ -141,6 +152,19 @@ public:
     createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
                                vk::DeviceSize uboSize);
 
+    // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout with a
+    // single combined-image-sampler binding at slot 0, writing the texture's
+    // view + sampler into each. Used by the post-process pass to sample the
+    // forward HDR target.
+    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+    createSingleImageSamplerDescriptors(vk::DescriptorSetLayout layout, TextureHandle texture);
+
+    // Rewrites an existing descriptor set array (per-frame) so slot 0
+    // references a new texture. Used on resize to rebind the post-process
+    // input without reallocating sets.
+    void updateSingleImageSamplerDescriptors(
+        const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets, TextureHandle texture);
+
     // --- Shared light UBO (bound to every forward descriptor set) ---
 
     void lightBuffers(const std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT>& bufs) noexcept
@@ -171,8 +195,7 @@ public:
     // handles so Renderer can resolve PipelineHandle values stamped on
     // DrawCommands to the Vulkan pipeline/layout pair to bind.
 
-    [[nodiscard]] PipelineHandle registerPipeline(vk::Pipeline pipeline,
-                                                  vk::PipelineLayout layout);
+    [[nodiscard]] PipelineHandle registerPipeline(vk::Pipeline pipeline, vk::PipelineLayout layout);
 
     // --- Vulkan accessors (for Renderer command recording) ---
 
@@ -182,8 +205,7 @@ public:
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
     [[nodiscard]] vk::Pipeline vulkanPipeline(PipelineHandle handle) const noexcept;
-    [[nodiscard]] vk::PipelineLayout
-    vulkanPipelineLayout(PipelineHandle handle) const noexcept;
+    [[nodiscard]] vk::PipelineLayout vulkanPipelineLayout(PipelineHandle handle) const noexcept;
 
 private:
     BufferHandle storeBuffer(vk::raii::Buffer buf, vk::raii::DeviceMemory mem);

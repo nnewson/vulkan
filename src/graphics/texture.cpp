@@ -15,8 +15,8 @@ Texture Texture::load_from_file(const std::string& path, Resources& resources,
     return tex;
 }
 
-Texture Texture::load_from_data(const uint8_t* pixels, int width, int height,
-                                Resources& resources, const SamplerSettings& sampler)
+Texture Texture::load_from_data(const uint8_t* pixels, int width, int height, Resources& resources,
+                                const SamplerSettings& sampler)
 {
     Texture tex;
     tex.handle_ = resources.createTexture(pixels, width, height, sampler);

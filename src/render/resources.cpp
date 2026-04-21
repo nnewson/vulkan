@@ -61,9 +61,12 @@ static vk::SamplerAddressMode toVkAddressMode(WrapMode mode)
 {
     switch (mode)
     {
-        case WrapMode::MirroredRepeat: return vk::SamplerAddressMode::eMirroredRepeat;
-        case WrapMode::ClampToEdge: return vk::SamplerAddressMode::eClampToEdge;
-        default: return vk::SamplerAddressMode::eRepeat;
+    case WrapMode::MirroredRepeat:
+        return vk::SamplerAddressMode::eMirroredRepeat;
+    case WrapMode::ClampToEdge:
+        return vk::SamplerAddressMode::eClampToEdge;
+    default:
+        return vk::SamplerAddressMode::eRepeat;
     }
 }
 
@@ -71,8 +74,10 @@ static vk::Filter toVkFilter(FilterMode mode)
 {
     switch (mode)
     {
-        case FilterMode::Nearest: return vk::Filter::eNearest;
-        default: return vk::Filter::eLinear;
+    case FilterMode::Nearest:
+        return vk::Filter::eNearest;
+    default:
+        return vk::Filter::eLinear;
     }
 }
 
@@ -92,10 +97,9 @@ TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int hei
         static_cast<vk::DeviceSize>(width) * static_cast<vk::DeviceSize>(height) * 4;
 
     // Create staging buffer
-    auto [stagingBuf, stagingMem] =
-        device_->createBuffer(imageSize, vk::BufferUsageFlagBits::eTransferSrc,
-                              vk::MemoryPropertyFlagBits::eHostVisible |
-                                  vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto [stagingBuf, stagingMem] = device_->createBuffer(
+        imageSize, vk::BufferUsageFlagBits::eTransferSrc,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
     void* data = stagingMem.mapMemory(0, imageSize);
     std::memcpy(data, pixels, imageSize);
     stagingMem.unmapMemory();
@@ -238,6 +242,51 @@ TextureHandle Resources::createShadowColorAttachment(uint32_t extent)
     return TextureHandle{id};
 }
 
+TextureHandle Resources::createOffscreenColorTarget(vk::Extent2D extent)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+
+    vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, vk::Format::eR16G16B16A16Sfloat,
+                              vk::Extent3D(extent.width, extent.height, 1), 1, 1,
+                              vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                              vk::ImageUsageFlagBits::eColorAttachment |
+                                  vk::ImageUsageFlagBits::eSampled,
+                              vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::e2D, vk::Format::eR16G16B16A16Sfloat, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    vk::SamplerCreateInfo samplerCi(
+        {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
+        vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+        vk::SamplerAddressMode::eClampToEdge, 0.0f, vk::False, 1.0f, vk::False,
+        vk::CompareOp::eAlways, 0.0f, 1.0f, vk::BorderColor::eFloatOpaqueBlack, vk::False);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
+}
+
+void Resources::releaseTexture(TextureHandle handle)
+{
+    auto& entry = textures_[static_cast<uint32_t>(handle)];
+    entry.sampler = vk::raii::Sampler{nullptr};
+    entry.view = vk::raii::ImageView{nullptr};
+    entry.image = vk::raii::Image{nullptr};
+    entry.memory = vk::raii::DeviceMemory{nullptr};
+}
+
 // --- Mapped buffer sets ---
 
 Resources::MappedBufferSet Resources::createMappedUniformBuffers(std::size_t size)
@@ -245,28 +294,24 @@ Resources::MappedBufferSet Resources::createMappedUniformBuffers(std::size_t siz
     MappedBufferSet result;
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        auto [buf, mem] =
-            device_->createBuffer(static_cast<vk::DeviceSize>(size),
-                                  vk::BufferUsageFlagBits::eUniformBuffer,
-                                  vk::MemoryPropertyFlagBits::eHostVisible |
-                                      vk::MemoryPropertyFlagBits::eHostCoherent);
+        auto [buf, mem] = device_->createBuffer(
+            static_cast<vk::DeviceSize>(size), vk::BufferUsageFlagBits::eUniformBuffer,
+            vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
         result.mapped[i] = mem.mapMemory(0, static_cast<vk::DeviceSize>(size));
         result.buffers[i] = storeBuffer(std::move(buf), std::move(mem));
     }
     return result;
 }
 
-Resources::MappedBufferSet
-Resources::createMappedStorageBuffer(std::size_t size, const void* initialData)
+Resources::MappedBufferSet Resources::createMappedStorageBuffer(std::size_t size,
+                                                                const void* initialData)
 {
     MappedBufferSet result;
     // Storage buffers are shared across frames — create a single buffer,
     // but fill both slots so callers can index by frame uniformly
-    auto [buf, mem] =
-        device_->createBuffer(static_cast<vk::DeviceSize>(size),
-                              vk::BufferUsageFlagBits::eStorageBuffer,
-                              vk::MemoryPropertyFlagBits::eHostVisible |
-                                  vk::MemoryPropertyFlagBits::eHostCoherent);
+    auto [buf, mem] = device_->createBuffer(
+        static_cast<vk::DeviceSize>(size), vk::BufferUsageFlagBits::eStorageBuffer,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
     if (initialData != nullptr)
     {
         void* mapped = mem.mapMemory(0, static_cast<vk::DeviceSize>(size));
@@ -323,58 +368,55 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 sizeof(MaterialUBO));
 
             auto texIdx = static_cast<uint32_t>(geo.texture);
-            vk::DescriptorImageInfo texInfo(
-                *textures_[texIdx].sampler, *textures_[texIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo texInfo(*textures_[texIdx].sampler, *textures_[texIdx].view,
+                                            vk::ImageLayout::eShaderReadOnlyOptimal);
 
             vk::DescriptorBufferInfo skinBufInfo(
                 *buffers_[static_cast<uint32_t>(geo.skinBufs[i])].buffer, 0, sizeof(SkinUBO));
             vk::DescriptorBufferInfo morphUboBufInfo(
                 *buffers_[static_cast<uint32_t>(geo.morphUboBufs[i])].buffer, 0, sizeof(MorphUBO));
 
-            vk::DeviceSize ssboSize =
-                geo.morphSsboSize > 0 ? static_cast<vk::DeviceSize>(geo.morphSsboSize)
-                                      : sizeof(float) * 4;
+            vk::DeviceSize ssboSize = geo.morphSsboSize > 0
+                                          ? static_cast<vk::DeviceSize>(geo.morphSsboSize)
+                                          : sizeof(float) * 4;
             vk::DescriptorBufferInfo morphSsboBufInfo(
                 *buffers_[static_cast<uint32_t>(geo.morphSsbo)].buffer, 0, ssboSize);
 
             auto emissiveTexIdx = static_cast<uint32_t>(geo.emissiveTexture);
-            vk::DescriptorImageInfo emissiveTexInfo(
-                *textures_[emissiveTexIdx].sampler, *textures_[emissiveTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo emissiveTexInfo(*textures_[emissiveTexIdx].sampler,
+                                                    *textures_[emissiveTexIdx].view,
+                                                    vk::ImageLayout::eShaderReadOnlyOptimal);
 
             auto normalTexIdx = static_cast<uint32_t>(geo.normalTexture);
-            vk::DescriptorImageInfo normalTexInfo(
-                *textures_[normalTexIdx].sampler, *textures_[normalTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo normalTexInfo(*textures_[normalTexIdx].sampler,
+                                                  *textures_[normalTexIdx].view,
+                                                  vk::ImageLayout::eShaderReadOnlyOptimal);
 
             auto mrTexIdx = static_cast<uint32_t>(geo.metallicRoughnessTexture);
-            vk::DescriptorImageInfo mrTexInfo(
-                *textures_[mrTexIdx].sampler, *textures_[mrTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo mrTexInfo(*textures_[mrTexIdx].sampler,
+                                              *textures_[mrTexIdx].view,
+                                              vk::ImageLayout::eShaderReadOnlyOptimal);
 
             auto occTexIdx = static_cast<uint32_t>(geo.occlusionTexture);
-            vk::DescriptorImageInfo occTexInfo(
-                *textures_[occTexIdx].sampler, *textures_[occTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo occTexInfo(*textures_[occTexIdx].sampler,
+                                               *textures_[occTexIdx].view,
+                                               vk::ImageLayout::eShaderReadOnlyOptimal);
 
             vk::DescriptorBufferInfo lightBufInfo(
                 *buffers_[static_cast<uint32_t>(req.lightBufs[i])].buffer, 0, sizeof(LightUBO));
 
             auto shadowTexIdx = static_cast<uint32_t>(req.shadowMap);
-            vk::DescriptorImageInfo shadowTexInfo(
-                *textures_[shadowTexIdx].sampler, *textures_[shadowTexIdx].view,
-                vk::ImageLayout::eDepthStencilReadOnlyOptimal);
+            vk::DescriptorImageInfo shadowTexInfo(*textures_[shadowTexIdx].sampler,
+                                                  *textures_[shadowTexIdx].view,
+                                                  vk::ImageLayout::eDepthStencilReadOnlyOptimal);
 
             std::array<vk::WriteDescriptorSet, 12> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
                 {*sets[i], 3, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &skinBufInfo},
-                {*sets[i], 4, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
-                 &morphUboBufInfo},
-                {*sets[i], 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-                 &morphSsboBufInfo},
+                {*sets[i], 4, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &morphUboBufInfo},
+                {*sets[i], 5, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &morphSsboBufInfo},
                 {*sets[i], 6, 0, 1, vk::DescriptorType::eCombinedImageSampler, &emissiveTexInfo},
                 {*sets[i], 7, 0, 1, vk::DescriptorType::eCombinedImageSampler, &normalTexInfo},
                 {*sets[i], 8, 0, 1, vk::DescriptorType::eCombinedImageSampler, &mrTexInfo},
@@ -435,19 +477,17 @@ Resources::createShadowDescriptors(const ShadowDescriptorRequest& req)
             vk::DescriptorBufferInfo morphUboBufInfo(
                 *buffers_[static_cast<uint32_t>(geo.morphUboBufs[i])].buffer, 0, sizeof(MorphUBO));
 
-            vk::DeviceSize ssboSize =
-                geo.morphSsboSize > 0 ? static_cast<vk::DeviceSize>(geo.morphSsboSize)
-                                      : sizeof(float) * 4;
+            vk::DeviceSize ssboSize = geo.morphSsboSize > 0
+                                          ? static_cast<vk::DeviceSize>(geo.morphSsboSize)
+                                          : sizeof(float) * 4;
             vk::DescriptorBufferInfo morphSsboInfo(
                 *buffers_[static_cast<uint32_t>(geo.morphSsbo)].buffer, 0, ssboSize);
 
             std::array<vk::WriteDescriptorSet, 4> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &shadowUboInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &skinBufInfo},
-                {*sets[i], 2, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
-                 &morphUboBufInfo},
-                {*sets[i], 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr,
-                 &morphSsboInfo},
+                {*sets[i], 2, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &morphUboBufInfo},
+                {*sets[i], 3, 0, 1, vk::DescriptorType::eStorageBuffer, nullptr, &morphSsboInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 
@@ -484,8 +524,8 @@ Resources::createSingleUboDescriptors(vk::DescriptorSetLayout layout, const Mapp
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
-        vk::DescriptorBufferInfo bufInfo(
-            *buffers_[static_cast<uint32_t>(ubo.buffers[i])].buffer, 0, uboSize);
+        vk::DescriptorBufferInfo bufInfo(*buffers_[static_cast<uint32_t>(ubo.buffers[i])].buffer, 0,
+                                         uboSize);
         vk::WriteDescriptorSet write(*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr,
                                      &bufInfo);
         device_->device().updateDescriptorSets(write, {});
@@ -501,6 +541,53 @@ Resources::createSingleUboDescriptors(vk::DescriptorSetLayout layout, const Mapp
     }
 
     return result;
+}
+
+std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+Resources::createSingleImageSamplerDescriptors(vk::DescriptorSetLayout layout,
+                                               TextureHandle texture)
+{
+    std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
+        {vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT},
+    }};
+    vk::DescriptorPoolCreateInfo ci(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet,
+                                    MAX_FRAMES_IN_FLIGHT, poolSizes);
+    auto& poolEntry = descriptorPools_.emplace_back();
+    poolEntry.pool = vk::raii::DescriptorPool(device_->device(), ci);
+
+    std::vector<vk::DescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, layout);
+    vk::DescriptorSetAllocateInfo ai(*poolEntry.pool, layouts);
+    auto sets = device_->device().allocateDescriptorSets(ai);
+
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        auto dsHandle = static_cast<uint32_t>(descriptorSetTable_.size());
+        descriptorSetTable_.push_back(*sets[i]);
+        result[i] = DescriptorSetHandle{dsHandle};
+    }
+
+    for (auto& s : sets)
+    {
+        poolEntry.sets.push_back(std::move(s));
+    }
+
+    updateSingleImageSamplerDescriptors(result, texture);
+    return result;
+}
+
+void Resources::updateSingleImageSamplerDescriptors(
+    const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets, TextureHandle texture)
+{
+    auto& entry = textures_[static_cast<uint32_t>(texture)];
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vk::DescriptorImageInfo imgInfo(*entry.sampler, *entry.view,
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+        vk::WriteDescriptorSet write(descriptorSetTable_[static_cast<uint32_t>(sets[i])], 0, 0, 1,
+                                     vk::DescriptorType::eCombinedImageSampler, &imgInfo);
+        device_->device().updateDescriptorSets(write, {});
+    }
 }
 
 // --- Pipeline registry ---

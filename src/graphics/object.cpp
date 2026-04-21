@@ -103,10 +103,9 @@ void Object::load(Resources& resources)
             {
                 for (std::size_t v = 0; v < numVerts; ++v)
                 {
-                    const auto& pos =
-                        (t < morphPositions.size() && v < morphPositions[t].size())
-                            ? morphPositions[t][v]
-                            : Vec3{};
+                    const auto& pos = (t < morphPositions.size() && v < morphPositions[t].size())
+                                          ? morphPositions[t][v]
+                                          : Vec3{};
                     *dst++ = pos.x();
                     *dst++ = pos.y();
                     *dst++ = pos.z();
@@ -119,10 +118,9 @@ void Object::load(Resources& resources)
             {
                 for (std::size_t v = 0; v < numVerts; ++v)
                 {
-                    const auto& norm =
-                        (t < morphNormals.size() && v < morphNormals[t].size())
-                            ? morphNormals[t][v]
-                            : Vec3{};
+                    const auto& norm = (t < morphNormals.size() && v < morphNormals[t].size())
+                                           ? morphNormals[t][v]
+                                           : Vec3{};
                     *dst++ = norm.x();
                     *dst++ = norm.y();
                     *dst++ = norm.z();
@@ -149,8 +147,7 @@ void Object::load(Resources& resources)
         // Emissive texture — use a 1x1 black dummy when material has no emissive texture
         if (binding.geometry->material().hasEmissiveTexture())
         {
-            geoInfo.emissiveTexture =
-                binding.geometry->material().emissiveTexture().handle();
+            geoInfo.emissiveTexture = binding.geometry->material().emissiveTexture().handle();
         }
         else
         {
@@ -161,8 +158,7 @@ void Object::load(Resources& resources)
         // Normal texture — use a 1x1 flat-normal dummy (128,128,255 = z-up in tangent space)
         if (binding.geometry->material().hasNormalTexture())
         {
-            geoInfo.normalTexture =
-                binding.geometry->material().normalTexture().handle();
+            geoInfo.normalTexture = binding.geometry->material().normalTexture().handle();
         }
         else
         {
@@ -185,8 +181,7 @@ void Object::load(Resources& resources)
         // Occlusion texture — use a 1x1 white dummy (1.0 = no occlusion)
         if (binding.geometry->material().hasOcclusionTexture())
         {
-            geoInfo.occlusionTexture =
-                binding.geometry->material().occlusionTexture().handle();
+            geoInfo.occlusionTexture = binding.geometry->material().occlusionTexture().handle();
         }
         else
         {

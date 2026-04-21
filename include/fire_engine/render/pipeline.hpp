@@ -18,6 +18,7 @@ struct PipelineConfig
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
     vk::RenderPass renderPass{};
     bool useVertexInput{true};
+    bool depthTestEnable{true};
     bool depthWrite{true};
     vk::CompareOp depthCompare{vk::CompareOp::eLess};
     vk::CullModeFlags cullMode{vk::CullModeFlagBits::eBack};
@@ -84,6 +85,13 @@ public:
     // receiver shadow acne. Bindings 0..3 are ShadowUBO / SkinUBO / MorphUBO /
     // MorphTargets SSBO, all vertex stage.
     [[nodiscard]] static PipelineConfig shadowConfig(vk::RenderPass renderPass);
+
+    // Factory producing the PipelineConfig for the post-process pass.
+    // Draws a fullscreen triangle via gl_VertexIndex sampling the offscreen
+    // HDR forward target at binding 0, applying ACES tone mapping + gamma,
+    // and writing the result into the swapchain colour attachment. Depth
+    // test disabled, no culling, no vertex input.
+    [[nodiscard]] static PipelineConfig postProcessConfig(vk::RenderPass renderPass);
 
 private:
     void createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings);

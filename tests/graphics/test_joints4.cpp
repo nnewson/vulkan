@@ -1,5 +1,5 @@
-#include <gtest/gtest.h>
 #include <fire_engine/graphics/joints4.hpp>
+#include <gtest/gtest.h>
 
 using fire_engine::Joints4;
 

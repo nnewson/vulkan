@@ -69,6 +69,8 @@ set(SHADER_SOURCES
     shaders/skybox.frag
     shaders/shadow.vert
     shaders/shadow.frag
+    shaders/postprocess.vert
+    shaders/postprocess.frag
 )
 
 foreach(shader IN LISTS SHADER_SOURCES)

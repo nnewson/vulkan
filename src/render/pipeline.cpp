@@ -80,6 +80,22 @@ PipelineConfig Pipeline::shadowConfig(vk::RenderPass renderPass)
     return config;
 }
 
+PipelineConfig Pipeline::postProcessConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "postprocess.vert.spv";
+    config.fragShaderPath = "postprocess.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
 PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
 {
     PipelineConfig config;
@@ -96,7 +112,8 @@ PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
     return config;
 }
 
-void Pipeline::createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
+void Pipeline::createDescriptorSetLayout(
+    const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
 {
     vk::DescriptorSetLayoutCreateInfo ci({}, bindings);
     descSetLayout_ = vk::raii::DescriptorSetLayout(*device_, ci);
@@ -134,14 +151,13 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
     vk::PipelineDynamicStateCreateInfo dynamicState({}, dynamicStates);
 
     vk::PipelineRasterizationStateCreateInfo raster(
-        {}, false, false, vk::PolygonMode::eFill, config.cullMode,
-        vk::FrontFace::eCounterClockwise, config.depthBiasEnable, config.depthBiasConstant, 0,
-        config.depthBiasSlope, 1.0f);
+        {}, false, false, vk::PolygonMode::eFill, config.cullMode, vk::FrontFace::eCounterClockwise,
+        config.depthBiasEnable, config.depthBiasConstant, 0, config.depthBiasSlope, 1.0f);
 
     vk::PipelineMultisampleStateCreateInfo ms({}, vk::SampleCountFlagBits::e1);
 
-    vk::PipelineDepthStencilStateCreateInfo depthStencil({}, true, config.depthWrite,
-                                                         config.depthCompare);
+    vk::PipelineDepthStencilStateCreateInfo depthStencil({}, config.depthTestEnable,
+                                                         config.depthWrite, config.depthCompare);
 
     vk::ColorComponentFlags writeMask =
         config.writeColor ? vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |

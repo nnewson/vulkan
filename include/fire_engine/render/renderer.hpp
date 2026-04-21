@@ -82,7 +82,7 @@ public:
 private:
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
-    void beginRenderPass(vk::CommandBuffer cmd, uint32_t imageIndex);
+    void beginRenderPass(vk::CommandBuffer cmd);
     void submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex);
     void recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
                       std::vector<DrawCommand>& drawCommands);
@@ -93,11 +93,13 @@ private:
     Swapchain swapchain_;
     RenderPass forwardPass_;
     RenderPass shadowPass_;
+    RenderPass postProcessPass_;
     Pipeline pipelineOpaque_;
     Pipeline pipelineOpaqueDoubleSided_;
     Pipeline pipelineBlend_;
     Pipeline skyboxPipeline_;
     Pipeline shadowPipeline_;
+    Pipeline postProcessPipeline_;
     Frame frame_;
     Resources resources_;
     PipelineHandle forwardOpaqueHandle_{NullPipeline};
@@ -105,11 +107,15 @@ private:
     PipelineHandle forwardBlendHandle_{NullPipeline};
     PipelineHandle skyboxPipelineHandle_{NullPipeline};
     PipelineHandle shadowPipelineHandle_{NullPipeline};
+    PipelineHandle postProcessPipelineHandle_{NullPipeline};
     TextureHandle shadowMapHandle_{NullTexture};
     TextureHandle shadowColorHandle_{NullTexture};
+    TextureHandle offscreenColorHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> postProcessDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};
+    BufferHandle postProcessIndexBuffer_{NullBuffer};
     Resources::MappedBufferSet lightUbo_;
     Mat4 lightViewProj_{};
     uint32_t currentFrame_{0};

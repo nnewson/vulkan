@@ -28,12 +28,12 @@ public:
     // Creates the forward-lit render pass (color + depth, presents to
     // swapchain). Framebuffers are not yet built — call
     // createForwardFramebuffers once the swapchain has depth resources.
-    [[nodiscard]] static RenderPass createForward(const Device& device,
-                                                  const Swapchain& swapchain);
+    [[nodiscard]] static RenderPass createForward(const Device& device, const Swapchain& swapchain);
 
-    // Builds (or rebuilds, after a swapchain resize) framebuffers using the
-    // swapchain's color views and depth view. Safe to call repeatedly.
-    void createForwardFramebuffers(const Device& device, const Swapchain& swapchain);
+    // Builds a single framebuffer using an offscreen HDR colour view and the
+    // shared depth view at the given extent. Safe to call repeatedly.
+    void createForwardFramebuffer(const Device& device, vk::ImageView colorView,
+                                  vk::ImageView depthView, vk::Extent2D extent);
 
     // Creates a depth-only shadow render pass. A single D32_SFLOAT attachment
     // with eClear loadOp / eStore storeOp and a finalLayout of
@@ -45,6 +45,17 @@ public:
     // extent. Owned framebuffer list is replaced on every call.
     void createShadowFramebuffer(const Device& device, vk::ImageView colorView,
                                  vk::ImageView depthView, uint32_t extent);
+
+    // Post-process render pass: a single colour attachment in swapchain
+    // format, consumed by the presentation engine. Fragment shader samples
+    // the forward HDR target via descriptor binding; the sample itself is
+    // gated by a subpass dependency on colour-attachment-output.
+    [[nodiscard]] static RenderPass createPostProcess(const Device& device,
+                                                      const Swapchain& swapchain);
+
+    // Builds one framebuffer per swapchain image, each wrapping the
+    // swapchain's colour view at the swapchain extent.
+    void createPostProcessFramebuffers(const Device& device, const Swapchain& swapchain);
 
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {

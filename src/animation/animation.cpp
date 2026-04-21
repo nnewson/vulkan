@@ -90,8 +90,7 @@ std::pair<std::size_t, float> findBracket(const std::vector<KF>& kf, float t) no
 }
 
 Quaternion sampleRotation(const std::vector<Animation::RotationKeyframe>& kf,
-                          Animation::Interpolation mode,
-                          const std::vector<Quaternion>& inTans,
+                          Animation::Interpolation mode, const std::vector<Quaternion>& inTans,
                           const std::vector<Quaternion>& outTans, float t) noexcept
 {
     if (kf.empty())

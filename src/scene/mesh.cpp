@@ -48,8 +48,7 @@ void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
         }
 
         float t = static_cast<float>(input_state.time() - startTime_);
-        morphWeights_ =
-            morphAnimations_[activeMorphIndex_]->sampleWeights(t, morphWeights_.size());
+        morphWeights_ = morphAnimations_[activeMorphIndex_]->sampleWeights(t, morphWeights_.size());
     }
 
     if (!morphWeights_.empty())

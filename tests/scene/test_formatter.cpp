@@ -26,8 +26,7 @@ TEST(TransformFormatter, CustomValues)
     t.rotation(fire_engine::Quaternion{0.5f, 1.0f, 1.5f, 2.0f});
     t.scale({2.0f, 2.0f, 2.0f});
     auto result = std::format("{}", t);
-    EXPECT_EQ(result,
-              "pos(1.00, 2.00, 3.00) rot(0.50, 1.00, 1.50, 2.00) scale(2.00, 2.00, 2.00)");
+    EXPECT_EQ(result, "pos(1.00, 2.00, 3.00) rot(0.50, 1.00, 1.50, 2.00) scale(2.00, 2.00, 2.00)");
 }
 
 // ==========================================================================
@@ -38,9 +37,8 @@ TEST(NodeFormatter, SingleNode)
 {
     Node node("TestNode");
     auto result = std::format("{}", node);
-    EXPECT_EQ(
-        result,
-        "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)");
+    EXPECT_EQ(result, "TestNode [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) "
+                      "scale(1.00, 1.00, 1.00)");
 }
 
 TEST(NodeFormatter, NodeWithChildren)
@@ -68,7 +66,8 @@ TEST(NodeFormatter, NestedChildren)
     auto result = std::format("{}", root);
     std::string expected =
         "Root [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
-        "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "  Child [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, "
+        "1.00)\n"
         "    Grandchild [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) "
         "scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
@@ -110,8 +109,10 @@ TEST(SceneGraphFormatter, MultipleRootsWithChildren)
     auto result = std::format("{}", scene);
     std::string expected =
         "SceneGraph:\n"
-        "  Root1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
-        "    Child1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)\n"
+        "  Root1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, "
+        "1.00)\n"
+        "    Child1 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, "
+        "1.00)\n"
         "  Root2 [Empty] pos(0.00, 0.00, 0.00) rot(0.00, 0.00, 0.00, 1.00) scale(1.00, 1.00, 1.00)";
     EXPECT_EQ(result, expected);
 }

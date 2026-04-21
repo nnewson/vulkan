@@ -39,8 +39,8 @@ public:
     {
     }
 
-    Vertex(Vec3 position, Colour3 colour, Vec3 normal, Vec2 texCoord, Joints4 joints,
-           Vec4 weights, Vec4 tangent) noexcept
+    Vertex(Vec3 position, Colour3 colour, Vec3 normal, Vec2 texCoord, Joints4 joints, Vec4 weights,
+           Vec4 tangent) noexcept
         : position_(position),
           colour_(colour),
           normal_(normal),

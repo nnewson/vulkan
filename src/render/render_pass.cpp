@@ -10,11 +10,15 @@ namespace fire_engine
 
 RenderPass RenderPass::createForward(const Device& device, const Swapchain& swapchain)
 {
+    // Forward writes into an offscreen HDR target (post-process reads it).
+    // Swapchain format is no longer used here; it belongs to the post-process
+    // render pass.
+    (void)swapchain;
     vk::AttachmentDescription colorAtt(
-        {}, swapchain.format(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
-        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
-        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
-        vk::ImageLayout::ePresentSrcKHR);
+        {}, vk::Format::eR16G16B16A16Sfloat, vk::SampleCountFlagBits::e1,
+        vk::AttachmentLoadOp::eClear, vk::AttachmentStoreOp::eStore,
+        vk::AttachmentLoadOp::eDontCare, vk::AttachmentStoreOp::eDontCare,
+        vk::ImageLayout::eUndefined, vk::ImageLayout::eShaderReadOnlyOptimal);
 
     vk::AttachmentDescription depthAtt(
         {}, vk::Format::eD32Sfloat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
@@ -70,13 +74,11 @@ RenderPass RenderPass::createShadow(const Device& device)
                                    &depthRef);
 
     std::array<vk::SubpassDependency, 2> deps = {
-        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0,
-                              vk::PipelineStageFlagBits::eFragmentShader,
+        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eFragmentShader,
                               vk::PipelineStageFlagBits::eEarlyFragmentTests,
                               vk::AccessFlagBits::eShaderRead,
                               vk::AccessFlagBits::eDepthStencilAttachmentWrite),
-        vk::SubpassDependency(0, VK_SUBPASS_EXTERNAL,
-                              vk::PipelineStageFlagBits::eLateFragmentTests,
+        vk::SubpassDependency(0, VK_SUBPASS_EXTERNAL, vk::PipelineStageFlagBits::eLateFragmentTests,
                               vk::PipelineStageFlagBits::eFragmentShader,
                               vk::AccessFlagBits::eDepthStencilAttachmentWrite,
                               vk::AccessFlagBits::eShaderRead),
@@ -97,7 +99,40 @@ void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView col
     framebuffers_.emplace_back(device.device(), ci);
 }
 
-void RenderPass::createForwardFramebuffers(const Device& device, const Swapchain& swapchain)
+void RenderPass::createForwardFramebuffer(const Device& device, vk::ImageView colorView,
+                                          vk::ImageView depthView, vk::Extent2D extent)
+{
+    framebuffers_.clear();
+    std::array<vk::ImageView, 2> attachments = {colorView, depthView};
+    vk::FramebufferCreateInfo ci({}, *renderPass_, attachments, extent.width, extent.height, 1);
+    framebuffers_.emplace_back(device.device(), ci);
+}
+
+RenderPass RenderPass::createPostProcess(const Device& device, const Swapchain& swapchain)
+{
+    vk::AttachmentDescription colorAtt(
+        {}, swapchain.format(), vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::ePresentSrcKHR);
+
+    vk::AttachmentReference colorRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colorRef);
+
+    // Wait for the forward pass to finish writing the HDR target before the
+    // post-process fragment shader samples it.
+    vk::SubpassDependency dep(
+        VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eColorAttachmentOutput,
+        vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eColorAttachmentWrite,
+        vk::AccessFlagBits::eShaderRead);
+
+    vk::RenderPassCreateInfo ci({}, colorAtt, subpass, dep);
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
+void RenderPass::createPostProcessFramebuffers(const Device& device, const Swapchain& swapchain)
 {
     framebuffers_.clear();
 
@@ -107,8 +142,8 @@ void RenderPass::createForwardFramebuffers(const Device& device, const Swapchain
 
     for (std::size_t i = 0; i < colorViews.size(); ++i)
     {
-        std::array<vk::ImageView, 2> attachments = {*colorViews[i], swapchain.depthView()};
-        vk::FramebufferCreateInfo ci({}, *renderPass_, attachments, extent.width, extent.height, 1);
+        vk::ImageView view = *colorViews[i];
+        vk::FramebufferCreateInfo ci({}, *renderPass_, view, extent.width, extent.height, 1);
         framebuffers_.emplace_back(device.device(), ci);
     }
 }

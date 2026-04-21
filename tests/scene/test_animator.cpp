@@ -6,9 +6,9 @@
 
 #include <gtest/gtest.h>
 
+using fire_engine::Animation;
 using fire_engine::Animator;
 using fire_engine::InputState;
-using fire_engine::Animation;
 using fire_engine::Mat4;
 using fire_engine::Transform;
 
