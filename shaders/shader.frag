@@ -38,6 +38,7 @@ layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
 layout(binding = 10) uniform sampler2DShadow shadowMap;
+layout(binding = 12) uniform samplerCube irradianceMap;
 
 layout(binding = 11) uniform LightUBO {
     vec4 direction;
@@ -57,7 +58,7 @@ const float PI = 3.14159265359;
 // Keep a little fill light so materials stay readable without flattening contrast.
 const float ambientStrength = 0.04;
 // Shadows should stay legible, but the ambient floor must not erase separation.
-const float shadowAmbientFloor = 0.25;
+const float shadowAmbientFloor = 0.15;
 
 // GGX/Trowbridge-Reitz normal distribution
 float distributionGGX(float NdotH, float alpha)
@@ -84,6 +85,12 @@ float geometrySmith(float NdotV, float NdotL, float roughness)
 vec3 fresnelSchlick(float cosTheta, vec3 F0)
 {
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
+}
+
+vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+{
+    return F0 + (max(vec3(1.0 - roughness), F0) - F0) *
+                    pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
 float computeShadow(vec3 worldPos)
@@ -174,17 +181,25 @@ void main() {
         specularTerm = spec * material.specular * (1.0 - roughness);
     }
 
-    // Ambient — metallic-aware, with occlusion
     vec3 ambientBase;
-    if (material.ambient == vec3(0.0)) {
+    if (material.specular == vec3(0.0)) {
         vec3 F0 = mix(vec3(0.04), baseColor, metallic);
-        vec3 diffuseAmbient = baseColor;
-        vec3 specularAmbient = F0;
-        ambientBase = mix(diffuseAmbient, specularAmbient, metallic);
+        vec3 F = fresnelSchlickRoughness(NdotV, F0, roughness);
+        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+        vec3 irradiance = texture(irradianceMap, N).rgb;
+        ambientBase = irradiance * baseColor * kD;
     } else {
-        ambientBase = material.ambient;
+        if (material.ambient == vec3(0.0)) {
+            vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+            vec3 diffuseAmbient = baseColor;
+            vec3 specularAmbient = F0;
+            ambientBase = mix(diffuseAmbient, specularAmbient, metallic);
+        } else {
+            ambientBase = material.ambient;
+        }
+        ambientBase *= ambientStrength;
     }
-    vec3 ambientTerm = ambientBase * ambientStrength;
+    vec3 ambientTerm = ambientBase;
     if (material.hasOcclusionTexture == 1) {
         float ao = texture(occlusionMap, fragTexCoord).r;
         ambientTerm *= ao;
@@ -200,7 +215,9 @@ void main() {
     diffuseTerm *= shadow;
     specularTerm *= shadow;
 
-    ambientTerm *= mix(shadowAmbientFloor, 1.0, shadow);
+    if (material.specular != vec3(0.0)) {
+        ambientTerm *= mix(shadowAmbientFloor, 1.0, shadow);
+    }
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
     outColor = vec4(color, alpha);

@@ -97,6 +97,7 @@ private:
     void transitionOffscreenForSampling(vk::CommandBuffer cmd);
     void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void createSkyboxEnvironment();
+    void createIrradianceEnvironment();
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
@@ -106,6 +107,7 @@ private:
 
     static constexpr uint32_t shadowMapSize_ = 2048;
     static constexpr uint32_t skyboxCubemapExtent_ = 1024;
+    static constexpr uint32_t irradianceCubemapExtent_ = 32;
 
     Device device_;
     Swapchain swapchain_;
@@ -130,6 +132,7 @@ private:
     TextureHandle shadowColourHandle_{NullTexture};
     TextureHandle offscreenColourHandle_{NullTexture};
     TextureHandle skyboxCubemapHandle_{NullTexture};
+    TextureHandle irradianceCubemapHandle_{NullTexture};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> postProcessDescSets_{};

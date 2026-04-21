@@ -94,6 +94,7 @@ public:
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> uniformBufs{NullBuffer, NullBuffer};
         std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBufs{NullBuffer, NullBuffer};
         TextureHandle shadowMap{NullTexture};
+        TextureHandle irradianceMap{NullTexture};
         std::vector<GeometryDescriptorInfo> geometries;
     };
 
@@ -212,6 +213,16 @@ public:
         return shadowMap_;
     }
 
+    void irradianceMap(TextureHandle handle) noexcept
+    {
+        irradianceMap_ = handle;
+    }
+
+    [[nodiscard]] TextureHandle irradianceMap() const noexcept
+    {
+        return irradianceMap_;
+    }
+
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
     // handles so Renderer can resolve PipelineHandle values stamped on
@@ -287,6 +298,7 @@ private:
 
     std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
     TextureHandle shadowMap_{NullTexture};
+    TextureHandle irradianceMap_{NullTexture};
     vk::DescriptorSetLayout shadowDescLayout_{};
 };
 

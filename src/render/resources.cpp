@@ -607,7 +607,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
 
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 6},
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 7},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
@@ -674,7 +674,12 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                                                   *textures_[shadowTexIdx].view,
                                                   vk::ImageLayout::eDepthStencilReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 12> writes = {{
+            auto irradianceTexIdx = static_cast<uint32_t>(req.irradianceMap);
+            vk::DescriptorImageInfo irradianceTexInfo(
+                *textures_[irradianceTexIdx].sampler, *textures_[irradianceTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+            std::array<vk::WriteDescriptorSet, 13> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -687,6 +692,8 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 9, 0, 1, vk::DescriptorType::eCombinedImageSampler, &occTexInfo},
                 {*sets[i], 10, 0, 1, vk::DescriptorType::eCombinedImageSampler, &shadowTexInfo},
                 {*sets[i], 11, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
+                {*sets[i], 12, 0, 1, vk::DescriptorType::eCombinedImageSampler,
+                 &irradianceTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 

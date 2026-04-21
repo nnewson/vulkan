@@ -24,7 +24,7 @@ namespace
 
 // Calibrated against the current ACES post-process so direct light stays crisp without washing out
 // midtones.
-constexpr float directionalLightIntensity = 0.85f;
+constexpr float directionalLightIntensity = 0.95f;
 constexpr const char* skyboxFilename = "skybox.hdr";
 
 #ifndef FIRE_ENGINE_SOURCE_ASSET_DIR
@@ -128,6 +128,39 @@ constexpr const char* skyboxFilename = "skybox.hdr";
     return result;
 }
 
+[[nodiscard]] std::array<float, 4> convolveIrradiance(const Image& image, const Vec3& normal)
+{
+    Vec3 up = std::abs(normal.y()) < 0.999f ? Vec3{0.0f, 1.0f, 0.0f} : Vec3{1.0f, 0.0f, 0.0f};
+    Vec3 right = Vec3::normalise(Vec3::crossProduct(up, normal));
+    up = Vec3::normalise(Vec3::crossProduct(normal, right));
+
+    constexpr float sampleDelta = 0.2f;
+    Vec3 irradiance{};
+    float sampleCount = 0.0f;
+
+    for (float phi = 0.0f; phi < 2.0f * pi; phi += sampleDelta)
+    {
+        for (float theta = 0.0f; theta < 0.5f * pi; theta += sampleDelta)
+        {
+            Vec3 tangentSample{std::sin(theta) * std::cos(phi), std::sin(theta) * std::sin(phi),
+                               std::cos(theta)};
+            Vec3 sampleVec =
+                right * tangentSample.x() + up * tangentSample.y() + normal * tangentSample.z();
+            auto sample = sampleEquirectangular(image, Vec3::normalise(sampleVec));
+            float weight = std::cos(theta) * std::sin(theta);
+            irradiance += Vec3{sample[0], sample[1], sample[2]} * weight;
+            sampleCount += 1.0f;
+        }
+    }
+
+    if (sampleCount > 0.0f)
+    {
+        irradiance *= pi / sampleCount;
+    }
+
+    return {irradiance.x(), irradiance.y(), irradiance.z(), 1.0f};
+}
+
 } // namespace
 
 Renderer::Renderer(const Window& window)
@@ -183,6 +216,8 @@ Renderer::Renderer(const Window& window)
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
     resources_.shadowMap(shadowMapHandle_);
     createSkyboxEnvironment();
+    createIrradianceEnvironment();
+    resources_.irradianceMap(irradianceCubemapHandle_);
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }
 
@@ -233,6 +268,53 @@ void Renderer::createSkyboxEnvironment()
         resources_.createCubemapTexture(cubemapPixels.data(), skyboxCubemapExtent_, sampler);
     skyboxDescSets_ = resources_.createUboImageSamplerDescriptors(
         skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_);
+}
+
+void Renderer::createIrradianceEnvironment()
+{
+    std::string skyboxPath = resolveSkyboxPath();
+    Image hdr = Image::load_from_file(skyboxPath);
+    if (hdr.pixelType() != ImagePixelType::Float32)
+    {
+        throw std::runtime_error("Expected HDR float skybox image: " + skyboxPath);
+    }
+
+    std::vector<float> cubemapPixels(static_cast<std::size_t>(irradianceCubemapExtent_) *
+                                     irradianceCubemapExtent_ * 4 * 6);
+
+    for (uint32_t face = 0; face < 6; ++face)
+    {
+        for (uint32_t y = 0; y < irradianceCubemapExtent_; ++y)
+        {
+            for (uint32_t x = 0; x < irradianceCubemapExtent_; ++x)
+            {
+                float u = (2.0f * (static_cast<float>(x) + 0.5f) /
+                           static_cast<float>(irradianceCubemapExtent_)) -
+                          1.0f;
+                float v = (2.0f * (static_cast<float>(y) + 0.5f) /
+                           static_cast<float>(irradianceCubemapExtent_)) -
+                          1.0f;
+                Vec3 dir = directionForCubemapFace(face, u, -v);
+                auto sample = convolveIrradiance(hdr, dir);
+
+                std::size_t index = (static_cast<std::size_t>(face) * irradianceCubemapExtent_ *
+                                         irradianceCubemapExtent_ +
+                                     static_cast<std::size_t>(y) * irradianceCubemapExtent_ +
+                                     static_cast<std::size_t>(x)) *
+                                    4;
+                cubemapPixels[index + 0] = sample[0];
+                cubemapPixels[index + 1] = sample[1];
+                cubemapPixels[index + 2] = sample[2];
+                cubemapPixels[index + 3] = 1.0f;
+            }
+        }
+    }
+
+    SamplerSettings sampler{};
+    sampler.wrapS = WrapMode::ClampToEdge;
+    sampler.wrapT = WrapMode::ClampToEdge;
+    irradianceCubemapHandle_ =
+        resources_.createCubemapTexture(cubemapPixels.data(), irradianceCubemapExtent_, sampler);
 }
 
 void Renderer::updateLightData()
