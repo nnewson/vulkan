@@ -1,3 +1,5 @@
+#define VK_ENABLE_BETA_EXTENSIONS
+
 #include <iostream>
 #include <set>
 #include <string>
@@ -96,6 +98,16 @@ bool Device::isDeviceSuitable(const vk::raii::PhysicalDevice& d)
     }
 
     auto avail = d.enumerateDeviceExtensionProperties();
+    if (enableValidation)
+    {
+        std::cout << "Available extensions:\n";
+        for (const auto& extension : avail)
+        {
+            std::cout << '\t' << extension.extensionName << '\n';
+        }
+        std::cout << '\n';
+    }
+
     std::set<std::string> required(deviceExtensions.begin(), deviceExtensions.end());
     for (auto& e : avail)
     {
@@ -151,7 +163,14 @@ void Device::createLogicalDevice()
     vk::PhysicalDeviceFeatures features{};
     features.samplerAnisotropy = vk::True;
 
+    // Shadow mapping uses sampler2DShadow (hardware PCF), which requires
+    // compareEnable=VK_TRUE on the sampler. MoltenVK gates that behind the
+    // portability-subset feature mutableComparisonSamplers — enable it here.
+    vk::PhysicalDevicePortabilitySubsetFeaturesKHR portability{};
+    portability.mutableComparisonSamplers = vk::True;
+
     vk::DeviceCreateInfo ci({}, qcis, {}, deviceExtensions, &features);
+    ci.pNext = &portability;
 
     device_ = vk::raii::Device(physDevice_, ci);
     graphicsQueue_ = device_.getQueue(graphicsFamily_, 0);
