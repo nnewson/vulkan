@@ -1,6 +1,9 @@
 #include <cmath>
+#include <filesystem>
 
+#include <fastgltf/core.hpp>
 #include <fastgltf/math.hpp>
+#include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
 #include <fire_engine/graphics/material.hpp>
@@ -261,6 +264,29 @@ TEST(TRSRotation, DecalBlendQuaternionRoundTrip)
     EXPECT_NEAR(e.x(), -0.98279f, 1e-4f);
     EXPECT_NEAR(e.y(), 0.0f, 1e-5f);
     EXPECT_NEAR(e.z(), 0.0f, 1e-5f);
+}
+
+TEST(GltfFixture, MinimalTriangleFixtureParses)
+{
+    auto gltfPath = std::filesystem::path("test_assets/minimal_triangle.gltf");
+
+    fastgltf::Parser parser;
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
+    ASSERT_EQ(dataResult.error(), fastgltf::Error::None);
+
+    auto result =
+        parser.loadGltf(dataResult.get(), gltfPath.parent_path(), fastgltf::Options::None);
+    ASSERT_EQ(result.error(), fastgltf::Error::None);
+
+    const auto& asset = result.get();
+    ASSERT_EQ(asset.scenes.size(), 1u);
+    ASSERT_EQ(asset.nodes.size(), 1u);
+    ASSERT_EQ(asset.meshes.size(), 1u);
+    ASSERT_EQ(asset.meshes[0].primitives.size(), 1u);
+    EXPECT_TRUE(asset.meshes[0].primitives[0].indicesAccessor.has_value() == false);
+    EXPECT_EQ(asset.meshes[0].primitives[0].findAttribute("POSITION")->accessorIndex, 0u);
+    ASSERT_EQ(asset.accessors.size(), 1u);
+    EXPECT_EQ(asset.accessors[0].count, 3u);
 }
 
 // ==========================================================================

@@ -27,6 +27,8 @@ public:
         s_ = glfwGetKey(w, GLFW_KEY_S) == GLFW_PRESS;
         a_ = glfwGetKey(w, GLFW_KEY_A) == GLFW_PRESS;
         d_ = glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS;
+        e_ = glfwGetKey(w, GLFW_KEY_E) == GLFW_PRESS;
+        f_ = glfwGetKey(w, GLFW_KEY_F) == GLFW_PRESS;
         one_ = glfwGetKey(w, GLFW_KEY_1) == GLFW_PRESS;
         two_ = glfwGetKey(w, GLFW_KEY_2) == GLFW_PRESS;
         three_ = glfwGetKey(w, GLFW_KEY_3) == GLFW_PRESS;
@@ -52,6 +54,14 @@ public:
     {
         return d_;
     }
+    [[nodiscard]] bool e() const noexcept
+    {
+        return e_;
+    }
+    [[nodiscard]] bool f() const noexcept
+    {
+        return f_;
+    }
     [[nodiscard]] bool one() const noexcept
     {
         return one_;
@@ -71,6 +81,8 @@ private:
     bool s_{false};
     bool a_{false};
     bool d_{false};
+    bool e_{false};
+    bool f_{false};
     bool one_{false};
     bool two_{false};
     bool three_{false};

@@ -1,8 +1,0 @@
-newmtl mat_red
-Kd 1.0 0.0 0.0
-
-newmtl mat_green
-Kd 0.0 1.0 0.0
-
-newmtl mat_blue
-Kd 0.0 0.0 1.0

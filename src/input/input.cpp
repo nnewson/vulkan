@@ -10,7 +10,8 @@ InputState Input::update(const Window& window, float deltaTime)
     keyboard_.poll(window);
     mouse_.poll(window);
 
-    // WASD movement (camera-relative: z = forward/back, x = strafe)
+    // WASD movement (camera-relative: z = forward/back, x = strafe) plus
+    // E/F world-space vertical movement on Y.
     Vec3 delta{};
 
     if (keyboard_.w())
@@ -28,6 +29,14 @@ InputState Input::update(const Window& window, float deltaTime)
     if (keyboard_.d())
     {
         delta.x(delta.x() - speed_ * deltaTime);
+    }
+    if (keyboard_.e())
+    {
+        delta.y(delta.y() + speed_ * deltaTime);
+    }
+    if (keyboard_.f())
+    {
+        delta.y(delta.y() - speed_ * deltaTime);
     }
 
     // Left mouse button drag = camera-relative movement (same as WASD)

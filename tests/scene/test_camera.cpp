@@ -300,6 +300,66 @@ TEST(CameraMovement, ForwardAtYaw90MovesAlongPositiveZ)
     EXPECT_NEAR(cam.localPosition().z(), 1.0f, 1e-5f);
 }
 
+TEST(CameraMovement, PositiveYDeltaMovesUpwardInWorldSpace)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({0.0f, 1.5f, 0.0f});
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_NEAR(cam.localPosition().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 1.5f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 0.0f, 1e-5f);
+}
+
+TEST(CameraMovement, NegativeYDeltaMovesDownwardInWorldSpace)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 2.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({0.0f, -0.75f, 0.0f});
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_NEAR(cam.localPosition().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 1.25f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), 0.0f, 1e-5f);
+}
+
+TEST(CameraMovement, VerticalMovementCombinesWithYawRelativeMovement)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(0.0f);
+    cam.localPitch(0.0f);
+
+    InputState state;
+    CameraState cs;
+    cs.deltaPosition({1.0f, 2.0f, 1.0f});
+    state.cameraState(cs);
+
+    Transform t;
+    cam.update(state, t);
+
+    EXPECT_NEAR(cam.localPosition().x(), 1.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().y(), 2.0f, 1e-5f);
+    EXPECT_NEAR(cam.localPosition().z(), -1.0f, 1e-5f);
+}
+
 // ==========================================================================
 // Zoom
 // ==========================================================================

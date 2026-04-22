@@ -17,9 +17,11 @@ void Camera::update(const InputState& input_state, const Transform& transform)
     Vec3 forwardXZ{cosYaw, 0.0f, sinYaw};
     Vec3 right{sinYaw, 0.0f, -cosYaw};
 
-    // WASD and left-mouse drag movement (camera-relative XZ plane)
+    // WASD and left-mouse drag movement use the camera-relative XZ plane.
+    // Vertical keyboard movement is applied directly on world Y.
     const Vec3& delta = cs.deltaPosition();
-    localPosition_ = localPosition_ + forwardXZ * delta.z() + right * delta.x();
+    localPosition_ =
+        localPosition_ + forwardXZ * delta.z() + right * delta.x() + Vec3{0.0f, delta.y(), 0.0f};
 
     // Scroll wheel zoom (along full 3D view direction)
     float cosPitch = std::cos(localPitch_);
