@@ -52,3 +52,54 @@ TEST(PipelineConfig, EnvironmentConvertConfigIncludesPanoramaSamplerBinding)
     EXPECT_EQ(config.pushConstantRanges[0].size,
               static_cast<uint32_t>(sizeof(fire_engine::EnvironmentCaptureUBO)));
 }
+
+TEST(PipelineConfig, IrradianceConvolutionConfigIncludesCubemapSamplerBinding)
+{
+    auto config = Pipeline::irradianceConvolutionConfig({});
+
+    ASSERT_EQ(config.bindings.size(), 1u);
+    EXPECT_EQ(config.vertShaderPath, "skybox.vert.spv");
+    EXPECT_EQ(config.fragShaderPath, "irradiance_convolution.frag.spv");
+    EXPECT_FALSE(config.useVertexInput);
+    EXPECT_FALSE(config.depthTestEnable);
+    EXPECT_FALSE(config.depthWrite);
+    EXPECT_EQ(config.bindings[0].binding, 0u);
+    EXPECT_EQ(config.bindings[0].descriptorType, vk::DescriptorType::eCombinedImageSampler);
+    ASSERT_EQ(config.pushConstantRanges.size(), 1u);
+    EXPECT_EQ(config.pushConstantRanges[0].stageFlags, vk::ShaderStageFlagBits::eFragment);
+    EXPECT_EQ(config.pushConstantRanges[0].offset, 0u);
+    EXPECT_EQ(config.pushConstantRanges[0].size,
+              static_cast<uint32_t>(sizeof(fire_engine::EnvironmentCaptureUBO)));
+}
+
+TEST(PipelineConfig, PrefilterEnvironmentConfigIncludesCubemapSamplerBinding)
+{
+    auto config = Pipeline::prefilterEnvironmentConfig({});
+
+    ASSERT_EQ(config.bindings.size(), 1u);
+    EXPECT_EQ(config.vertShaderPath, "skybox.vert.spv");
+    EXPECT_EQ(config.fragShaderPath, "prefilter_environment.frag.spv");
+    EXPECT_FALSE(config.useVertexInput);
+    EXPECT_FALSE(config.depthTestEnable);
+    EXPECT_FALSE(config.depthWrite);
+    EXPECT_EQ(config.bindings[0].binding, 0u);
+    EXPECT_EQ(config.bindings[0].descriptorType, vk::DescriptorType::eCombinedImageSampler);
+    ASSERT_EQ(config.pushConstantRanges.size(), 1u);
+    EXPECT_EQ(config.pushConstantRanges[0].stageFlags, vk::ShaderStageFlagBits::eFragment);
+    EXPECT_EQ(config.pushConstantRanges[0].offset, 0u);
+    EXPECT_EQ(config.pushConstantRanges[0].size,
+              static_cast<uint32_t>(sizeof(fire_engine::EnvironmentPrefilterPushConstants)));
+}
+
+TEST(PipelineConfig, BrdfIntegrationConfigUsesNoBindings)
+{
+    auto config = Pipeline::brdfIntegrationConfig({});
+
+    EXPECT_TRUE(config.bindings.empty());
+    EXPECT_EQ(config.vertShaderPath, "postprocess.vert.spv");
+    EXPECT_EQ(config.fragShaderPath, "brdf_integration.frag.spv");
+    EXPECT_FALSE(config.useVertexInput);
+    EXPECT_FALSE(config.depthTestEnable);
+    EXPECT_FALSE(config.depthWrite);
+    EXPECT_TRUE(config.pushConstantRanges.empty());
+}

@@ -135,6 +135,56 @@ PipelineConfig Pipeline::environmentConvertConfig(vk::RenderPass renderPass)
     return config;
 }
 
+PipelineConfig Pipeline::irradianceConvolutionConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "skybox.vert.spv";
+    config.fragShaderPath = "irradiance_convolution.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.pushConstantRanges.emplace_back(vk::ShaderStageFlagBits::eFragment, 0,
+                                           static_cast<uint32_t>(sizeof(EnvironmentCaptureUBO)));
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
+PipelineConfig Pipeline::prefilterEnvironmentConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "skybox.vert.spv";
+    config.fragShaderPath = "prefilter_environment.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.pushConstantRanges.emplace_back(
+        vk::ShaderStageFlagBits::eFragment, 0,
+        static_cast<uint32_t>(sizeof(EnvironmentPrefilterPushConstants)));
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
+PipelineConfig Pipeline::brdfIntegrationConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "postprocess.vert.spv";
+    config.fragShaderPath = "brdf_integration.frag.spv";
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
 void Pipeline::createDescriptorSetLayout(
     const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
 {

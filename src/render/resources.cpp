@@ -1005,6 +1005,11 @@ vk::Format Resources::textureFormat(TextureHandle handle) const noexcept
     return textures_[static_cast<uint32_t>(handle)].format;
 }
 
+uint32_t Resources::textureMipLevels(TextureHandle handle) const noexcept
+{
+    return textures_[static_cast<uint32_t>(handle)].mipLevels;
+}
+
 vk::DescriptorSet Resources::vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept
 {
     return descriptorSetTable_[static_cast<uint32_t>(handle)];

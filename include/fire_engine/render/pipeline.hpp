@@ -86,6 +86,23 @@ public:
     // sampling a 2D panorama and writing one cubemap face at a time.
     [[nodiscard]] static PipelineConfig environmentConvertConfig(vk::RenderPass renderPass);
 
+    // Factory producing the PipelineConfig for cubemap -> irradiance cubemap
+    // convolution. Draws a fullscreen triangle with no vertex input,
+    // sampling an environment cubemap and writing one low-resolution
+    // irradiance face at a time.
+    [[nodiscard]] static PipelineConfig irradianceConvolutionConfig(vk::RenderPass renderPass);
+
+    // Factory producing the PipelineConfig for specular environment
+    // prefiltering. Draws a fullscreen triangle with no vertex input,
+    // sampling an environment cubemap and writing one cubemap face / mip
+    // level at a time.
+    [[nodiscard]] static PipelineConfig prefilterEnvironmentConfig(vk::RenderPass renderPass);
+
+    // Factory producing the PipelineConfig for BRDF LUT integration. Draws a
+    // fullscreen triangle into a 2D floating-point render target with no
+    // descriptor bindings.
+    [[nodiscard]] static PipelineConfig brdfIntegrationConfig(vk::RenderPass renderPass);
+
     // Factory producing the PipelineConfig for a depth-only shadow pipeline.
     // Writes only depth into an offscreen D32_SFLOAT attachment (no colour
     // attachment). Uses front-face culling and depth bias to eliminate

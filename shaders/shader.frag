@@ -47,6 +47,7 @@ layout(binding = 11) uniform LightUBO {
     vec4 direction;
     vec4 colour;
     mat4 lightViewProj;
+    vec4 iblParams;
 } light;
 
 layout(location = 0) in vec3 fragColor;
@@ -58,7 +59,6 @@ layout(location = 4) in mat3 fragTBN;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
-const float maxReflectionLod = 7.0;
 const float specularIblStrength = 0.7;
 // Keep a little fill light so materials stay readable without flattening contrast.
 const float ambientStrength = 0.04;
@@ -195,6 +195,7 @@ void main() {
         vec3 irradiance = texture(irradianceMap, N).rgb;
         vec3 diffuseIbl = irradiance * baseColor * kD;
         vec3 R = reflect(-V, N);
+        float maxReflectionLod = light.iblParams.x;
         vec3 prefilteredColor = textureLod(prefilteredMap, R, roughness * maxReflectionLod).rgb;
         vec2 envBrdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
         vec3 specularIbl = prefilteredColor * (F * envBrdf.x + envBrdf.y) * specularIblStrength;

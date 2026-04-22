@@ -267,6 +267,7 @@ public:
                                                       uint32_t mipLevel = 0) const noexcept;
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::Format textureFormat(TextureHandle handle) const noexcept;
+    [[nodiscard]] uint32_t textureMipLevels(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
     [[nodiscard]] vk::Pipeline vulkanPipeline(PipelineHandle handle) const noexcept;
     [[nodiscard]] vk::PipelineLayout vulkanPipelineLayout(PipelineHandle handle) const noexcept;

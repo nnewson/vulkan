@@ -208,6 +208,7 @@ TEST(UBO, LightUBODefaults)
     {
         EXPECT_FLOAT_EQ(ubo.direction[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.colour[i], 0.0f);
+        EXPECT_FLOAT_EQ(ubo.iblParams[i], 0.0f);
     }
 }
 
@@ -217,6 +218,8 @@ TEST(UBO, LightUBOFieldOrder)
                   "direction must precede colour to match shader layout");
     static_assert(offsetof(LightUBO, colour) < offsetof(LightUBO, lightViewProj),
                   "colour must precede lightViewProj to match shader layout");
+    static_assert(offsetof(LightUBO, lightViewProj) < offsetof(LightUBO, iblParams),
+                  "lightViewProj must precede iblParams to match shader layout");
     SUCCEED();
 }
 
@@ -228,6 +231,8 @@ TEST(UBO, LightUBODirectionAligned16)
                   "colour must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, lightViewProj) % 16 == 0,
                   "lightViewProj must be 16-byte aligned for std140 mat4");
+    static_assert(offsetof(LightUBO, iblParams) % 16 == 0,
+                  "iblParams must be 16-byte aligned for std140 vec4");
     SUCCEED();
 }
 

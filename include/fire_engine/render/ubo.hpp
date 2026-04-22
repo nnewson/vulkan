@@ -79,6 +79,15 @@ struct LightUBO
     alignas(16) float direction[4]{}; // xyz normalised, w unused
     alignas(16) float colour[4]{};    // rgb, a = intensity
     alignas(16) Mat4 lightViewProj{};
+    alignas(16) float iblParams[4]{}; // x = maxReflectionLod
+};
+
+struct EnvironmentPrefilterPushConstants
+{
+    alignas(4) int faceIndex{0};
+    alignas(4) int faceExtent{0};
+    float roughness{0.0f};
+    float _pad0{0.0f};
 };
 
 struct ShadowUBO
