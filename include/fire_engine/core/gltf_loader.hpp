@@ -7,6 +7,7 @@
 
 #include <fastgltf/core.hpp>
 
+#include <fire_engine/core/tangent_generator.hpp>
 #include <fire_engine/animation/animation.hpp>
 #include <fire_engine/graphics/image.hpp>
 
@@ -112,15 +113,13 @@ private:
                             const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
-    static Material* resolveMaterial(const fastgltf::Asset& asset,
-                                     const fastgltf::Primitive& primitive, Material& materialData,
-                                     const Texture* texPtr, const Texture* emissiveTexPtr,
-                                     const Texture* normalTexPtr, const Texture* mrTexPtr,
-                                     const Texture* occTexPtr, Assets& assets);
+    static Material* resolveMaterial(Material materialData, Assets& assets);
 
-    static void loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                             const Material* matPtr, Resources& resources, Assets& assets,
-                             std::size_t geoIdx);
+    [[nodiscard]]
+    static TangentGenerationResult loadGeometry(const fastgltf::Asset& asset,
+                                                const fastgltf::Primitive& primitive,
+                                                bool needsTangents, Resources& resources,
+                                                Assets& assets, std::size_t geoIdx);
 
     [[nodiscard]]
     static Material loadMaterial(const fastgltf::Asset& asset,

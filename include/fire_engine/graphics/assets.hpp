@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <utility>
 #include <vector>
 
 #include <fire_engine/animation/animation.hpp>
@@ -31,6 +32,11 @@ public:
     void resizeMaterials(std::size_t count)
     {
         materials_.resize(count);
+    }
+
+    void reserveMaterials(std::size_t count)
+    {
+        materials_.reserve(count);
     }
 
     void resizeGeometries(std::size_t count)
@@ -64,6 +70,12 @@ public:
     [[nodiscard]] const Material& material(std::size_t index) const noexcept
     {
         return materials_[index];
+    }
+
+    [[nodiscard]] Material& addMaterial(Material material)
+    {
+        materials_.push_back(std::move(material));
+        return materials_.back();
     }
 
     [[nodiscard]] Geometry& geometry(std::size_t index) noexcept

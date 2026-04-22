@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <stdexcept>
 #include <unordered_set>
 #include <variant>
@@ -313,6 +314,7 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
     {
         totalPrimitives += m.primitives.size();
     }
+    assets.reserveMaterials(assets.materialCount() + totalPrimitives);
     assets.resizeGeometries(totalPrimitives);
     assets.resizeSkins(asset.skins.size());
 
@@ -724,80 +726,20 @@ const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
     return nullptr;
 }
 
-Material* GltfLoader::resolveMaterial(const fastgltf::Asset& /* asset */,
-                                      const fastgltf::Primitive& primitive, Material& materialData,
-                                      const Texture* texPtr, const Texture* emissiveTexPtr,
-                                      const Texture* normalTexPtr, const Texture* mrTexPtr,
-                                      const Texture* occTexPtr, Assets& assets)
+Material* GltfLoader::resolveMaterial(Material materialData, Assets& assets)
 {
-    if (primitive.materialIndex.has_value())
-    {
-        auto matIndex = primitive.materialIndex.value();
-        auto& mat = assets.material(matIndex);
-        if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture() &&
-            !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
-        {
-            mat = materialData;
-            if (texPtr != nullptr)
-            {
-                mat.texture(texPtr);
-            }
-            if (emissiveTexPtr != nullptr)
-            {
-                mat.emissiveTexture(emissiveTexPtr);
-            }
-            if (normalTexPtr != nullptr)
-            {
-                mat.normalTexture(normalTexPtr);
-            }
-            if (mrTexPtr != nullptr)
-            {
-                mat.metallicRoughnessTexture(mrTexPtr);
-            }
-            if (occTexPtr != nullptr)
-            {
-                mat.occlusionTexture(occTexPtr);
-            }
-        }
-        return &mat;
-    }
-
-    auto& mat = assets.material(0);
-    if (!mat.hasTexture() && !mat.hasEmissiveTexture() && !mat.hasNormalTexture() &&
-        !mat.hasMetallicRoughnessTexture() && !mat.hasOcclusionTexture())
-    {
-        if (texPtr != nullptr)
-        {
-            mat.texture(texPtr);
-        }
-        if (emissiveTexPtr != nullptr)
-        {
-            mat.emissiveTexture(emissiveTexPtr);
-        }
-        if (normalTexPtr != nullptr)
-        {
-            mat.normalTexture(normalTexPtr);
-        }
-        if (mrTexPtr != nullptr)
-        {
-            mat.metallicRoughnessTexture(mrTexPtr);
-        }
-        if (occTexPtr != nullptr)
-        {
-            mat.occlusionTexture(occTexPtr);
-        }
-    }
-    return &mat;
+    return &assets.addMaterial(std::move(materialData));
 }
 
-void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                              const Material* matPtr, Resources& resources, Assets& assets,
-                              std::size_t geoIdx)
+TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
+                                                 const fastgltf::Primitive& primitive,
+                                                 bool needsTangents, Resources& resources,
+                                                 Assets& assets, std::size_t geoIdx)
 {
     auto& geometry = assets.geometry(geoIdx);
     if (geometry.loaded())
     {
-        return;
+        return {};
     }
 
     const auto* posAttr = primitive.findAttribute("POSITION");
@@ -860,14 +802,14 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
             [&](fastgltf::math::fvec4 w, std::size_t idx) { weights[idx] = w; });
     }
 
-    std::vector<fastgltf::math::fvec4> tangents;
+    std::vector<fastgltf::math::fvec4> sourceTangents;
     if (tangentAttr != primitive.attributes.end())
     {
         const auto& tangentAccessor = asset.accessors[tangentAttr->accessorIndex];
-        tangents.resize(tangentAccessor.count);
+        sourceTangents.resize(tangentAccessor.count);
         fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
             asset, tangentAccessor,
-            [&](fastgltf::math::fvec4 t, std::size_t idx) { tangents[idx] = t; });
+            [&](fastgltf::math::fvec4 t, std::size_t idx) { sourceTangents[idx] = t; });
     }
 
     std::vector<fastgltf::math::fvec4> colours;
@@ -878,6 +820,63 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec4>(
             asset, colourAccessor,
             [&](fastgltf::math::fvec4 c, std::size_t idx) { colours[idx] = c; });
+    }
+
+    std::vector<uint32_t> idxs;
+    if (primitive.indicesAccessor.has_value())
+    {
+        const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
+        idxs.reserve(indexAccessor.count);
+        fastgltf::iterateAccessor<std::uint32_t>(asset, indexAccessor,
+                                                 [&](std::uint32_t idx) { idxs.push_back(idx); });
+    }
+    else
+    {
+        for (std::size_t i = 0; i < positions.size(); ++i)
+        {
+            idxs.push_back(static_cast<uint32_t>(i));
+        }
+    }
+
+    std::vector<Vec4> tangents;
+    TangentGenerationResult tangentResult;
+    if (tangentAttr != primitive.attributes.end())
+    {
+        tangents.reserve(sourceTangents.size());
+        for (const auto& tangent : sourceTangents)
+        {
+            tangents.emplace_back(tangent.x(), tangent.y(), tangent.z(), tangent.w());
+        }
+        tangentResult.succeeded = true;
+    }
+    else if (needsTangents)
+    {
+        std::vector<Vec3> positionData;
+        positionData.reserve(positions.size());
+        for (const auto& position : positions)
+        {
+            positionData.emplace_back(position.x(), position.y(), position.z());
+        }
+
+        std::vector<Vec3> normalData;
+        normalData.reserve(normals.size());
+        for (const auto& normal : normals)
+        {
+            normalData.emplace_back(normal.x(), normal.y(), normal.z());
+        }
+
+        std::vector<Vec2> texcoordData;
+        texcoordData.reserve(texcoords.size());
+        for (const auto& texcoord : texcoords)
+        {
+            texcoordData.emplace_back(texcoord.x(), texcoord.y());
+        }
+
+        tangentResult = TangentGenerator::generate(positionData, normalData, texcoordData, idxs);
+        if (tangentResult.succeeded)
+        {
+            tangents = tangentResult.tangents;
+        }
     }
 
     std::vector<Vertex> verts;
@@ -911,30 +910,13 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
         Vec4 tang{0.0f, 0.0f, 0.0f, 1.0f};
         if (i < tangents.size())
         {
-            tang = Vec4{tangents[i].x(), tangents[i].y(), tangents[i].z(), tangents[i].w()};
+            tang = tangents[i];
         }
 
         verts.push_back(Vertex{pos, vertexColour, norm, Vec2{u, v}, jt, wt, tang});
     }
     geometry.vertices(std::move(verts));
-
-    std::vector<uint32_t> idxs;
-    if (primitive.indicesAccessor.has_value())
-    {
-        const auto& indexAccessor = asset.accessors[primitive.indicesAccessor.value()];
-        idxs.reserve(indexAccessor.count);
-        fastgltf::iterateAccessor<std::uint32_t>(asset, indexAccessor,
-                                                 [&](std::uint32_t idx) { idxs.push_back(idx); });
-    }
-    else
-    {
-        for (std::size_t i = 0; i < positions.size(); ++i)
-        {
-            idxs.push_back(static_cast<uint32_t>(i));
-        }
-    }
     geometry.indices(std::move(idxs));
-    geometry.material(matPtr);
 
     // Load morph targets
     if (!primitive.targets.empty())
@@ -974,6 +956,7 @@ void GltfLoader::loadGeometry(const fastgltf::Asset& asset, const fastgltf::Prim
     }
 
     geometry.load(resources);
+    return tangentResult;
 }
 
 Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
@@ -1002,11 +985,45 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             resolveMetallicRoughnessTexture(asset, primitive, baseDir, resources, assets);
         const Texture* occTexPtr =
             resolveOcclusionTexture(asset, primitive, baseDir, resources, assets);
-        Material* matPtr = resolveMaterial(asset, primitive, materialData, texPtr, emissiveTexPtr,
-                                           normalTexPtr, mrTexPtr, occTexPtr, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
-        loadGeometry(asset, primitive, matPtr, resources, assets, geoIdx);
+        auto tangentResult =
+            loadGeometry(asset, primitive, normalTexPtr != nullptr, resources, assets, geoIdx);
+
+        if (texPtr != nullptr)
+        {
+            materialData.texture(texPtr);
+        }
+        if (emissiveTexPtr != nullptr)
+        {
+            materialData.emissiveTexture(emissiveTexPtr);
+        }
+        if (mrTexPtr != nullptr)
+        {
+            materialData.metallicRoughnessTexture(mrTexPtr);
+        }
+        if (occTexPtr != nullptr)
+        {
+            materialData.occlusionTexture(occTexPtr);
+        }
+        if (normalTexPtr != nullptr)
+        {
+            if (tangentResult.succeeded)
+            {
+                materialData.normalTexture(normalTexPtr);
+            }
+            else
+            {
+                std::string meshName =
+                    mesh.name.empty() ? "mesh[" + std::to_string(meshIndex) + "]"
+                                      : std::string(mesh.name);
+                std::cerr << "Warning: Skipping tangent-space normal map for " << meshName
+                          << " primitive " << primIdx << ": " << tangentResult.reason << '\n';
+            }
+        }
+
+        Material* matPtr = resolveMaterial(std::move(materialData), assets);
+        assets.geometry(geoIdx).material(matPtr);
         object.addGeometry(assets.geometry(geoIdx));
     }
 

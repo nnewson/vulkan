@@ -21,6 +21,7 @@ add_library(fireengine SHARED
     src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
     src/core/system.cpp
+    src/core/tangent_generator.cpp
     src/fire_engine.cpp
     src/graphics/geometry.cpp
     src/graphics/image.cpp
@@ -137,6 +138,7 @@ add_executable(test_fire_engine
     tests/core/test_shader_loader.cpp
     tests/core/test_system.cpp
     tests/core/test_gltf_loader.cpp
+    tests/core/test_tangent_generator.cpp
     tests/input/test_camera_state.cpp
     tests/input/test_animation_state.cpp
     tests/input/test_input_state.cpp
