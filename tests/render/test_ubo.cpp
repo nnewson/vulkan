@@ -5,10 +5,10 @@
 #include <fire_engine/render/constants.hpp>
 #include <fire_engine/render/ubo.hpp>
 
+using fire_engine::EnvironmentCaptureUBO;
 using fire_engine::LightUBO;
 using fire_engine::MaterialUBO;
 using fire_engine::MorphUBO;
-using fire_engine::EnvironmentCaptureUBO;
 using fire_engine::ShadowUBO;
 using fire_engine::SkinUBO;
 using fire_engine::UniformBufferObject;
@@ -76,101 +76,77 @@ TEST(UBO, MaterialUBOSize)
 TEST(UBO, MaterialUBOHasTextureDefaultsToZero)
 {
     MaterialUBO ubo{};
-    EXPECT_EQ(ubo.hasTexture, 0);
+    EXPECT_EQ(ubo.textureFlags[0], 0);
 }
 
-TEST(UBO, MaterialUBOAlphaCutoffSitsBeforeHasTexture)
+TEST(UBO, MaterialUBOFieldOrder)
 {
-    static_assert(offsetof(MaterialUBO, alphaCutoff) < offsetof(MaterialUBO, hasTexture),
-                  "alphaCutoff must precede hasTexture to match shader layout");
-    static_assert(offsetof(MaterialUBO, normalScale) < offsetof(MaterialUBO, alphaCutoff),
-                  "normalScale must precede alphaCutoff to match shader layout");
-    static_assert(offsetof(MaterialUBO, anisotropyRotation) < offsetof(MaterialUBO, alphaCutoff),
-                  "alphaCutoff must sit after anisotropyRotation to match shader layout");
+    static_assert(offsetof(MaterialUBO, diffuseAlpha) < offsetof(MaterialUBO, emissiveRoughness),
+                  "diffuseAlpha must precede emissiveRoughness to match shader layout");
+    static_assert(offsetof(MaterialUBO, emissiveRoughness) < offsetof(MaterialUBO, materialParams),
+                  "emissiveRoughness must precede materialParams to match shader layout");
+    static_assert(offsetof(MaterialUBO, materialParams) < offsetof(MaterialUBO, textureFlags),
+                  "materialParams must precede textureFlags to match shader layout");
+    static_assert(offsetof(MaterialUBO, textureFlags) < offsetof(MaterialUBO, extraFlags),
+                  "textureFlags must precede extraFlags to match shader layout");
     SUCCEED();
 }
 
 TEST(UBO, MaterialUBOAlphaCutoffRoundTrip)
 {
     MaterialUBO ubo{};
-    ubo.alphaCutoff = 0.25f;
-    EXPECT_FLOAT_EQ(ubo.alphaCutoff, 0.25f);
+    ubo.materialParams[2] = 0.25f;
+    EXPECT_FLOAT_EQ(ubo.materialParams[2], 0.25f);
+}
+
+TEST(UBO, MaterialUBOAlphaRoundTrip)
+{
+    MaterialUBO ubo{};
+    ubo.diffuseAlpha[3] = 0.75f;
+    EXPECT_FLOAT_EQ(ubo.diffuseAlpha[3], 0.75f);
 }
 
 TEST(UBO, MaterialUBOHasTextureCanBeSet)
 {
     MaterialUBO ubo{};
-    ubo.hasTexture = 1;
-    EXPECT_EQ(ubo.hasTexture, 1);
-}
-
-TEST(UBO, MaterialUBOHasEmissiveTextureDefaultsToZero)
-{
-    MaterialUBO ubo{};
-    EXPECT_EQ(ubo.hasEmissiveTexture, 0);
+    ubo.textureFlags[0] = 1;
+    EXPECT_EQ(ubo.textureFlags[0], 1);
 }
 
 TEST(UBO, MaterialUBOHasEmissiveTextureCanBeSet)
 {
     MaterialUBO ubo{};
-    ubo.hasEmissiveTexture = 1;
-    EXPECT_EQ(ubo.hasEmissiveTexture, 1);
-}
-
-TEST(UBO, MaterialUBOHasNormalTextureDefaultsToZero)
-{
-    MaterialUBO ubo{};
-    EXPECT_EQ(ubo.hasNormalTexture, 0);
+    ubo.textureFlags[1] = 1;
+    EXPECT_EQ(ubo.textureFlags[1], 1);
 }
 
 TEST(UBO, MaterialUBOHasNormalTextureCanBeSet)
 {
     MaterialUBO ubo{};
-    ubo.hasNormalTexture = 1;
-    EXPECT_EQ(ubo.hasNormalTexture, 1);
-}
-
-TEST(UBO, MaterialUBOHasMetallicRoughnessTextureDefaultsToZero)
-{
-    MaterialUBO ubo{};
-    EXPECT_EQ(ubo.hasMetallicRoughnessTexture, 0);
+    ubo.textureFlags[2] = 1;
+    EXPECT_EQ(ubo.textureFlags[2], 1);
 }
 
 TEST(UBO, MaterialUBOHasMetallicRoughnessTextureCanBeSet)
 {
     MaterialUBO ubo{};
-    ubo.hasMetallicRoughnessTexture = 1;
-    EXPECT_EQ(ubo.hasMetallicRoughnessTexture, 1);
-}
-
-TEST(UBO, MaterialUBOHasOcclusionTextureDefaultsToZero)
-{
-    MaterialUBO ubo{};
-    EXPECT_EQ(ubo.hasOcclusionTexture, 0);
+    ubo.textureFlags[3] = 1;
+    EXPECT_EQ(ubo.textureFlags[3], 1);
 }
 
 TEST(UBO, MaterialUBOHasOcclusionTextureCanBeSet)
 {
     MaterialUBO ubo{};
-    ubo.hasOcclusionTexture = 1;
-    EXPECT_EQ(ubo.hasOcclusionTexture, 1);
+    ubo.extraFlags[0] = 1;
+    EXPECT_EQ(ubo.extraFlags[0], 1);
 }
 
 TEST(UBO, MaterialUBOTextureFlagsFieldOrder)
 {
-    static_assert(offsetof(MaterialUBO, hasTexture) < offsetof(MaterialUBO, hasEmissiveTexture),
-                  "hasTexture must precede hasEmissiveTexture to match shader layout");
-    static_assert(offsetof(MaterialUBO, hasEmissiveTexture) <
-                      offsetof(MaterialUBO, hasNormalTexture),
-                  "hasEmissiveTexture must precede hasNormalTexture to match shader layout");
-    static_assert(offsetof(MaterialUBO, hasNormalTexture) <
-                      offsetof(MaterialUBO, hasMetallicRoughnessTexture),
-                  "hasNormalTexture must precede hasMetallicRoughnessTexture to match shader "
-                  "layout");
-    static_assert(offsetof(MaterialUBO, hasMetallicRoughnessTexture) <
-                      offsetof(MaterialUBO, hasOcclusionTexture),
-                  "hasMetallicRoughnessTexture must precede hasOcclusionTexture to match shader "
-                  "layout");
+    static_assert(offsetof(MaterialUBO, textureFlags) % 16 == 0,
+                  "textureFlags must be 16-byte aligned for std140 ivec4");
+    static_assert(offsetof(MaterialUBO, extraFlags) % 16 == 0,
+                  "extraFlags must be 16-byte aligned for std140 ivec4");
     SUCCEED();
 }
 
@@ -209,6 +185,8 @@ TEST(UBO, LightUBODefaults)
         EXPECT_FLOAT_EQ(ubo.direction[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.colour[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.iblParams[i], 0.0f);
+        EXPECT_FLOAT_EQ(ubo.shadowParams[i], 0.0f);
+        EXPECT_FLOAT_EQ(ubo.environmentParams[i], 0.0f);
     }
 }
 
@@ -220,6 +198,10 @@ TEST(UBO, LightUBOFieldOrder)
                   "colour must precede lightViewProj to match shader layout");
     static_assert(offsetof(LightUBO, lightViewProj) < offsetof(LightUBO, iblParams),
                   "lightViewProj must precede iblParams to match shader layout");
+    static_assert(offsetof(LightUBO, iblParams) < offsetof(LightUBO, shadowParams),
+                  "iblParams must precede shadowParams to match shader layout");
+    static_assert(offsetof(LightUBO, shadowParams) < offsetof(LightUBO, environmentParams),
+                  "shadowParams must precede environmentParams to match shader layout");
     SUCCEED();
 }
 
@@ -233,6 +215,10 @@ TEST(UBO, LightUBODirectionAligned16)
                   "lightViewProj must be 16-byte aligned for std140 mat4");
     static_assert(offsetof(LightUBO, iblParams) % 16 == 0,
                   "iblParams must be 16-byte aligned for std140 vec4");
+    static_assert(offsetof(LightUBO, shadowParams) % 16 == 0,
+                  "shadowParams must be 16-byte aligned for std140 vec4");
+    static_assert(offsetof(LightUBO, environmentParams) % 16 == 0,
+                  "environmentParams must be 16-byte aligned for std140 vec4");
     SUCCEED();
 }
 

@@ -28,10 +28,12 @@ TEST(PipelineConfig, SkyboxConfigIncludesCubemapSamplerBinding)
 {
     auto config = Pipeline::skyboxConfig({});
 
-    ASSERT_EQ(config.bindings.size(), 2u);
+    ASSERT_EQ(config.bindings.size(), 3u);
     EXPECT_EQ(config.bindings[0].binding, 0u);
     EXPECT_EQ(config.bindings[1].binding, 1u);
     EXPECT_EQ(config.bindings[1].descriptorType, vk::DescriptorType::eCombinedImageSampler);
+    EXPECT_EQ(config.bindings[2].binding, 2u);
+    EXPECT_EQ(config.bindings[2].descriptorType, vk::DescriptorType::eUniformBuffer);
 }
 
 TEST(PipelineConfig, EnvironmentConvertConfigIncludesPanoramaSamplerBinding)

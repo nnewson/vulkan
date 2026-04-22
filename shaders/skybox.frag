@@ -9,6 +9,15 @@ layout(binding = 0) uniform SkyboxUBO {
 
 layout(binding = 1) uniform samplerCube skyboxMap;
 
+layout(binding = 2) uniform LightUBO {
+    vec4 direction;
+    vec4 colour;
+    mat4 lightViewProj;
+    vec4 iblParams;
+    vec4 shadowParams;
+    vec4 environmentParams;
+} light;
+
 layout(location = 0) in vec2 fragUv;
 
 layout(location = 0) out vec4 outColor;
@@ -28,6 +37,6 @@ void main() {
                          + ndc.x * aspect * tanHalfFov * right
                          - ndc.y * tanHalfFov * up);
 
-    vec3 skyColor = texture(skyboxMap, dir).rgb;
+    vec3 skyColor = texture(skyboxMap, dir).rgb * light.environmentParams.x;
     outColor = vec4(skyColor, 1.0);
 }

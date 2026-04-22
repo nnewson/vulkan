@@ -183,6 +183,11 @@ public:
     createUboImageSamplerDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
                                      vk::DeviceSize uboSize, TextureHandle texture);
 
+    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+    createSkyboxDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& skyboxUbo,
+                            vk::DeviceSize skyboxUboSize, TextureHandle texture,
+                            const MappedBufferSet& lightUbo, vk::DeviceSize lightUboSize);
+
     // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout with a
     // single combined-image-sampler binding at slot 0, writing the texture's
     // view + sampler into each. Used by the post-process pass to sample the

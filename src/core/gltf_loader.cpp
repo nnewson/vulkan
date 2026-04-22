@@ -1014,9 +1014,8 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             }
             else
             {
-                std::string meshName =
-                    mesh.name.empty() ? "mesh[" + std::to_string(meshIndex) + "]"
-                                      : std::string(mesh.name);
+                std::string meshName = mesh.name.empty() ? "mesh[" + std::to_string(meshIndex) + "]"
+                                                         : std::string(mesh.name);
                 std::cerr << "Warning: Skipping tangent-space normal map for " << meshName
                           << " primitive " << primIdx << ": " << tangentResult.reason << '\n';
             }
@@ -1045,6 +1044,7 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         material.diffuse({static_cast<float>(pbr.baseColorFactor.x()),
                           static_cast<float>(pbr.baseColorFactor.y()),
                           static_cast<float>(pbr.baseColorFactor.z())});
+        material.alpha(static_cast<float>(pbr.baseColorFactor.w()));
         material.metallic(static_cast<float>(pbr.metallicFactor));
         material.roughness(static_cast<float>(pbr.roughnessFactor));
 

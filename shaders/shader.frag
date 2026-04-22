@@ -8,28 +8,11 @@ layout(binding = 0) uniform UBO {
 } ubo;
 
 layout(binding = 1) uniform MaterialUBO {
-    vec3 ambient;
-    vec3 diffuse;
-    vec3 specular;
-    vec3 emissive;
-    float shininess;
-    float ior;
-    float transparency;
-    int illum;
-    float roughness;
-    float metallic;
-    float sheen;
-    float clearcoat;
-    float clearcoatRoughness;
-    float anisotropy;
-    float anisotropyRotation;
-    float normalScale;
-    float alphaCutoff;
-    int hasTexture;
-    int hasEmissiveTexture;
-    int hasNormalTexture;
-    int hasMetallicRoughnessTexture;
-    int hasOcclusionTexture;
+    vec4 diffuseAlpha;
+    vec4 emissiveRoughness;
+    vec4 materialParams;
+    ivec4 textureFlags;
+    ivec4 extraFlags;
 } material;
 
 layout(binding = 2) uniform sampler2D texSampler;
@@ -48,6 +31,8 @@ layout(binding = 11) uniform LightUBO {
     vec4 colour;
     mat4 lightViewProj;
     vec4 iblParams;
+    vec4 shadowParams;
+    vec4 environmentParams;
 } light;
 
 layout(location = 0) in vec3 fragColor;
@@ -59,11 +44,6 @@ layout(location = 4) in mat3 fragTBN;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265359;
-const float specularIblStrength = 0.7;
-// Keep a little fill light so materials stay readable without flattening contrast.
-const float ambientStrength = 0.04;
-// Shadows should stay legible, but the ambient floor must not erase separation.
-const float shadowAmbientFloor = 0.15;
 
 // GGX/Trowbridge-Reitz normal distribution
 float distributionGGX(float NdotH, float alpha)
@@ -98,22 +78,35 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
                     pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-float computeShadow(vec3 worldPos)
+float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir)
 {
     vec4 lightSpace = light.lightViewProj * vec4(worldPos, 1.0);
     vec3 proj = lightSpace.xyz / lightSpace.w;
     proj.xy = proj.xy * 0.5 + 0.5;
     if (proj.z > 1.0 || proj.z < 0.0)
         return 1.0;
-    float bias = 0.0015;
-    return texture(shadowMap, vec3(proj.xy, proj.z - bias));
+
+    float minBias = light.shadowParams.x;
+    float slopeBias = light.shadowParams.y;
+    float filterRadius = light.shadowParams.z;
+    float bias = max(minBias, slopeBias * (1.0 - max(dot(normal, lightDir), 0.0)));
+
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
+    float visibility = 0.0;
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            vec2 offset = vec2(x, y) * texelSize * filterRadius;
+            visibility += texture(shadowMap, vec3(proj.xy + offset, proj.z - bias));
+        }
+    }
+    return visibility / 9.0;
 }
 
 void main() {
     vec3 N;
-    if (material.hasNormalTexture == 1) {
+    if (material.textureFlags.z == 1) {
         vec3 mapNormal = texture(normalMap, fragTexCoord).rgb * 2.0 - 1.0;
-        mapNormal.xy *= material.normalScale;
+        mapNormal.xy *= material.materialParams.y;
         N = normalize(fragTBN * mapNormal);
     } else {
         N = normalize(fragNormal);
@@ -131,105 +124,71 @@ void main() {
 
     // Sample base colour texture once
     vec4 texColor = vec4(1.0);
-    if (material.hasTexture == 1) {
+    if (material.textureFlags.x == 1) {
         texColor = texture(texSampler, fragTexCoord);
     }
-    vec3 baseColor = material.diffuse * fragColor * texColor.rgb;
+    vec3 baseColor = material.diffuseAlpha.rgb * fragColor * texColor.rgb;
 
     // Alpha
-    float alpha;
-    if (material.hasTexture == 1) {
-        alpha = (1.0 - material.transparency) * texColor.a;
-    } else {
-        alpha = 1.0 - material.transparency;
+    float alpha = material.diffuseAlpha.a;
+    if (material.textureFlags.x == 1) {
+        alpha *= texColor.a;
     }
-    if (alpha < material.alphaCutoff) discard;
+    if (alpha < material.materialParams.z) discard;
 
     // Metallic/roughness — sample from texture if available
-    float roughness = material.roughness;
-    float metallic = material.metallic;
-    if (material.hasMetallicRoughnessTexture == 1) {
+    float roughness = material.emissiveRoughness.a;
+    float metallic = material.materialParams.x;
+    if (material.textureFlags.w == 1) {
         vec4 mrSample = texture(metallicRoughnessMap, fragTexCoord);
         roughness *= mrSample.g;
         metallic *= mrSample.b;
     }
     roughness = clamp(roughness, 0.04, 1.0);
 
-    // Choose PBR path (glTF) vs legacy Blinn-Phong path (OBJ/MTL)
-    vec3 diffuseTerm;
-    vec3 specularTerm;
+    vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+    float a = roughness * roughness;
+    float D = distributionGGX(NdotH, a);
+    float G = geometrySmith(NdotV, NdotL, roughness);
+    vec3 F = fresnelSchlick(VdotH, F0);
 
-    if (material.specular == vec3(0.0)) {
-        // --- Cook-Torrance PBR path (glTF materials) ---
-        vec3 F0 = mix(vec3(0.04), baseColor, metallic);
-        float a = roughness * roughness;
+    vec3 numerator = D * G * F;
+    float denominator = 4.0 * NdotV * NdotL + 0.0001;
+    vec3 specularTerm = (numerator / denominator) * lightColor * NdotL;
 
-        float D = distributionGGX(NdotH, a);
-        float G = geometrySmith(NdotV, NdotL, roughness);
-        vec3  F = fresnelSchlick(VdotH, F0);
+    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+    vec3 diffuseTerm = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
 
-        vec3 numerator = D * G * F;
-        float denominator = 4.0 * NdotV * NdotL + 0.0001;
-        specularTerm = (numerator / denominator) * lightColor * NdotL;
+    vec3 ambientF = fresnelSchlickRoughness(NdotV, F0, roughness);
+    vec3 ambientKD = (vec3(1.0) - ambientF) * (1.0 - metallic);
+    vec3 irradiance = texture(irradianceMap, N).rgb;
+    vec3 diffuseIbl = irradiance * baseColor * ambientKD * light.iblParams.y;
+    vec3 R = reflect(-V, N);
+    float maxReflectionLod = light.iblParams.x;
+    vec3 prefilteredColor = textureLod(prefilteredMap, R, roughness * maxReflectionLod).rgb;
+    vec2 envBrdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
+    vec3 specularIbl =
+        prefilteredColor * (ambientF * envBrdf.x + envBrdf.y) * light.iblParams.z;
 
-        // Energy-conserving diffuse: metals have no diffuse
-        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-        diffuseTerm = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
-    } else {
-        // --- Legacy Blinn-Phong path (OBJ/MTL materials) ---
-        diffuseTerm = NdotL * baseColor;
-
-        float spec = 0.0;
-        if (NdotL > 0.0) {
-            float shine = max(material.shininess, 1.0) * max(1.0 - roughness, 0.01);
-            spec = pow(NdotH, shine);
-        }
-        specularTerm = spec * material.specular * (1.0 - roughness);
+    float ao = 1.0;
+    if (material.extraFlags.x == 1) {
+        ao = texture(occlusionMap, fragTexCoord).r;
     }
 
-    vec3 ambientBase;
-    if (material.specular == vec3(0.0)) {
-        vec3 F0 = mix(vec3(0.04), baseColor, metallic);
-        vec3 F = fresnelSchlickRoughness(NdotV, F0, roughness);
-        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-        vec3 irradiance = texture(irradianceMap, N).rgb;
-        vec3 diffuseIbl = irradiance * baseColor * kD;
-        vec3 R = reflect(-V, N);
-        float maxReflectionLod = light.iblParams.x;
-        vec3 prefilteredColor = textureLod(prefilteredMap, R, roughness * maxReflectionLod).rgb;
-        vec2 envBrdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
-        vec3 specularIbl = prefilteredColor * (F * envBrdf.x + envBrdf.y) * specularIblStrength;
-        ambientBase = diffuseIbl + specularIbl;
-    } else {
-        if (material.ambient == vec3(0.0)) {
-            vec3 F0 = mix(vec3(0.04), baseColor, metallic);
-            vec3 diffuseAmbient = baseColor;
-            vec3 specularAmbient = F0;
-            ambientBase = mix(diffuseAmbient, specularAmbient, metallic);
-        } else {
-            ambientBase = material.ambient;
-        }
-        ambientBase *= ambientStrength;
-    }
-    vec3 ambientTerm = ambientBase;
-    if (material.hasOcclusionTexture == 1) {
-        float ao = texture(occlusionMap, fragTexCoord).r;
-        ambientTerm *= ao;
-    }
+    vec3 diffuseAmbientTerm = diffuseIbl * ao;
+    float specularAo = mix(1.0, ao, 0.25);
+    vec3 specularAmbientTerm = specularIbl * specularAo;
+    vec3 ambientTerm = diffuseAmbientTerm + specularAmbientTerm;
 
     // Emissive
-    vec3 emissiveTerm = material.emissive;
-    if (material.hasEmissiveTexture == 1) {
+    vec3 emissiveTerm = material.emissiveRoughness.rgb;
+    if (material.textureFlags.y == 1) {
         emissiveTerm *= texture(emissiveMap, fragTexCoord).rgb;
     }
 
-    float shadow = computeShadow(fragWorldPos);
+    float shadow = computeShadow(fragWorldPos, N, lightDir);
     diffuseTerm *= shadow;
     specularTerm *= shadow;
-
-    if (material.specular != vec3(0.0)) {
-        ambientTerm *= mix(shadowAmbientFloor, 1.0, shadow);
-    }
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
     outColor = vec4(color, alpha);

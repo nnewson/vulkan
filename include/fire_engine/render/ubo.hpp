@@ -20,28 +20,11 @@ struct UniformBufferObject
 
 struct MaterialUBO
 {
-    alignas(16) float ambient[3];
-    alignas(16) float diffuse[3];
-    alignas(16) float specular[3];
-    alignas(16) float emissive[3];
-    float shininess;
-    float ior;
-    float transparency;
-    int illum;
-    float roughness;
-    float metallic;
-    float sheen;
-    float clearcoat;
-    float clearcoatRoughness;
-    float anisotropy;
-    float anisotropyRotation;
-    float normalScale;
-    float alphaCutoff;
-    int hasTexture{0};
-    int hasEmissiveTexture{0};
-    int hasNormalTexture{0};
-    int hasMetallicRoughnessTexture{0};
-    int hasOcclusionTexture{0};
+    alignas(16) float diffuseAlpha[4]{};
+    alignas(16) float emissiveRoughness[4]{};
+    alignas(16) float materialParams[4]{};
+    alignas(16) int textureFlags[4]{};
+    alignas(16) int extraFlags[4]{};
 };
 
 struct SkinUBO
@@ -79,7 +62,9 @@ struct LightUBO
     alignas(16) float direction[4]{}; // xyz normalised, w unused
     alignas(16) float colour[4]{};    // rgb, a = intensity
     alignas(16) Mat4 lightViewProj{};
-    alignas(16) float iblParams[4]{}; // x = maxReflectionLod
+    alignas(16) float iblParams[4]{};         // x = maxReflectionLod, y/z = IBL strengths
+    alignas(16) float shadowParams[4]{};      // x = minBias, y = slopeBias, z = filterRadius
+    alignas(16) float environmentParams[4]{}; // x = skyboxIntensity
 };
 
 struct EnvironmentPrefilterPushConstants

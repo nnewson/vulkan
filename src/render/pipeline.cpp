@@ -108,6 +108,7 @@ PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
     config.bindings = {
         {0, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
         {1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        {2, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
     config.useVertexInput = false;

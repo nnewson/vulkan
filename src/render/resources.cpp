@@ -307,8 +307,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
 }
 
 TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t faceExtent,
-                                              uint32_t mipLevels,
-                                              const SamplerSettings& sampler)
+                                              uint32_t mipLevels, const SamplerSettings& sampler)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
@@ -407,8 +406,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
         vk::SamplerMipmapMode::eLinear, toVkAddressMode(sampler.wrapS),
         toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS), 0.0f, vk::True,
         props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f,
-        static_cast<float>(mipLevels - 1),
-        vk::BorderColor::eFloatOpaqueBlack, vk::False);
+        static_cast<float>(mipLevels - 1), vk::BorderColor::eFloatOpaqueBlack, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
     return TextureHandle{id};
@@ -451,8 +449,7 @@ TextureHandle Resources::createRenderTargetCubemap(uint32_t faceExtent, uint32_t
         vk::SamplerMipmapMode::eLinear, toVkAddressMode(sampler.wrapS),
         toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS), 0.0f, vk::True,
         props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f,
-        static_cast<float>(mipLevels - 1),
-        vk::BorderColor::eFloatOpaqueBlack, vk::False);
+        static_cast<float>(mipLevels - 1), vk::BorderColor::eFloatOpaqueBlack, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
     return TextureHandle{id};
@@ -767,19 +764,19 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                                                   vk::ImageLayout::eDepthStencilReadOnlyOptimal);
 
             auto irradianceTexIdx = static_cast<uint32_t>(req.irradianceMap);
-            vk::DescriptorImageInfo irradianceTexInfo(
-                *textures_[irradianceTexIdx].sampler, *textures_[irradianceTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo irradianceTexInfo(*textures_[irradianceTexIdx].sampler,
+                                                      *textures_[irradianceTexIdx].view,
+                                                      vk::ImageLayout::eShaderReadOnlyOptimal);
 
             auto prefilteredTexIdx = static_cast<uint32_t>(req.prefilteredMap);
-            vk::DescriptorImageInfo prefilteredTexInfo(
-                *textures_[prefilteredTexIdx].sampler, *textures_[prefilteredTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo prefilteredTexInfo(*textures_[prefilteredTexIdx].sampler,
+                                                       *textures_[prefilteredTexIdx].view,
+                                                       vk::ImageLayout::eShaderReadOnlyOptimal);
 
             auto brdfLutTexIdx = static_cast<uint32_t>(req.brdfLut);
-            vk::DescriptorImageInfo brdfLutTexInfo(
-                *textures_[brdfLutTexIdx].sampler, *textures_[brdfLutTexIdx].view,
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo brdfLutTexInfo(*textures_[brdfLutTexIdx].sampler,
+                                                   *textures_[brdfLutTexIdx].view,
+                                                   vk::ImageLayout::eShaderReadOnlyOptimal);
 
             std::array<vk::WriteDescriptorSet, 15> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
@@ -794,8 +791,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 9, 0, 1, vk::DescriptorType::eCombinedImageSampler, &occTexInfo},
                 {*sets[i], 10, 0, 1, vk::DescriptorType::eCombinedImageSampler, &shadowTexInfo},
                 {*sets[i], 11, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
-                {*sets[i], 12, 0, 1, vk::DescriptorType::eCombinedImageSampler,
-                 &irradianceTexInfo},
+                {*sets[i], 12, 0, 1, vk::DescriptorType::eCombinedImageSampler, &irradianceTexInfo},
                 {*sets[i], 13, 0, 1, vk::DescriptorType::eCombinedImageSampler,
                  &prefilteredTexInfo},
                 {*sets[i], 14, 0, 1, vk::DescriptorType::eCombinedImageSampler, &brdfLutTexInfo},
@@ -916,6 +912,41 @@ Resources::createUboImageSamplerDescriptors(vk::DescriptorSetLayout layout,
         std::array<vk::WriteDescriptorSet, 2> writes = {{
             {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &bufInfo},
             {*sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
+        }};
+        device_->device().updateDescriptorSets(writes, {});
+        result[i] = registerDescriptorSet(*sets[i]);
+    }
+
+    retainDescriptorSets(poolEntry, sets);
+    return result;
+}
+
+std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+Resources::createSkyboxDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& skyboxUbo,
+                                   vk::DeviceSize skyboxUboSize, TextureHandle texture,
+                                   const MappedBufferSet& lightUbo, vk::DeviceSize lightUboSize)
+{
+    std::array<vk::DescriptorPoolSize, 2> poolSizes = {{
+        {vk::DescriptorType::eUniformBuffer, MAX_FRAMES_IN_FLIGHT * 2},
+        {vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT},
+    }};
+    auto& poolEntry = createDescriptorPool(poolSizes, MAX_FRAMES_IN_FLIGHT);
+    auto sets = allocateDescriptorSets(*poolEntry.pool, layout, MAX_FRAMES_IN_FLIGHT);
+
+    auto texIdx = static_cast<uint32_t>(texture);
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vk::DescriptorBufferInfo skyboxBufInfo(
+            *buffers_[static_cast<uint32_t>(skyboxUbo.buffers[i])].buffer, 0, skyboxUboSize);
+        vk::DescriptorBufferInfo lightBufInfo(
+            *buffers_[static_cast<uint32_t>(lightUbo.buffers[i])].buffer, 0, lightUboSize);
+        vk::DescriptorImageInfo texInfo(*textures_[texIdx].sampler, *textures_[texIdx].view,
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+        std::array<vk::WriteDescriptorSet, 3> writes = {{
+            {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &skyboxBufInfo},
+            {*sets[i], 1, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
+            {*sets[i], 2, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &lightBufInfo},
         }};
         device_->device().updateDescriptorSets(writes, {});
         result[i] = registerDescriptorSet(*sets[i]);

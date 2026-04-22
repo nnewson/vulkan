@@ -24,6 +24,12 @@ namespace
 // Calibrated against the current ACES post-process so direct light stays crisp without washing out
 // midtones.
 constexpr float directionalLightIntensity = 0.95f;
+constexpr float diffuseIblStrength = 1.0f;
+constexpr float specularIblStrength = 0.7f;
+constexpr float skyboxIntensity = 1.0f;
+constexpr float shadowMinBias = 0.0008f;
+constexpr float shadowSlopeBias = 0.0035f;
+constexpr float shadowFilterRadius = 1.0f;
 
 struct EnvironmentConfig
 {
@@ -208,14 +214,14 @@ void Renderer::createSkyboxEnvironmentGpu()
 
     try
     {
-        skyboxCubemapHandle_ = resources_.createRenderTargetCubemap(
-            environmentConfig.skyboxCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat,
-            cubemapSampler);
+        skyboxCubemapHandle_ =
+            resources_.createRenderTargetCubemap(environmentConfig.skyboxCubemapExtent, 1,
+                                                 vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
 
         RenderPass environmentPass = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(skyboxCubemapHandle_));
-        Pipeline environmentPipeline(device_,
-                                     Pipeline::environmentConvertConfig(environmentPass.renderPass()));
+        Pipeline environmentPipeline(
+            device_, Pipeline::environmentConvertConfig(environmentPass.renderPass()));
 
         std::array<vk::ImageView, 6> faceViews = {
             resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 0),
@@ -239,12 +245,11 @@ void Renderer::createSkyboxEnvironmentGpu()
         auto& cmd = cmds[0];
         cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-        vk::Viewport viewport(0.0f, 0.0f,
-                              static_cast<float>(environmentConfig.skyboxCubemapExtent),
-                              static_cast<float>(environmentConfig.skyboxCubemapExtent), 0.0f, 1.0f);
-        vk::Rect2D renderArea({0, 0},
-                              {environmentConfig.skyboxCubemapExtent,
-                               environmentConfig.skyboxCubemapExtent});
+        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(environmentConfig.skyboxCubemapExtent),
+                              static_cast<float>(environmentConfig.skyboxCubemapExtent), 0.0f,
+                              1.0f);
+        vk::Rect2D renderArea(
+            {0, 0}, {environmentConfig.skyboxCubemapExtent, environmentConfig.skyboxCubemapExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -287,8 +292,9 @@ void Renderer::createSkyboxEnvironmentGpu()
     }
 
     resources_.releaseTexture(equirectHandle);
-    skyboxDescSets_ = resources_.createUboImageSamplerDescriptors(
-        skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_);
+    skyboxDescSets_ = resources_.createSkyboxDescriptors(
+        skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_,
+        lightUbo_, sizeof(LightUBO));
 }
 
 void Renderer::createIrradianceEnvironment()
@@ -300,8 +306,7 @@ void Renderer::createIrradianceEnvironment()
         sampler.wrapT = WrapMode::ClampToEdge;
 
         irradianceCubemapHandle_ = resources_.createRenderTargetCubemap(
-            environmentConfig.irradianceCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat,
-            sampler);
+            environmentConfig.irradianceCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat, sampler);
 
         RenderPass irradiancePass = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(irradianceCubemapHandle_));
@@ -330,13 +335,11 @@ void Renderer::createIrradianceEnvironment()
         auto& cmd = cmds[0];
         cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-        vk::Viewport viewport(0.0f, 0.0f,
-                              static_cast<float>(environmentConfig.irradianceCubemapExtent),
-                              static_cast<float>(environmentConfig.irradianceCubemapExtent), 0.0f,
-                              1.0f);
-        vk::Rect2D renderArea({0, 0},
-                              {environmentConfig.irradianceCubemapExtent,
-                               environmentConfig.irradianceCubemapExtent});
+        vk::Viewport viewport(
+            0.0f, 0.0f, static_cast<float>(environmentConfig.irradianceCubemapExtent),
+            static_cast<float>(environmentConfig.irradianceCubemapExtent), 0.0f, 1.0f);
+        vk::Rect2D renderArea({0, 0}, {environmentConfig.irradianceCubemapExtent,
+                                       environmentConfig.irradianceCubemapExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -386,10 +389,10 @@ void Renderer::createPrefilteredEnvironment()
         sampler.wrapS = WrapMode::ClampToEdge;
         sampler.wrapT = WrapMode::ClampToEdge;
 
-        prefilteredCubemapHandle_ = resources_.createRenderTargetCubemap(
-            environmentConfig.prefilteredCubemapExtent,
-            environmentConfig.prefilteredCubemapMipLevels, vk::Format::eR32G32B32A32Sfloat,
-            sampler);
+        prefilteredCubemapHandle_ =
+            resources_.createRenderTargetCubemap(environmentConfig.prefilteredCubemapExtent,
+                                                 environmentConfig.prefilteredCubemapMipLevels,
+                                                 vk::Format::eR32G32B32A32Sfloat, sampler);
 
         RenderPass prefilterPassTemplate = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(prefilteredCubemapHandle_));
@@ -433,11 +436,11 @@ void Renderer::createPrefilteredEnvironment()
         mipExtent = environmentConfig.prefilteredCubemapExtent;
         for (uint32_t level = 0; level < environmentConfig.prefilteredCubemapMipLevels; ++level)
         {
-            float roughness = environmentConfig.prefilteredCubemapMipLevels > 1
-                                  ? static_cast<float>(level) /
-                                        static_cast<float>(
-                                            environmentConfig.prefilteredCubemapMipLevels - 1)
-                                  : 0.0f;
+            float roughness =
+                environmentConfig.prefilteredCubemapMipLevels > 1
+                    ? static_cast<float>(level) /
+                          static_cast<float>(environmentConfig.prefilteredCubemapMipLevels - 1)
+                    : 0.0f;
 
             vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(mipExtent),
                                   static_cast<float>(mipExtent), 0.0f, 1.0f);
@@ -451,8 +454,8 @@ void Renderer::createPrefilteredEnvironment()
                 capture.roughness = roughness;
 
                 vk::RenderPassBeginInfo beginInfo(prefilterPasses[level].renderPass(),
-                                                  prefilterPasses[level].framebuffer(face), renderArea,
-                                                  clearColour);
+                                                  prefilterPasses[level].framebuffer(face),
+                                                  renderArea, clearColour);
                 cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
                 cmd.setViewport(0, viewport);
                 cmd.setScissor(0, renderArea);
@@ -492,8 +495,8 @@ void Renderer::createBrdfLut()
         brdfLutHandle_ = resources_.createOffscreenColourTarget(
             {environmentConfig.brdfLutExtent, environmentConfig.brdfLutExtent});
 
-        RenderPass brdfPass = RenderPass::createOffscreenColour(
-            device_, resources_.textureFormat(brdfLutHandle_));
+        RenderPass brdfPass =
+            RenderPass::createOffscreenColour(device_, resources_.textureFormat(brdfLutHandle_));
         Pipeline brdfPipeline(device_, Pipeline::brdfIntegrationConfig(brdfPass.renderPass()));
 
         std::array<vk::ImageView, 1> views = {resources_.vulkanImageView(brdfLutHandle_)};
@@ -509,8 +512,8 @@ void Renderer::createBrdfLut()
 
         vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(environmentConfig.brdfLutExtent),
                               static_cast<float>(environmentConfig.brdfLutExtent), 0.0f, 1.0f);
-        vk::Rect2D renderArea(
-            {0, 0}, {environmentConfig.brdfLutExtent, environmentConfig.brdfLutExtent});
+        vk::Rect2D renderArea({0, 0},
+                              {environmentConfig.brdfLutExtent, environmentConfig.brdfLutExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -555,10 +558,16 @@ void Renderer::updateLightData()
     lightData.colour[2] = 1.0f;
     lightData.colour[3] = directionalLightIntensity;
     lightData.lightViewProj = lightViewProj_;
-    uint32_t mipLevels =
-        prefilteredCubemapHandle_ != NullTexture ? resources_.textureMipLevels(prefilteredCubemapHandle_)
-                                                 : 1u;
+    uint32_t mipLevels = prefilteredCubemapHandle_ != NullTexture
+                             ? resources_.textureMipLevels(prefilteredCubemapHandle_)
+                             : 1u;
     lightData.iblParams[0] = static_cast<float>(mipLevels > 0 ? mipLevels - 1 : 0);
+    lightData.iblParams[1] = diffuseIblStrength;
+    lightData.iblParams[2] = specularIblStrength;
+    lightData.shadowParams[0] = shadowMinBias;
+    lightData.shadowParams[1] = shadowSlopeBias;
+    lightData.shadowParams[2] = shadowFilterRadius;
+    lightData.environmentParams[0] = skyboxIntensity;
     std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
 }
 

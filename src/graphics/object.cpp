@@ -238,36 +238,22 @@ void Object::load(Resources& resources)
 MaterialUBO Object::toMaterialUBO(const Material& mat)
 {
     MaterialUBO ubo{};
-    ubo.ambient[0] = mat.ambient().r();
-    ubo.ambient[1] = mat.ambient().g();
-    ubo.ambient[2] = mat.ambient().b();
-    ubo.diffuse[0] = mat.diffuse().r();
-    ubo.diffuse[1] = mat.diffuse().g();
-    ubo.diffuse[2] = mat.diffuse().b();
-    ubo.specular[0] = mat.specular().r();
-    ubo.specular[1] = mat.specular().g();
-    ubo.specular[2] = mat.specular().b();
-    ubo.emissive[0] = mat.emissive().r();
-    ubo.emissive[1] = mat.emissive().g();
-    ubo.emissive[2] = mat.emissive().b();
-    ubo.shininess = mat.shininess();
-    ubo.ior = mat.ior();
-    ubo.transparency = mat.transparency();
-    ubo.illum = mat.illum();
-    ubo.roughness = mat.roughness();
-    ubo.metallic = mat.metallic();
-    ubo.sheen = mat.sheen();
-    ubo.clearcoat = mat.clearcoat();
-    ubo.clearcoatRoughness = mat.clearcoatRoughness();
-    ubo.anisotropy = mat.anisotropy();
-    ubo.anisotropyRotation = mat.anisotropyRotation();
-    ubo.normalScale = mat.normalScale();
-    ubo.alphaCutoff = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
-    ubo.hasTexture = mat.hasTexture() ? 1 : 0;
-    ubo.hasEmissiveTexture = mat.hasEmissiveTexture() ? 1 : 0;
-    ubo.hasNormalTexture = mat.hasNormalTexture() ? 1 : 0;
-    ubo.hasMetallicRoughnessTexture = mat.hasMetallicRoughnessTexture() ? 1 : 0;
-    ubo.hasOcclusionTexture = mat.hasOcclusionTexture() ? 1 : 0;
+    ubo.diffuseAlpha[0] = mat.diffuse().r();
+    ubo.diffuseAlpha[1] = mat.diffuse().g();
+    ubo.diffuseAlpha[2] = mat.diffuse().b();
+    ubo.diffuseAlpha[3] = mat.alpha();
+    ubo.emissiveRoughness[0] = mat.emissive().r();
+    ubo.emissiveRoughness[1] = mat.emissive().g();
+    ubo.emissiveRoughness[2] = mat.emissive().b();
+    ubo.emissiveRoughness[3] = mat.roughness();
+    ubo.materialParams[0] = mat.metallic();
+    ubo.materialParams[1] = mat.normalScale();
+    ubo.materialParams[2] = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
+    ubo.textureFlags[0] = mat.hasTexture() ? 1 : 0;
+    ubo.textureFlags[1] = mat.hasEmissiveTexture() ? 1 : 0;
+    ubo.textureFlags[2] = mat.hasNormalTexture() ? 1 : 0;
+    ubo.textureFlags[3] = mat.hasMetallicRoughnessTexture() ? 1 : 0;
+    ubo.extraFlags[0] = mat.hasOcclusionTexture() ? 1 : 0;
     return ubo;
 }
 
