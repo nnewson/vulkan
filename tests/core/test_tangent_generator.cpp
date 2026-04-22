@@ -128,3 +128,41 @@ TEST(TangentGenerator, FailsOnDegenerateUvMapping)
     EXPECT_FALSE(result.succeeded);
     EXPECT_EQ(result.reason, "degenerate UV mapping");
 }
+
+TEST(TangentGenerator, FallsBackForVerticesOnlyInDegenerateUvTriangles)
+{
+    std::vector<Vec3> positions = {
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {1.0f, 1.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {2.0f, 0.0f, 0.0f},
+        {2.0f, 1.0f, 0.0f},
+    };
+    std::vector<Vec3> normals(6, {0.0f, 0.0f, 1.0f});
+    std::vector<Vec2> texcoords = {
+        {0.0f, 0.0f},
+        {1.0f, 0.0f},
+        {1.0f, 1.0f},
+        {0.0f, 1.0f},
+        {2.0f, 0.0f},
+        {2.0f, 0.0f},
+    };
+    std::vector<uint32_t> indices = {
+        0, 1, 2,
+        0, 2, 3,
+        1, 4, 5,
+    };
+
+    auto result = TangentGenerator::generate(positions, normals, texcoords, indices);
+
+    ASSERT_TRUE(result.succeeded);
+    ASSERT_EQ(result.tangents.size(), positions.size());
+    for (const auto& tangent : result.tangents)
+    {
+        Vec3 tangentDir{tangent.x(), tangent.y(), tangent.z()};
+        EXPECT_GT(tangentDir.magnitudeSquared(), 0.0f);
+        EXPECT_NEAR(Vec3::dotProduct(Vec3{0.0f, 0.0f, 1.0f}, tangentDir), 0.0f, 1e-4f);
+        EXPECT_TRUE(std::abs(tangent.w()) == 1.0f);
+    }
+}

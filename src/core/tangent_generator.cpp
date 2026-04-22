@@ -19,6 +19,19 @@ constexpr float tangentEpsilon = 1e-8f;
     return result;
 }
 
+[[nodiscard]] Vec4 fallbackTangentFromNormal(const Vec3& normal)
+{
+    Vec3 up = std::abs(normal.z()) < 0.999f ? Vec3{0.0f, 0.0f, 1.0f} : Vec3{0.0f, 1.0f, 0.0f};
+    Vec3 tangent = Vec3::crossProduct(up, normal);
+    if (tangent.magnitudeSquared() <= tangentEpsilon)
+    {
+        up = Vec3{1.0f, 0.0f, 0.0f};
+        tangent = Vec3::crossProduct(up, normal);
+    }
+    tangent = Vec3::normalise(tangent);
+    return Vec4{tangent.x(), tangent.y(), tangent.z(), 1.0f};
+}
+
 } // namespace
 
 TangentGenerationResult TangentGenerator::generate(const std::vector<Vec3>& positions,
@@ -114,21 +127,23 @@ TangentGenerationResult TangentGenerator::generate(const std::vector<Vec3>& posi
 
     for (std::size_t i = 0; i < positions.size(); ++i)
     {
-        if (!contributed[i])
-        {
-            return failure("failed to generate tangents for one or more vertices");
-        }
-
         Vec3 normal = Vec3::normalise(normals[i]);
         if (normal.magnitudeSquared() <= tangentEpsilon)
         {
             return failure("missing normals");
         }
 
+        if (!contributed[i])
+        {
+            result.tangents[i] = fallbackTangentFromNormal(normal);
+            continue;
+        }
+
         Vec3 tangent = tan1[i] - normal * Vec3::dotProduct(normal, tan1[i]);
         if (tangent.magnitudeSquared() <= tangentEpsilon)
         {
-            return failure("degenerate tangent frame");
+            result.tangents[i] = fallbackTangentFromNormal(normal);
+            continue;
         }
 
         tangent = Vec3::normalise(tangent);
