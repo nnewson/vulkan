@@ -16,6 +16,7 @@
 #include <fire_engine/render/render_pass.hpp>
 #include <fire_engine/render/resources.hpp>
 #include <fire_engine/render/swapchain.hpp>
+#include <fire_engine/render/ubo.hpp>
 
 namespace fire_engine
 {
@@ -97,6 +98,7 @@ private:
     void transitionOffscreenForSampling(vk::CommandBuffer cmd);
     void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void createSkyboxEnvironment();
+    void createSkyboxEnvironmentGpu();
     void createIrradianceEnvironment();
     void createPrefilteredEnvironment();
     void createBrdfLut();

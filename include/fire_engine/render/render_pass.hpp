@@ -1,5 +1,6 @@
 #pragma once
 
+#include <span>
 #include <vector>
 
 #include <vulkan/vulkan_raii.hpp>
@@ -56,6 +57,16 @@ public:
     // Builds one framebuffer per swapchain image, each wrapping the
     // swapchain's colour view at the swapchain extent.
     void createPostProcessFramebuffers(const Device& device, const Swapchain& swapchain);
+
+    // Creates a colour-only render pass for utility offscreen rendering,
+    // ending in shader-read layout.
+    [[nodiscard]] static RenderPass createOffscreenColour(const Device& device,
+                                                          vk::Format colourFormat);
+
+    // Builds one framebuffer per provided colour view at the given square
+    // extent. Used by cubemap face utility passes.
+    void createColourFramebuffers(const Device& device, std::span<const vk::ImageView> colourViews,
+                                  uint32_t extent);
 
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {

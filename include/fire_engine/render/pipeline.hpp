@@ -16,6 +16,7 @@ struct PipelineConfig
     std::string vertShaderPath;
     std::string fragShaderPath;
     std::vector<vk::DescriptorSetLayoutBinding> bindings;
+    std::vector<vk::PushConstantRange> pushConstantRanges;
     vk::RenderPass renderPass{};
     bool useVertexInput{true};
     bool depthTestEnable{true};
@@ -80,6 +81,11 @@ public:
     // drawn.
     [[nodiscard]] static PipelineConfig skyboxConfig(vk::RenderPass renderPass);
 
+    // Factory producing the PipelineConfig for equirectangular HDR ->
+    // cubemap conversion. Draws a fullscreen triangle with no vertex input,
+    // sampling a 2D panorama and writing one cubemap face at a time.
+    [[nodiscard]] static PipelineConfig environmentConvertConfig(vk::RenderPass renderPass);
+
     // Factory producing the PipelineConfig for a depth-only shadow pipeline.
     // Writes only depth into an offscreen D32_SFLOAT attachment (no colour
     // attachment). Uses front-face culling and depth bias to eliminate
@@ -101,7 +107,7 @@ private:
     [[nodiscard]] std::array<vk::PipelineShaderStageCreateInfo, 2>
     createShaderStages(const PipelineConfig& config, vk::raii::ShaderModule& vertMod,
                        vk::raii::ShaderModule& fragMod) const;
-    void createPipelineLayout();
+    void createPipelineLayout(const PipelineConfig& config);
 
     const vk::raii::Device* device_{nullptr};
     vk::raii::DescriptorSetLayout descSetLayout_{nullptr};

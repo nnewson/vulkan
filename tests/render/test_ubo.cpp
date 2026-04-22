@@ -8,6 +8,7 @@
 using fire_engine::LightUBO;
 using fire_engine::MaterialUBO;
 using fire_engine::MorphUBO;
+using fire_engine::EnvironmentCaptureUBO;
 using fire_engine::ShadowUBO;
 using fire_engine::SkinUBO;
 using fire_engine::UniformBufferObject;
@@ -186,6 +187,18 @@ TEST(UBO, SkinUBOSize)
 TEST(UBO, LightUBOSize)
 {
     EXPECT_EQ(sizeof(LightUBO) % 16, 0u);
+}
+
+TEST(UBO, EnvironmentCaptureUBOSize)
+{
+    EXPECT_EQ(sizeof(EnvironmentCaptureUBO) % 16, 0u);
+}
+
+TEST(UBO, EnvironmentCaptureUBODefaultFaceIndexIsZero)
+{
+    EnvironmentCaptureUBO ubo{};
+    EXPECT_EQ(ubo.faceIndex, 0);
+    EXPECT_EQ(ubo.faceExtent, 0);
 }
 
 TEST(UBO, LightUBODefaults)

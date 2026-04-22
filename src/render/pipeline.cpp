@@ -3,6 +3,7 @@
 #include <fire_engine/core/shader_loader.hpp>
 #include <fire_engine/graphics/vertex.hpp>
 #include <fire_engine/render/pipeline.hpp>
+#include <fire_engine/render/ubo.hpp>
 
 namespace fire_engine
 {
@@ -116,6 +117,24 @@ PipelineConfig Pipeline::skyboxConfig(vk::RenderPass renderPass)
     return config;
 }
 
+PipelineConfig Pipeline::environmentConvertConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "skybox.vert.spv";
+    config.fragShaderPath = "environment_convert.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.pushConstantRanges.emplace_back(vk::ShaderStageFlagBits::eFragment, 0,
+                                           static_cast<uint32_t>(sizeof(EnvironmentCaptureUBO)));
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
 void Pipeline::createDescriptorSetLayout(
     const std::vector<vk::DescriptorSetLayoutBinding>& bindings)
 {
@@ -173,7 +192,7 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
 
     vk::PipelineColorBlendStateCreateInfo colourBlend({}, false, {}, colourBlendAtt);
 
-    createPipelineLayout();
+    createPipelineLayout(config);
 
     const vk::PipelineColorBlendStateCreateInfo* colourBlendPtr = &colourBlend;
 
@@ -203,9 +222,9 @@ Pipeline::createShaderStages(const PipelineConfig& config, vk::raii::ShaderModul
     }};
 }
 
-void Pipeline::createPipelineLayout()
+void Pipeline::createPipelineLayout(const PipelineConfig& config)
 {
-    vk::PipelineLayoutCreateInfo plci({}, *descSetLayout_);
+    vk::PipelineLayoutCreateInfo plci({}, *descSetLayout_, config.pushConstantRanges);
     pipelineLayout_ = vk::raii::PipelineLayout(*device_, plci);
 }
 

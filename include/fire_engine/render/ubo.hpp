@@ -66,6 +66,14 @@ struct SkyboxUBO
     alignas(16) float viewParams[4]{}; // x = tanHalfFov, y = aspect
 };
 
+struct EnvironmentCaptureUBO
+{
+    alignas(4) int faceIndex{0};
+    alignas(4) int faceExtent{0};
+    int _pad1{0};
+    int _pad2{0};
+};
+
 struct LightUBO
 {
     alignas(16) float direction[4]{}; // xyz normalised, w unused

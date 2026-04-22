@@ -122,6 +122,7 @@ constexpr EnvironmentConfig environmentConfig{};
     }
 }
 
+
 [[nodiscard]] Vec3 directionForCubemapFace(uint32_t face, float u, float v)
 {
     switch (face)
@@ -407,53 +408,104 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
 
 void Renderer::createSkyboxEnvironment()
 {
+    createSkyboxEnvironmentGpu();
+}
+
+void Renderer::createSkyboxEnvironmentGpu()
+{
     Image hdr = loadEnvironmentImage(environmentPath_, "skybox cubemap creation");
-    std::vector<float> cubemapPixels(static_cast<std::size_t>(environmentConfig.skyboxCubemapExtent) *
-                                     environmentConfig.skyboxCubemapExtent * 4 * 6);
 
-    for (uint32_t face = 0; face < 6; ++face)
-    {
-        for (uint32_t y = 0; y < environmentConfig.skyboxCubemapExtent; ++y)
-        {
-            for (uint32_t x = 0; x < environmentConfig.skyboxCubemapExtent; ++x)
-            {
-                float u = (2.0f * (static_cast<float>(x) + 0.5f) /
-                           static_cast<float>(environmentConfig.skyboxCubemapExtent)) -
-                          1.0f;
-                float v = (2.0f * (static_cast<float>(y) + 0.5f) /
-                           static_cast<float>(environmentConfig.skyboxCubemapExtent)) -
-                          1.0f;
-                Vec3 dir = directionForCubemapFace(face, u, -v);
-                auto sample = sampleEquirectangular(hdr, dir);
+    SamplerSettings sourceSampler{};
+    sourceSampler.wrapS = WrapMode::Repeat;
+    sourceSampler.wrapT = WrapMode::ClampToEdge;
 
-                std::size_t index =
-                    (static_cast<std::size_t>(face) * environmentConfig.skyboxCubemapExtent *
-                         environmentConfig.skyboxCubemapExtent +
-                     static_cast<std::size_t>(y) * environmentConfig.skyboxCubemapExtent +
-                     static_cast<std::size_t>(x)) *
-                    4;
-                cubemapPixels[index + 0] = sample[0];
-                cubemapPixels[index + 1] = sample[1];
-                cubemapPixels[index + 2] = sample[2];
-                cubemapPixels[index + 3] = 1.0f;
-            }
-        }
-    }
+    SamplerSettings cubemapSampler{};
+    cubemapSampler.wrapS = WrapMode::ClampToEdge;
+    cubemapSampler.wrapT = WrapMode::ClampToEdge;
 
-    SamplerSettings sampler{};
-    sampler.wrapS = WrapMode::ClampToEdge;
-    sampler.wrapT = WrapMode::ClampToEdge;
+    TextureHandle equirectHandle = resources_.createTexture(hdr, sourceSampler);
+
     try
     {
-        skyboxCubemapHandle_ = resources_.createCubemapTexture(
-            cubemapPixels.data(), environmentConfig.skyboxCubemapExtent, sampler);
+        skyboxCubemapHandle_ = resources_.createRenderTargetCubemap(
+            environmentConfig.skyboxCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat,
+            cubemapSampler);
+
+        RenderPass environmentPass = RenderPass::createOffscreenColour(
+            device_, resources_.textureFormat(skyboxCubemapHandle_));
+        Pipeline environmentPipeline(device_,
+                                     Pipeline::environmentConvertConfig(environmentPass.renderPass()));
+
+        std::array<vk::ImageView, 6> faceViews = {
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 0),
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 1),
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 2),
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 3),
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 4),
+            resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 5),
+        };
+        environmentPass.createColourFramebuffers(device_, faceViews,
+                                                 environmentConfig.skyboxCubemapExtent);
+
+        auto captureSets = resources_.createSingleImageSamplerDescriptors(
+            environmentPipeline.descriptorSetLayout(), equirectHandle);
+
+        vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
+                                         device_.graphicsFamily());
+        vk::raii::CommandPool commandPool(device_.device(), poolCi);
+        vk::CommandBufferAllocateInfo cmdAi(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+        auto cmds = device_.device().allocateCommandBuffers(cmdAi);
+        auto& cmd = cmds[0];
+        cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+
+        vk::Viewport viewport(0.0f, 0.0f,
+                              static_cast<float>(environmentConfig.skyboxCubemapExtent),
+                              static_cast<float>(environmentConfig.skyboxCubemapExtent), 0.0f, 1.0f);
+        vk::Rect2D renderArea({0, 0},
+                              {environmentConfig.skyboxCubemapExtent,
+                               environmentConfig.skyboxCubemapExtent});
+        vk::ClearValue clearColour(
+            vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            EnvironmentCaptureUBO capture{};
+            capture.faceIndex = static_cast<int>(face);
+            capture.faceExtent = static_cast<int>(environmentConfig.skyboxCubemapExtent);
+
+            vk::RenderPassBeginInfo beginInfo(environmentPass.renderPass(),
+                                              environmentPass.framebuffer(face), renderArea,
+                                              clearColour);
+            cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
+            cmd.setViewport(0, viewport);
+            cmd.setScissor(0, renderArea);
+            cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, environmentPipeline.pipeline());
+            vk::DescriptorSet ds = resources_.vulkanDescriptorSet(captureSets[0]);
+            cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
+                                   environmentPipeline.pipelineLayout(), 0, ds, {});
+            cmd.pushConstants<EnvironmentCaptureUBO>(environmentPipeline.pipelineLayout(),
+                                                     vk::ShaderStageFlagBits::eFragment, 0,
+                                                     capture);
+            cmd.draw(3, 1, 0, 0);
+            cmd.endRenderPass();
+        }
+
+        cmd.end();
+
+        vk::CommandBuffer rawCmd = *cmd;
+        vk::SubmitInfo submitInfo({}, {}, rawCmd);
+        device_.graphicsQueue().submit(submitInfo);
+        device_.graphicsQueue().waitIdle();
     }
     catch (const std::exception& e)
     {
+        resources_.releaseTexture(equirectHandle);
         throw std::runtime_error(std::string("Environment bootstrap failed during skybox cubemap "
-                                             "upload: ") +
+                                             "capture: ") +
                                  e.what());
     }
+
+    resources_.releaseTexture(equirectHandle);
     skyboxDescSets_ = resources_.createUboImageSamplerDescriptors(
         skyboxPipeline_.descriptorSetLayout(), skyboxUbo_, sizeof(SkyboxUBO), skyboxCubemapHandle_);
 }

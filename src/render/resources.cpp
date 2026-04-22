@@ -105,6 +105,23 @@ static std::size_t fallbackTextureIndex(Resources::FallbackTextureKind kind)
     return static_cast<std::size_t>(kind);
 }
 
+void Resources::createCubemapFaceViews(const Device& device, TextureEntry& entry)
+{
+    entry.faceViews.clear();
+    entry.faceViews.reserve(static_cast<std::size_t>(entry.mipLevels) * 6);
+
+    for (uint32_t mipLevel = 0; mipLevel < entry.mipLevels; ++mipLevel)
+    {
+        for (uint32_t face = 0; face < 6; ++face)
+        {
+            vk::ImageViewCreateInfo faceViewCi(
+                {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
+                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, mipLevel, 1, face, 1));
+            entry.faceViews.emplace_back(device.device(), faceViewCi);
+        }
+    }
+}
+
 TextureHandle Resources::createTexture(const Image& image, const SamplerSettings& sampler,
                                        TextureEncoding encoding)
 {
@@ -206,6 +223,7 @@ TextureHandle Resources::createTexture(const float* pixels, int width, int heigh
     textures_.emplace_back();
     auto& entry = textures_.back();
     entry.format = vk::Format::eR32G32B32A32Sfloat;
+    entry.mipLevels = 1;
 
     vk::DeviceSize imageSize = static_cast<vk::DeviceSize>(width) *
                                static_cast<vk::DeviceSize>(height) * 4 * sizeof(float);
@@ -296,6 +314,7 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
     textures_.emplace_back();
     auto& entry = textures_.back();
     entry.format = vk::Format::eR32G32B32A32Sfloat;
+    entry.mipLevels = mipLevels;
 
     vk::DeviceSize imageSize = 0;
     uint32_t levelExtent = faceExtent;
@@ -380,6 +399,51 @@ TextureHandle Resources::createCubemapTexture(const float* pixels, uint32_t face
         {}, *entry.image, vk::ImageViewType::eCube, entry.format, {},
         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 6));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
+    createCubemapFaceViews(*device_, entry);
+
+    auto props = device_->physicalDevice().getProperties();
+    vk::SamplerCreateInfo samplerCi(
+        {}, toVkFilter(sampler.magFilter), toVkFilter(sampler.minFilter),
+        vk::SamplerMipmapMode::eLinear, toVkAddressMode(sampler.wrapS),
+        toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS), 0.0f, vk::True,
+        props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f,
+        static_cast<float>(mipLevels - 1),
+        vk::BorderColor::eFloatOpaqueBlack, vk::False);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
+}
+
+TextureHandle Resources::createRenderTargetCubemap(uint32_t faceExtent, uint32_t mipLevels,
+                                                   vk::Format format,
+                                                   const SamplerSettings& sampler)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+    entry.format = format;
+    entry.mipLevels = mipLevels;
+
+    vk::ImageCreateInfo imgCi(vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
+                              entry.format, vk::Extent3D(faceExtent, faceExtent, 1), mipLevels, 6,
+                              vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                              vk::ImageUsageFlagBits::eColorAttachment |
+                                  vk::ImageUsageFlagBits::eSampled,
+                              vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::eCube, entry.format, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 6));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+    createCubemapFaceViews(*device_, entry);
 
     auto props = device_->physicalDevice().getProperties();
     vk::SamplerCreateInfo samplerCi(
@@ -542,10 +606,12 @@ void Resources::releaseTexture(TextureHandle handle)
 {
     auto& entry = textures_[static_cast<uint32_t>(handle)];
     entry.sampler = vk::raii::Sampler{nullptr};
+    entry.faceViews.clear();
     entry.view = vk::raii::ImageView{nullptr};
     entry.image = vk::raii::Image{nullptr};
     entry.memory = vk::raii::DeviceMemory{nullptr};
     entry.format = vk::Format::eUndefined;
+    entry.mipLevels = 1;
 }
 
 Resources::DescriptorPoolEntry&
@@ -914,6 +980,14 @@ vk::Buffer Resources::vulkanBuffer(BufferHandle handle) const noexcept
 vk::ImageView Resources::vulkanImageView(TextureHandle handle) const noexcept
 {
     return *textures_[static_cast<uint32_t>(handle)].view;
+}
+
+vk::ImageView Resources::vulkanCubemapFaceView(TextureHandle handle, uint32_t face,
+                                               uint32_t mipLevel) const noexcept
+{
+    const auto& entry = textures_[static_cast<uint32_t>(handle)];
+    std::size_t index = static_cast<std::size_t>(mipLevel) * 6 + face;
+    return *entry.faceViews[index];
 }
 
 vk::Image Resources::vulkanImage(TextureHandle handle) const noexcept

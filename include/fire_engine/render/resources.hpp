@@ -62,6 +62,9 @@ public:
     [[nodiscard]] TextureHandle createCubemapTexture(const float* pixels, uint32_t faceExtent,
                                                      uint32_t mipLevels,
                                                      const SamplerSettings& sampler = {});
+    [[nodiscard]] TextureHandle createRenderTargetCubemap(uint32_t faceExtent, uint32_t mipLevels,
+                                                          vk::Format format,
+                                                          const SamplerSettings& sampler = {});
     [[nodiscard]] TextureHandle fallbackTexture(FallbackTextureKind kind);
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
@@ -260,6 +263,8 @@ public:
     [[nodiscard]] vk::Buffer vulkanBuffer(BufferHandle handle) const noexcept;
     [[nodiscard]] vk::Image vulkanImage(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::ImageView vulkanImageView(TextureHandle handle) const noexcept;
+    [[nodiscard]] vk::ImageView vulkanCubemapFaceView(TextureHandle handle, uint32_t face,
+                                                      uint32_t mipLevel = 0) const noexcept;
     [[nodiscard]] vk::Sampler vulkanSampler(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::Format textureFormat(TextureHandle handle) const noexcept;
     [[nodiscard]] vk::DescriptorSet vulkanDescriptorSet(DescriptorSetHandle handle) const noexcept;
@@ -299,7 +304,10 @@ private:
         vk::raii::ImageView view{nullptr};
         vk::raii::Sampler sampler{nullptr};
         vk::Format format{vk::Format::eUndefined};
+        std::vector<vk::raii::ImageView> faceViews;
+        uint32_t mipLevels{1};
     };
+    static void createCubemapFaceViews(const Device& device, TextureEntry& entry);
     std::vector<TextureEntry> textures_;
     std::array<TextureHandle, 5> fallbackTextures_{NullTexture, NullTexture, NullTexture,
                                                    NullTexture, NullTexture};

@@ -151,4 +151,46 @@ void RenderPass::createPostProcessFramebuffers(const Device& device, const Swapc
     }
 }
 
+RenderPass RenderPass::createOffscreenColour(const Device& device, vk::Format colourFormat)
+{
+    vk::AttachmentDescription colourAtt(
+        {}, colourFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eClear,
+        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef);
+
+    std::array<vk::SubpassDependency, 2> deps = {
+        vk::SubpassDependency(VK_SUBPASS_EXTERNAL, 0,
+                              vk::PipelineStageFlagBits::eColorAttachmentOutput,
+                              vk::PipelineStageFlagBits::eColorAttachmentOutput, {},
+                              vk::AccessFlagBits::eColorAttachmentWrite),
+        vk::SubpassDependency(
+            0, VK_SUBPASS_EXTERNAL, vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            vk::PipelineStageFlagBits::eFragmentShader, vk::AccessFlagBits::eColorAttachmentWrite,
+            vk::AccessFlagBits::eShaderRead),
+    };
+
+    vk::RenderPassCreateInfo ci({}, colourAtt, subpass, deps);
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
+void RenderPass::createColourFramebuffers(const Device& device,
+                                          std::span<const vk::ImageView> colourViews,
+                                          uint32_t extent)
+{
+    framebuffers_.clear();
+    framebuffers_.reserve(colourViews.size());
+
+    for (vk::ImageView colourView : colourViews)
+    {
+        vk::FramebufferCreateInfo ci({}, *renderPass_, colourView, extent, extent, 1);
+        framebuffers_.emplace_back(device.device(), ci);
+    }
+}
+
 } // namespace fire_engine

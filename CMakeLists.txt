@@ -71,6 +71,7 @@ set(SHADER_SOURCES
     shaders/shader.frag
     shaders/skybox.vert
     shaders/skybox.frag
+    shaders/environment_convert.frag
     shaders/shadow.vert
     shaders/shadow.frag
     shaders/postprocess.vert
