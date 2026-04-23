@@ -36,6 +36,10 @@ struct EnvironmentConfig
     const char* filename{"skybox.hdr"};
     uint32_t shadowMapExtent{2048};
     uint32_t skyboxCubemapExtent{1024};
+    // log2(1024) + 1 = 11. Full mip chain on the skybox cubemap so the
+    // prefilter shader can do Filament-style importance-sampled mip-weighted
+    // lookups (blurrier mips for samples with low PDF).
+    uint32_t skyboxCubemapMipLevels{11};
     uint32_t irradianceCubemapExtent{32};
     uint32_t prefilteredCubemapExtent{128};
     uint32_t prefilteredCubemapMipLevels{8};
@@ -214,9 +218,9 @@ void Renderer::createSkyboxEnvironmentGpu()
 
     try
     {
-        skyboxCubemapHandle_ =
-            resources_.createRenderTargetCubemap(environmentConfig.skyboxCubemapExtent, 1,
-                                                 vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
+        skyboxCubemapHandle_ = resources_.createRenderTargetCubemap(
+            environmentConfig.skyboxCubemapExtent, environmentConfig.skyboxCubemapMipLevels,
+            vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
 
         RenderPass environmentPass = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(skyboxCubemapHandle_));
@@ -274,6 +278,75 @@ void Renderer::createSkyboxEnvironmentGpu()
                                                      capture);
             cmd.draw(3, 1, 0, 0);
             cmd.endRenderPass();
+        }
+
+        // Generate mips 1..N-1 on the skybox cubemap via blit chain so the
+        // prefilter pass can do Filament mip-weighted importance sampling.
+        // The render pass left mip 0 (all 6 layers) in eShaderReadOnlyOptimal;
+        // mips 1..N-1 are still eUndefined.
+        const uint32_t skyboxMips = environmentConfig.skyboxCubemapMipLevels;
+        if (skyboxMips > 1)
+        {
+            vk::Image skyboxImage = resources_.vulkanImage(skyboxCubemapHandle_);
+
+            auto barrier = [&](uint32_t baseMip, uint32_t mipCount, vk::ImageLayout oldLayout,
+                               vk::ImageLayout newLayout, vk::AccessFlags srcAccess,
+                               vk::AccessFlags dstAccess, vk::PipelineStageFlags srcStage,
+                               vk::PipelineStageFlags dstStage)
+            {
+                vk::ImageMemoryBarrier b(srcAccess, dstAccess, oldLayout, newLayout,
+                                         vk::QueueFamilyIgnored, vk::QueueFamilyIgnored,
+                                         skyboxImage,
+                                         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor,
+                                                                   baseMip, mipCount, 0, 6));
+                cmd.pipelineBarrier(srcStage, dstStage, {}, {}, {}, b);
+            };
+
+            // Mip 0: shader-read-only → transfer-src
+            barrier(0, 1, vk::ImageLayout::eShaderReadOnlyOptimal,
+                    vk::ImageLayout::eTransferSrcOptimal, vk::AccessFlagBits::eShaderRead,
+                    vk::AccessFlagBits::eTransferRead, vk::PipelineStageFlagBits::eFragmentShader,
+                    vk::PipelineStageFlagBits::eTransfer);
+
+            int32_t srcExtent = static_cast<int32_t>(environmentConfig.skyboxCubemapExtent);
+            for (uint32_t mip = 1; mip < skyboxMips; ++mip)
+            {
+                int32_t dstExtent = std::max(1, srcExtent / 2);
+
+                // Destination mip: undefined → transfer-dst
+                barrier(mip, 1, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
+                        {}, vk::AccessFlagBits::eTransferWrite,
+                        vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer);
+
+                vk::ImageBlit blit(
+                    vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, mip - 1, 0, 6),
+                    {vk::Offset3D{0, 0, 0}, vk::Offset3D{srcExtent, srcExtent, 1}},
+                    vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, mip, 0, 6),
+                    {vk::Offset3D{0, 0, 0}, vk::Offset3D{dstExtent, dstExtent, 1}});
+                cmd.blitImage(skyboxImage, vk::ImageLayout::eTransferSrcOptimal, skyboxImage,
+                              vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
+
+                // Previous mip → shader-read-only (done as a blit source).
+                barrier(mip - 1, 1, vk::ImageLayout::eTransferSrcOptimal,
+                        vk::ImageLayout::eShaderReadOnlyOptimal,
+                        vk::AccessFlagBits::eTransferRead, vk::AccessFlagBits::eShaderRead,
+                        vk::PipelineStageFlagBits::eTransfer,
+                        vk::PipelineStageFlagBits::eFragmentShader);
+
+                // This mip becomes the source for the next iteration.
+                barrier(mip, 1, vk::ImageLayout::eTransferDstOptimal,
+                        vk::ImageLayout::eTransferSrcOptimal, vk::AccessFlagBits::eTransferWrite,
+                        vk::AccessFlagBits::eTransferRead, vk::PipelineStageFlagBits::eTransfer,
+                        vk::PipelineStageFlagBits::eTransfer);
+
+                srcExtent = dstExtent;
+            }
+
+            // Final mip: transfer-src → shader-read-only.
+            barrier(skyboxMips - 1, 1, vk::ImageLayout::eTransferSrcOptimal,
+                    vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eTransferRead,
+                    vk::AccessFlagBits::eShaderRead, vk::PipelineStageFlagBits::eTransfer,
+                    vk::PipelineStageFlagBits::eFragmentShader);
         }
 
         cmd.end();
@@ -452,6 +525,10 @@ void Renderer::createPrefilteredEnvironment()
                 capture.faceIndex = static_cast<int>(face);
                 capture.faceExtent = static_cast<int>(mipExtent);
                 capture.roughness = roughness;
+                capture.sourceFaceExtent =
+                    static_cast<int>(environmentConfig.skyboxCubemapExtent);
+                capture.sourceMaxMip =
+                    static_cast<float>(environmentConfig.skyboxCubemapMipLevels - 1);
 
                 vk::RenderPassBeginInfo beginInfo(prefilterPasses[level].renderPass(),
                                                   prefilterPasses[level].framebuffer(face),

@@ -72,7 +72,15 @@ struct EnvironmentPrefilterPushConstants
     alignas(4) int faceIndex{0};
     alignas(4) int faceExtent{0};
     float roughness{0.0f};
+    // Extent of the *source* environment cubemap face (typically mip 0's size).
+    // Used by the prefilter shader to compute the per-sample mip level for
+    // Filament-style importance-sampled cubemap lookups.
+    alignas(4) int sourceFaceExtent{0};
+    // Max mip level available on the source environment cubemap.
+    float sourceMaxMip{0.0f};
     float _pad0{0.0f};
+    float _pad1{0.0f};
+    float _pad2{0.0f};
 };
 
 struct ShadowUBO

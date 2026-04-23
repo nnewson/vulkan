@@ -4,7 +4,11 @@ layout(push_constant) uniform EnvironmentPrefilterPushConstants {
     int faceIndex;
     int faceExtent;
     float roughness;
+    int sourceFaceExtent;
+    float sourceMaxMip;
     float _pad0;
+    float _pad1;
+    float _pad2;
 } capture;
 
 layout(binding = 0) uniform samplerCube environmentMap;
@@ -12,7 +16,7 @@ layout(binding = 0) uniform samplerCube environmentMap;
 layout(location = 0) out vec4 outColor;
 
 const float PI = 3.14159265358979323846;
-const uint SAMPLE_COUNT = 64u;
+const uint SAMPLE_COUNT = 256u;
 
 vec3 directionForCubemapFace(int face, float u, float v)
 {
@@ -78,6 +82,12 @@ void main()
     vec3 prefiltered = vec3(0.0);
     float totalWeight = 0.0;
 
+    // Filament/Karis mip-weighted importance sampling: pick a blurrier source
+    // mip when the PDF is low so under-sampled rough lobes don't shimmer.
+    float a = capture.roughness * capture.roughness;
+    float srcExtent = float(capture.sourceFaceExtent);
+    float saTexel = 4.0 * PI / (6.0 * srcExtent * srcExtent);
+
     for (uint i = 0u; i < SAMPLE_COUNT; ++i)
     {
         vec2 xi = hammersley(i, SAMPLE_COUNT);
@@ -87,7 +97,18 @@ void main()
         float nDotL = max(dot(normal, light), 0.0);
         if (nDotL > 0.0)
         {
-            prefiltered += texture(environmentMap, light).rgb * nDotL;
+            // PDF for importance-sampled GGX (V == N in prefilter convention).
+            float nDotH = max(dot(normal, halfVector), 0.0);
+            float vDotH = max(dot(view, halfVector), 0.0);
+            float D = (a * a) / (PI * pow(nDotH * nDotH * (a * a - 1.0) + 1.0, 2.0));
+            float pdf = (D * nDotH / (4.0 * vDotH)) + 0.0001;
+            float saSample = 1.0 / (float(SAMPLE_COUNT) * pdf);
+            float mipLevel = capture.roughness == 0.0
+                                 ? 0.0
+                                 : 0.5 * log2(saSample / saTexel);
+            mipLevel = clamp(mipLevel, 0.0, capture.sourceMaxMip);
+
+            prefiltered += textureLod(environmentMap, light, mipLevel).rgb * nDotL;
             totalWeight += nDotL;
         }
     }

@@ -54,7 +54,7 @@ void main()
             vec3 sampleVec = right * tangentSample.x + up * tangentSample.y +
                              normal * tangentSample.z;
             float weight = cos(theta) * sin(theta);
-            irradiance += texture(environmentMap, normalize(sampleVec)).rgb * weight;
+            irradiance += textureLod(environmentMap, normalize(sampleVec), 0.0).rgb * weight;
             sampleCount += 1.0;
         }
     }

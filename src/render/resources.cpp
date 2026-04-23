@@ -422,11 +422,16 @@ TextureHandle Resources::createRenderTargetCubemap(uint32_t faceExtent, uint32_t
     entry.format = format;
     entry.mipLevels = mipLevels;
 
+    // Transfer src/dst enable vkCmdBlitImage-based mip generation (used for
+    // the skybox cubemap so the prefilter pass can do importance-sampled
+    // mip-weighted lookups). Small memory/bandwidth cost when unused.
     vk::ImageCreateInfo imgCi(vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
                               entry.format, vk::Extent3D(faceExtent, faceExtent, 1), mipLevels, 6,
                               vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eColorAttachment |
-                                  vk::ImageUsageFlagBits::eSampled,
+                                  vk::ImageUsageFlagBits::eSampled |
+                                  vk::ImageUsageFlagBits::eTransferSrc |
+                                  vk::ImageUsageFlagBits::eTransferDst,
                               vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
