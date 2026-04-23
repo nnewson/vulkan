@@ -89,7 +89,7 @@ private:
         std::vector<DrawCommand> blend;
     };
 
-    void updateLightData();
+    void updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect);
     [[nodiscard]] DrawBuckets buildDrawBuckets(const std::vector<DrawCommand>& drawCommands) const;
     void recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
                           PipelineHandle& lastBoundPipeline) const;

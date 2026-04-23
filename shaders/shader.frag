@@ -159,16 +159,24 @@ void main() {
     vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
     vec3 diffuseTerm = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
 
-    vec3 ambientF = fresnelSchlickRoughness(NdotV, F0, roughness);
-    vec3 ambientKD = (vec3(1.0) - ambientF) * (1.0 - metallic);
     vec3 irradiance = texture(irradianceMap, N).rgb;
-    vec3 diffuseIbl = irradiance * baseColor * ambientKD * light.iblParams.y;
     vec3 R = reflect(-V, N);
     float maxReflectionLod = light.iblParams.x;
     vec3 prefilteredColor = textureLod(prefilteredMap, R, roughness * maxReflectionLod).rgb;
     vec2 envBrdf = texture(brdfLut, vec2(NdotV, roughness)).rg;
-    vec3 specularIbl =
-        prefilteredColor * (ambientF * envBrdf.x + envBrdf.y) * light.iblParams.z;
+
+    // Fdez-Aguera multi-scatter compensation. Recovers the energy the split-sum
+    // single-scatter lobe loses on rough conductors.
+    vec3 FssEss = F0 * envBrdf.x + envBrdf.y;
+    float Ess = envBrdf.x + envBrdf.y;
+    float Ems = 1.0 - Ess;
+    vec3 Favg = F0 + (1.0 - F0) / 21.0;
+    vec3 Fms = FssEss * Favg / (1.0 - Ems * Favg);
+    vec3 multiScatter = Fms * Ems;
+
+    vec3 iblKD = baseColor * (1.0 - FssEss - multiScatter) * (1.0 - metallic);
+    vec3 diffuseIbl = irradiance * iblKD * light.iblParams.y;
+    vec3 specularIbl = prefilteredColor * (FssEss + multiScatter) * light.iblParams.z;
 
     float ao = 1.0;
     if (material.extraFlags.x == 1) {

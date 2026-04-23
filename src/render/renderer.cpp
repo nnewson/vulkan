@@ -540,12 +540,89 @@ void Renderer::createBrdfLut()
     }
 }
 
-void Renderer::updateLightData()
+void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect)
 {
+    // Must match the camera projection in Object::render.
+    constexpr float cameraFov = 45.0f * deg_to_rad;
+    constexpr float cameraNear = 0.1f;
+    // Shadow-map far plane. The camera projects to 1000m, but casters past this
+    // distance don't get shadowed — keeps the light's orthographic volume tight.
+    constexpr float shadowFarPlane = 50.0f;
+    // Pulls the light's near plane back along the light direction so casters
+    // behind the fitted sphere still write to the shadow map.
+    constexpr float depthBackExtend = 20.0f;
+
     Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
-    Vec3 lightPos = lightDir * 15.0f;
-    Mat4 lightView = Mat4::lookAt(lightPos, {0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f});
-    Mat4 lightProj = Mat4::ortho(-10.0f, 10.0f, -10.0f, 10.0f, -20.0f, 20.0f);
+
+    // 1. Build camera sub-frustum corners (near → shadowFarPlane) in world space.
+    const float tanHalfFov = std::tan(cameraFov * 0.5f);
+    const float nearH = tanHalfFov * cameraNear;
+    const float nearW = nearH * aspect;
+    const float farH = tanHalfFov * shadowFarPlane;
+    const float farW = farH * aspect;
+
+    const Vec3 forward = Vec3::normalise(cameraTarget - cameraPosition);
+    const Vec3 worldUp{0.0f, 1.0f, 0.0f};
+    const Vec3 right = Vec3::normalise(Vec3::crossProduct(forward, worldUp));
+    const Vec3 camUp = Vec3::crossProduct(right, forward);
+
+    const Vec3 nearCentre = cameraPosition + forward * cameraNear;
+    const Vec3 farCentre = cameraPosition + forward * shadowFarPlane;
+
+    const std::array<Vec3, 8> corners{nearCentre - right * nearW - camUp * nearH,
+                                      nearCentre + right * nearW - camUp * nearH,
+                                      nearCentre + right * nearW + camUp * nearH,
+                                      nearCentre - right * nearW + camUp * nearH,
+                                      farCentre - right * farW - camUp * farH,
+                                      farCentre + right * farW - camUp * farH,
+                                      farCentre + right * farW + camUp * farH,
+                                      farCentre - right * farW + camUp * farH};
+
+    // 2. Bounding sphere → rotation-invariant ortho radius so camera yaw alone
+    // doesn't change the fitted volume size (which would cause texel crawl).
+    Vec3 frustumCentre{0.0f, 0.0f, 0.0f};
+    for (const auto& c : corners)
+    {
+        frustumCentre += c;
+    }
+    frustumCentre /= 8.0f;
+
+    float radius = 0.0f;
+    for (const auto& c : corners)
+    {
+        radius = std::max(radius, (c - frustumCentre).magnitude());
+    }
+    // Round up so sub-pixel changes in corner positions don't jitter the radius.
+    radius = std::ceil(radius * 16.0f) / 16.0f;
+
+    // 3. Build a light-aligned basis to snap the centre to shadow-map texels.
+    // Degenerate case: lightDir parallel to worldUp — fall back to Z for up.
+    Vec3 lightUp = worldUp;
+    if (std::abs(Vec3::dotProduct(lightDir, lightUp)) > 0.99f)
+    {
+        lightUp = Vec3{0.0f, 0.0f, 1.0f};
+    }
+    const Vec3 lightRight = Vec3::normalise(Vec3::crossProduct(lightDir, lightUp));
+    const Vec3 lightUpOrtho = Vec3::crossProduct(lightRight, lightDir);
+
+    const float shadowMapExtent = static_cast<float>(environmentConfig.shadowMapExtent);
+    const float worldPerTexel = (2.0f * radius) / shadowMapExtent;
+
+    // 4. Snap frustum centre along the light's right/up axes to integer texel
+    // multiples. Keep its depth along lightDir unchanged.
+    const float centreU = Vec3::dotProduct(frustumCentre, lightRight);
+    const float centreV = Vec3::dotProduct(frustumCentre, lightUpOrtho);
+    const float centreW = Vec3::dotProduct(frustumCentre, lightDir);
+    const float snappedU = std::floor(centreU / worldPerTexel) * worldPerTexel;
+    const float snappedV = std::floor(centreV / worldPerTexel) * worldPerTexel;
+    const Vec3 snappedCentre =
+        lightRight * snappedU + lightUpOrtho * snappedV + lightDir * centreW;
+
+    // 5. Build light view + orthographic projection around the snapped centre.
+    const Vec3 lightPos = snappedCentre - lightDir * (radius + depthBackExtend);
+    Mat4 lightView = Mat4::lookAt(lightPos, snappedCentre, lightUpOrtho);
+    Mat4 lightProj = Mat4::ortho(-radius, radius, -radius, radius, 0.0f,
+                                 2.0f * radius + 2.0f * depthBackExtend);
     lightViewProj_ = lightProj * lightView;
 
     LightUBO lightData{};
@@ -702,11 +779,9 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     cmd.reset();
     cmd.begin(vk::CommandBufferBeginInfo{});
 
-    // Directional light — fixed orthographic volume fitted around the origin.
-    // Light position is the light direction scaled out so the frustum captures
-    // the scene. The forward fragment shader consumes lightViewProj_ to project
-    // fragments into shadow-map space.
-    updateLightData();
+    const auto extent = swapchain_.extent();
+    const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
+    updateLightData(cameraPosition, cameraTarget, aspect);
 
     std::vector<DrawCommand> drawCommands;
     recordSkybox(cameraPosition, cameraTarget, drawCommands);
