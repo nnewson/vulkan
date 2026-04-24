@@ -146,6 +146,9 @@ private:
     uint32_t currentFrame_{0};
     uint32_t shadowMapSize_{0};
     uint32_t shadowMapLayers_{4};
+    // Flip to true and rebuild to visualise cascade regions: red→green→blue→yellow
+    // for cascades 0..3, near to far. Surfaced via LightUBO.environmentParams.w.
+    bool cascadeDebugTint_{false};
     std::string environmentPath_;
 };
 

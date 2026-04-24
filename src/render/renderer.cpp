@@ -751,6 +751,7 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     lightData.shadowParams[1] = shadowSlopeBias;
     lightData.shadowParams[2] = shadowFilterRadius;
     lightData.environmentParams[0] = skyboxIntensity;
+    lightData.environmentParams[3] = cascadeDebugTint_ ? 1.0f : 0.0f;
     std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
 }
 

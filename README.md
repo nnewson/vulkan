@@ -11,8 +11,8 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 
 - **glTF 2.0 model loading** via [fastgltf](https://github.com/spnda/fastgltf) — geometry, full PBR material set (base-colour, metallic-roughness, normal, occlusion, emissive), per-texture sampler settings, skeletal skins, morph targets, and alpha-mode state (OPAQUE / MASK / BLEND, `alphaCutoff`, `doubleSided`)
 - **Tangent-space normal mapping** — tangents generated on load when a material uses a normal texture (per-triangle UV derivatives, Gram-Schmidt orthogonalisation, handedness preserved in `tangent.w`)
-- **Physically based shading with split-sum IBL** — equirectangular HDR skybox is converted to an environment cubemap, a diffuse irradiance cubemap (32²), a GGX prefiltered specular cubemap (128², 8 mips), and a BRDF integration LUT (256²) at startup; all four are sampled by the forward fragment shader
-- **Directional light with shadow mapping** — 2048×2048 depth map, 3×3 PCF via `sampler2DShadow`, slope+constant depth bias
+- **Physically based shading with split-sum IBL + multi-scatter compensation** — equirectangular HDR skybox is converted to an environment cubemap (1024², 11 mip levels), a diffuse irradiance cubemap (32²), a GGX prefiltered specular cubemap (128², 8 mips, importance-sampled with 256 Hammersley samples and Filament-style mip-LOD weighting against the source cubemap's mip chain), and a BRDF integration LUT (256²) at startup. Forward fragment shader uses Fdez-Aguera multi-scatter compensation so rough conductors stay energy-conserving across the roughness range
+- **Directional light with cascaded shadow maps** — 4 cascades, 2048×2048 per cascade in a 2D-array depth image, log-uniform splits over 0.1m–50m, `sampler2DArrayShadow` with hardware 3×3 PCF, per-cascade bias scaling, 10% blend bands at boundaries to hide cascade seams. Optional debug tint (`renderer.cpp::cascadeDebugTint_`) colour-codes cascade regions for verification
 - **HDR offscreen forward pass + ACES post-process** — forward renders into an R32G32B32A32 target, then a fullscreen post-process pass applies ACES tonemapping + gamma 2.2 before presenting to the swapchain
 - **Keyframe animation** with per-channel interpolation (LINEAR with SLERP for quaternions, STEP, CUBICSPLINE with in/out tangents) across rotation, translation, scale, and morph weight channels; looping playback; runtime animation selection via `AnimationState`
 - **Skeletal skinning** — GPU joint matrix blending, up to 64 joints per skin
@@ -62,9 +62,9 @@ Animation keyframes (input times and output quaternions/vectors/weights, plus CU
 
 Before the first frame, the renderer runs a one-shot precompute chain using transient pipelines and one-time-submit command buffers:
 
-1. **Equirectangular → cubemap** — load the HDR skybox and render 6 cubemap faces into a 1024² RGBA32F cubemap by sampling the equirectangular map along per-face direction vectors.
+1. **Equirectangular → cubemap** — load the HDR skybox and render 6 cubemap faces into a 1024² RGBA32F cubemap by sampling the equirectangular map along per-face direction vectors. After the 6-face pass, a `vkCmdBlitImage` chain generates the full 11-mip pyramid (1024 → 1) so the prefilter pass can do mip-weighted importance sampling.
 2. **Irradiance convolution** — produce a 32² RGBA32F cubemap via cosine-weighted hemisphere integration (diffuse IBL).
-3. **GGX specular prefilter** — produce a 128² RGBA32F cubemap with 8 mip levels. Roughness is pushed as a push constant per mip; each fragment importance-samples GGX with Hammersley + 64 samples.
+3. **GGX specular prefilter** — produce a 128² RGBA32F cubemap with 8 mip levels. Roughness is pushed as a push constant per mip; each fragment importance-samples GGX with Hammersley + 256 samples, picking a blurrier source-cubemap mip when the PDF is low (Filament's mip-weighted importance sampling) so rough lobes stay shimmer-free.
 4. **BRDF integration LUT** — 256² RGBA32F 2D; x = NdotV, y = roughness; outputs (scale, bias) for the Fresnel split-sum. No input textures required.
 
 The transient pipelines are destroyed once the bake completes; only the resulting cubemaps + LUT remain and are bound into the forward shader's descriptor set every frame.
@@ -74,7 +74,7 @@ The transient pipelines are destroyed once the bake completes; only the resultin
 1. `FireEngine::mainLoop()` polls GLFW, calls `input_.update(window, dt)` to produce an `InputState`, then `scene_.update(inputState)`
 2. `SceneGraph::update()` propagates `InputState` and transforms down the node tree; each Node caches its `composedWorld` matrix for skin joint lookups
 3. `Renderer::drawFrame()` acquires a swapchain image and records three sub-passes:
-   - **Shadow pass** — 2048² depth-only pass, bound to a pipeline with front-face culling and depth bias; the scene is re-traversed to collect shadow `DrawCommand`s (skin and morph still apply) and replayed writing only depth
+   - **Shadow pass** — looped 4 times, once per cascade. Each iteration begins a depth-only pass on its own framebuffer (one shadow-map array layer), pushes the cascade index as a push constant, and replays all collected shadow `DrawCommand`s. `shadow.vert` projects with `lightViewProj[cascadeIndex]` from the per-draw `ShadowUBO`. Skin and morph still apply
    - **Forward pass** — begin the HDR offscreen pass, draw the skybox (LEQUAL depth, no write), then call `scene.render(ctx)`; Mesh/Object emit `DrawCommand`s that the Renderer buckets into opaque vs blend, sorts the blend bucket back-to-front by `sortDepth`, and replays through the same bind/draw loop resolving handles via `Resources`
    - **Post-process pass** — begin the swapchain-format pass, draw a fullscreen triangle that samples the HDR target and applies ACES + gamma 2.2
 4. Renderer submits the command buffer and presents
@@ -92,12 +92,12 @@ The transient pipelines are destroyed once the bake completes; only the resultin
   - 7 normal sampler
   - 8 metallic-roughness sampler
   - 9 occlusion sampler
-  - 10 shadow map (`sampler2DShadow`, hardware PCF comparison)
-  - 11 Light UBO (direction, colour, `lightViewProj`, IBL params, shadow params, environment params)
+  - 10 cascaded shadow map (`sampler2DArrayShadow`, 4 layers, hardware PCF comparison)
+  - 11 Light UBO (direction, colour, `cascadeViewProj[4]`, `cascadeSplits`, IBL params, shadow params, environment params with CSM debug-tint flag in `.w`)
   - 12 irradiance cubemap
   - 13 prefiltered environment cubemap
   - 14 BRDF integration LUT (2D)
-- Separate descriptor layouts for the skybox (SkyboxUBO + samplerCube + LightUBO), shadow (ShadowUBO + SkinUBO + MorphUBO + MorphTargets SSBO), and post-process (single combined image sampler on the HDR target) passes
+- Separate descriptor layouts for the skybox (SkyboxUBO + samplerCube + LightUBO), shadow (ShadowUBO with `lightViewProj[4]` + SkinUBO + MorphUBO + MorphTargets SSBO, plus a `ShadowPushConstants { int cascadeIndex }` push-constant range on the vertex stage), and post-process (single combined image sampler on the HDR target) passes
 - Three forward pipeline variants share the shader + binding layout but differ in cull mode, blend, and depth-write state:
   - **opaque** (cull back, no blend, depth write) — OPAQUE and MASK materials with `doubleSided=false`
   - **opaque-double-sided** (cull none, no blend, depth write) — OPAQUE and MASK with `doubleSided=true`
@@ -118,7 +118,7 @@ The transient pipelines are destroyed once the bake completes; only the resultin
 
 ### Fragment Shader
 
-The forward fragment shader implements a PBR Cook-Torrance BRDF (GGX + Schlick Fresnel + Smith G) for the directional light, adds diffuse IBL from the irradiance cubemap and specular IBL via the prefiltered cubemap + BRDF LUT split-sum, samples normal / metallic-roughness / occlusion / emissive textures if bound (gated by `textureFlags`/`extraFlags`), and modulates the direct-light contribution by a 3×3 PCF shadow term.
+The forward fragment shader implements a PBR Cook-Torrance BRDF (GGX + Schlick Fresnel + Smith G) for the directional light, adds diffuse IBL from the irradiance cubemap and specular IBL via the prefiltered cubemap + BRDF LUT split-sum **with Fdez-Aguera multi-scatter compensation** for energy-conserving rough conductors, samples normal / metallic-roughness / occlusion / emissive textures if bound (gated by `textureFlags`/`extraFlags`), and modulates the direct-light contribution by a 3×3 PCF shadow term that picks one of 4 cascades per fragment based on view-space depth and softens cascade boundaries with a 10% blend band.
 
 ## Setup
 

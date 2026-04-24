@@ -202,7 +202,7 @@ void Object::load(Resources& resources)
 
     // Shadow descriptor sets reuse the forward skin / morph / morphSsbo
     // buffers allocated above — no duplicate uploads — plus a new per-geometry
-    // ShadowUBO buffer carrying model + lightViewProj + hasSkin.
+    // ShadowUBO buffer carrying model + per-cascade lightViewProj[4] + hasSkin.
     Resources::ShadowDescriptorRequest shadowReq;
     shadowReq.geometries.reserve(bindings_.size());
     for (std::size_t g = 0; g < bindings_.size(); ++g)
@@ -324,7 +324,7 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     // future AABB-based centroid would be the natural upgrade.
     Vec3 forwardVec = Vec3::normalise(frame.cameraTarget - frame.cameraPosition);
 
-    // Write shadow UBO (model + lightViewProj + hasSkin) per geometry and
+    // Write shadow UBO (model + per-cascade lightViewProj[4] + hasSkin) and
     // emit a matching shadow DrawCommand alongside the forward command. The
     // renderer later buckets by pipeline so shadow draws replay inside the
     // shadow pass and forward draws replay inside the forward pass.

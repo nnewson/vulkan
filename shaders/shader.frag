@@ -41,6 +41,7 @@ layout(location = 1) in vec3 fragNormal;
 layout(location = 2) in vec3 fragWorldPos;
 layout(location = 3) in vec2 fragTexCoord;
 layout(location = 4) in mat3 fragTBN;
+layout(location = 7) in float fragViewDepth;
 
 layout(location = 0) out vec4 outColor;
 
@@ -73,16 +74,9 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
-vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
+float pcfSample(vec3 worldPos, vec3 normal, vec3 lightDir, int cascade)
 {
-    return F0 + (max(vec3(1.0 - roughness), F0) - F0) *
-                    pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
-}
-
-float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir)
-{
-    // Cascade 0 sampled explicitly — Stage 4d will select per fragment.
-    vec4 lightSpace = light.cascadeViewProj[0] * vec4(worldPos, 1.0);
+    vec4 lightSpace = light.cascadeViewProj[cascade] * vec4(worldPos, 1.0);
     vec3 proj = lightSpace.xyz / lightSpace.w;
     proj.xy = proj.xy * 0.5 + 0.5;
     if (proj.z > 1.0 || proj.z < 0.0)
@@ -91,19 +85,58 @@ float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir)
     float minBias = light.shadowParams.x;
     float slopeBias = light.shadowParams.y;
     float filterRadius = light.shadowParams.z;
-    float bias = max(minBias, slopeBias * (1.0 - max(dot(normal, lightDir), 0.0)));
+    float baseBias = max(minBias, slopeBias * (1.0 - max(dot(normal, lightDir), 0.0)));
+    // Far cascades cover proportionally more world per texel; bias must scale or
+    // distant fragments self-shadow into acne.
+    float bias = baseBias * exp2(float(cascade));
 
     vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0).xy);
     float visibility = 0.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
             vec2 offset = vec2(x, y) * texelSize * filterRadius;
-            // sampler2DArrayShadow: (u, v, layer, depthRef). Layer is fixed at
-            // 0 until Stage 4d adds per-fragment cascade selection.
-            visibility += texture(shadowMap, vec4(proj.xy + offset, 0.0, proj.z - bias));
+            visibility += texture(shadowMap,
+                                  vec4(proj.xy + offset, float(cascade), proj.z - bias));
         }
     }
     return visibility / 9.0;
+}
+
+int selectCascade(float viewDepth)
+{
+    int cascade = 3;
+    for (int i = 0; i < 4; ++i)
+    {
+        if (viewDepth < light.cascadeSplits[i])
+        {
+            cascade = i;
+            break;
+        }
+    }
+    return cascade;
+}
+
+// Blend factor in the last 10% of a cascade's view-space range. 0.0 = pure
+// current cascade; 1.0 = pure next cascade. Always 0.0 for the last cascade.
+float cascadeBlendFactor(int cascade, float viewDepth)
+{
+    if (cascade >= 3)
+        return 0.0;
+    float cascadeStart = cascade == 0 ? 0.0 : light.cascadeSplits[cascade - 1];
+    float cascadeEnd = light.cascadeSplits[cascade];
+    float blendBand = (cascadeEnd - cascadeStart) * 0.1;
+    float blendStart = cascadeEnd - blendBand;
+    return clamp((viewDepth - blendStart) / blendBand, 0.0, 1.0);
+}
+
+float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir, int cascade, float viewDepth)
+{
+    float current = pcfSample(worldPos, normal, lightDir, cascade);
+    float t = cascadeBlendFactor(cascade, viewDepth);
+    if (t <= 0.0)
+        return current;
+    float next = pcfSample(worldPos, normal, lightDir, cascade + 1);
+    return mix(current, next, t);
 }
 
 void main() {
@@ -198,10 +231,26 @@ void main() {
         emissiveTerm *= texture(emissiveMap, fragTexCoord).rgb;
     }
 
-    float shadow = computeShadow(fragWorldPos, N, lightDir);
+    int cascade = selectCascade(fragViewDepth);
+    float shadow = computeShadow(fragWorldPos, N, lightDir, cascade, fragViewDepth);
     diffuseTerm *= shadow;
     specularTerm *= shadow;
 
     vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
+
+    if (light.environmentParams.w > 0.5) {
+        vec3 cascadeTints[4] = vec3[4](
+            vec3(1.0, 0.4, 0.4),  // cascade 0 — red, closest
+            vec3(0.4, 1.0, 0.4),  // cascade 1 — green
+            vec3(0.4, 0.4, 1.0),  // cascade 2 — blue
+            vec3(1.0, 1.0, 0.4)   // cascade 3 — yellow, furthest
+        );
+        // Mirror the shadow blend so seams visibly soften when tint is on.
+        vec3 currentTint = cascadeTints[cascade];
+        float t = cascadeBlendFactor(cascade, fragViewDepth);
+        vec3 nextTint = cascadeTints[min(cascade + 1, 3)];
+        color *= mix(currentTint, nextTint, t);
+    }
+
     outColor = vec4(color, alpha);
 }
