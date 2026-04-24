@@ -94,12 +94,17 @@ RenderPass RenderPass::createShadow(const Device& device)
 }
 
 void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView colourView,
-                                         vk::ImageView depthView, uint32_t extent)
+                                         std::span<const vk::ImageView> depthViews,
+                                         uint32_t extent)
 {
     framebuffers_.clear();
-    std::array<vk::ImageView, 2> views = {colourView, depthView};
-    vk::FramebufferCreateInfo ci({}, *renderPass_, views, extent, extent, 1);
-    framebuffers_.emplace_back(device.device(), ci);
+    framebuffers_.reserve(depthViews.size());
+    for (vk::ImageView depthView : depthViews)
+    {
+        std::array<vk::ImageView, 2> views = {colourView, depthView};
+        vk::FramebufferCreateInfo ci({}, *renderPass_, views, extent, extent, 1);
+        framebuffers_.emplace_back(device.device(), ci);
+    }
 }
 
 void RenderPass::createForwardFramebuffer(const Device& device, vk::ImageView colourView,

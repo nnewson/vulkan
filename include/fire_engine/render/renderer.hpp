@@ -145,6 +145,7 @@ private:
     std::vector<vk::Fence> imagesInFlight_{};
     uint32_t currentFrame_{0};
     uint32_t shadowMapSize_{0};
+    uint32_t shadowMapLayers_{4};
     std::string environmentPath_;
 };
 

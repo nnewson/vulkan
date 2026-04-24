@@ -180,11 +180,16 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
     lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
     resources_.lightBuffers(lightUbo_.buffers);
 
-    shadowMapHandle_ = resources_.createShadowMap(shadowMapSize_);
+    shadowMapHandle_ = resources_.createShadowMap(shadowMapSize_, shadowMapLayers_);
     shadowColourHandle_ = resources_.createShadowColourAttachment(shadowMapSize_);
+    std::vector<vk::ImageView> cascadeDepthViews;
+    cascadeDepthViews.reserve(shadowMapLayers_);
+    for (uint32_t layer = 0; layer < shadowMapLayers_; ++layer)
+    {
+        cascadeDepthViews.push_back(resources_.vulkanShadowMapLayerView(shadowMapHandle_, layer));
+    }
     shadowPass_.createShadowFramebuffer(device_, resources_.vulkanImageView(shadowColourHandle_),
-                                        resources_.vulkanImageView(shadowMapHandle_),
-                                        shadowMapSize_);
+                                        cascadeDepthViews, shadowMapSize_);
     resources_.shadowDescriptorSetLayout(shadowPipeline_.descriptorSetLayout());
     resources_.shadowMap(shadowMapHandle_);
     createSkyboxEnvironment();
@@ -629,51 +634,15 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     // behind the fitted sphere still write to the shadow map.
     constexpr float depthBackExtend = 20.0f;
 
-    Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
+    const Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
 
-    // 1. Build camera sub-frustum corners (near → shadowFarPlane) in world space.
+    // Camera basis + light basis (shared by every cascade fit).
     const float tanHalfFov = std::tan(cameraFov * 0.5f);
-    const float nearH = tanHalfFov * cameraNear;
-    const float nearW = nearH * aspect;
-    const float farH = tanHalfFov * shadowFarPlane;
-    const float farW = farH * aspect;
-
     const Vec3 forward = Vec3::normalise(cameraTarget - cameraPosition);
     const Vec3 worldUp{0.0f, 1.0f, 0.0f};
     const Vec3 right = Vec3::normalise(Vec3::crossProduct(forward, worldUp));
     const Vec3 camUp = Vec3::crossProduct(right, forward);
 
-    const Vec3 nearCentre = cameraPosition + forward * cameraNear;
-    const Vec3 farCentre = cameraPosition + forward * shadowFarPlane;
-
-    const std::array<Vec3, 8> corners{nearCentre - right * nearW - camUp * nearH,
-                                      nearCentre + right * nearW - camUp * nearH,
-                                      nearCentre + right * nearW + camUp * nearH,
-                                      nearCentre - right * nearW + camUp * nearH,
-                                      farCentre - right * farW - camUp * farH,
-                                      farCentre + right * farW - camUp * farH,
-                                      farCentre + right * farW + camUp * farH,
-                                      farCentre - right * farW + camUp * farH};
-
-    // 2. Bounding sphere → rotation-invariant ortho radius so camera yaw alone
-    // doesn't change the fitted volume size (which would cause texel crawl).
-    Vec3 frustumCentre{0.0f, 0.0f, 0.0f};
-    for (const auto& c : corners)
-    {
-        frustumCentre += c;
-    }
-    frustumCentre /= 8.0f;
-
-    float radius = 0.0f;
-    for (const auto& c : corners)
-    {
-        radius = std::max(radius, (c - frustumCentre).magnitude());
-    }
-    // Round up so sub-pixel changes in corner positions don't jitter the radius.
-    radius = std::ceil(radius * 16.0f) / 16.0f;
-
-    // 3. Build a light-aligned basis to snap the centre to shadow-map texels.
-    // Degenerate case: lightDir parallel to worldUp — fall back to Z for up.
     Vec3 lightUp = worldUp;
     if (std::abs(Vec3::dotProduct(lightDir, lightUp)) > 0.99f)
     {
@@ -681,26 +650,81 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     }
     const Vec3 lightRight = Vec3::normalise(Vec3::crossProduct(lightDir, lightUp));
     const Vec3 lightUpOrtho = Vec3::crossProduct(lightRight, lightDir);
-
     const float shadowMapExtent = static_cast<float>(environmentConfig.shadowMapExtent);
-    const float worldPerTexel = (2.0f * radius) / shadowMapExtent;
 
-    // 4. Snap frustum centre along the light's right/up axes to integer texel
-    // multiples. Keep its depth along lightDir unchanged.
-    const float centreU = Vec3::dotProduct(frustumCentre, lightRight);
-    const float centreV = Vec3::dotProduct(frustumCentre, lightUpOrtho);
-    const float centreW = Vec3::dotProduct(frustumCentre, lightDir);
-    const float snappedU = std::floor(centreU / worldPerTexel) * worldPerTexel;
-    const float snappedV = std::floor(centreV / worldPerTexel) * worldPerTexel;
-    const Vec3 snappedCentre =
-        lightRight * snappedU + lightUpOrtho * snappedV + lightDir * centreW;
+    // Bounding-sphere fit for a single sub-frustum slice. Matches the Stage 1
+    // fit — extracted so CSM can reuse it per cascade.
+    auto fitCascade = [&](float sliceNear, float sliceFar) -> Mat4
+    {
+        const float nearH = tanHalfFov * sliceNear;
+        const float nearW = nearH * aspect;
+        const float farH = tanHalfFov * sliceFar;
+        const float farW = farH * aspect;
 
-    // 5. Build light view + orthographic projection around the snapped centre.
-    const Vec3 lightPos = snappedCentre - lightDir * (radius + depthBackExtend);
-    Mat4 lightView = Mat4::lookAt(lightPos, snappedCentre, lightUpOrtho);
-    Mat4 lightProj = Mat4::ortho(-radius, radius, -radius, radius, 0.0f,
-                                 2.0f * radius + 2.0f * depthBackExtend);
-    lightViewProj_ = lightProj * lightView;
+        const Vec3 sliceNearCentre = cameraPosition + forward * sliceNear;
+        const Vec3 sliceFarCentre = cameraPosition + forward * sliceFar;
+
+        const std::array<Vec3, 8> corners{sliceNearCentre - right * nearW - camUp * nearH,
+                                          sliceNearCentre + right * nearW - camUp * nearH,
+                                          sliceNearCentre + right * nearW + camUp * nearH,
+                                          sliceNearCentre - right * nearW + camUp * nearH,
+                                          sliceFarCentre - right * farW - camUp * farH,
+                                          sliceFarCentre + right * farW - camUp * farH,
+                                          sliceFarCentre + right * farW + camUp * farH,
+                                          sliceFarCentre - right * farW + camUp * farH};
+
+        Vec3 frustumCentre{0.0f, 0.0f, 0.0f};
+        for (const auto& c : corners)
+        {
+            frustumCentre += c;
+        }
+        frustumCentre /= 8.0f;
+
+        float radius = 0.0f;
+        for (const auto& c : corners)
+        {
+            radius = std::max(radius, (c - frustumCentre).magnitude());
+        }
+        radius = std::ceil(radius * 16.0f) / 16.0f;
+
+        const float worldPerTexel = (2.0f * radius) / shadowMapExtent;
+        const float centreU = Vec3::dotProduct(frustumCentre, lightRight);
+        const float centreV = Vec3::dotProduct(frustumCentre, lightUpOrtho);
+        const float centreW = Vec3::dotProduct(frustumCentre, lightDir);
+        const float snappedU = std::floor(centreU / worldPerTexel) * worldPerTexel;
+        const float snappedV = std::floor(centreV / worldPerTexel) * worldPerTexel;
+        const Vec3 snappedCentre =
+            lightRight * snappedU + lightUpOrtho * snappedV + lightDir * centreW;
+
+        const Vec3 lightPos = snappedCentre - lightDir * (radius + depthBackExtend);
+        const Mat4 lightView = Mat4::lookAt(lightPos, snappedCentre, lightUpOrtho);
+        const Mat4 lightProj = Mat4::ortho(-radius, radius, -radius, radius, 0.0f,
+                                           2.0f * radius + 2.0f * depthBackExtend);
+        return lightProj * lightView;
+    };
+
+    // Log-uniform cascade splits (λ=0.5) — Practical Split Scheme. Keeps close
+    // cascades small for near-camera detail while still covering shadowFarPlane.
+    constexpr int cascadeCount = 4;
+    float splits[cascadeCount];
+    for (int i = 0; i < cascadeCount; ++i)
+    {
+        const float p = static_cast<float>(i + 1) / static_cast<float>(cascadeCount);
+        const float linear = cameraNear + (shadowFarPlane - cameraNear) * p;
+        const float logSplit = cameraNear * std::pow(shadowFarPlane / cameraNear, p);
+        splits[i] = 0.5f * (linear + logSplit);
+    }
+
+    Mat4 cascadeViewProj[cascadeCount];
+    float sliceNear = cameraNear;
+    for (int i = 0; i < cascadeCount; ++i)
+    {
+        cascadeViewProj[i] = fitCascade(sliceNear, splits[i]);
+        sliceNear = splits[i];
+    }
+    // Keep the single-matrix member pointing at cascade 0 so the shadow pass
+    // and RenderContext still work while 4c rewires them to use all 4.
+    lightViewProj_ = cascadeViewProj[0];
 
     LightUBO lightData{};
     lightData.direction[0] = lightDir.x();
@@ -711,7 +735,11 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     lightData.colour[1] = 1.0f;
     lightData.colour[2] = 1.0f;
     lightData.colour[3] = directionalLightIntensity;
-    lightData.lightViewProj = lightViewProj_;
+    for (int i = 0; i < cascadeCount; ++i)
+    {
+        lightData.cascadeViewProj[i] = cascadeViewProj[i];
+        lightData.cascadeSplits[i] = splits[i];
+    }
     uint32_t mipLevels = prefilteredCubemapHandle_ != NullTexture
                              ? resources_.textureMipLevels(prefilteredCubemapHandle_)
                              : 1u;
@@ -782,19 +810,33 @@ void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCom
     std::array<vk::ClearValue, 2> shadowClears;
     shadowClears[0].color = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
     shadowClears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
-    vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(), shadowPass_.framebuffer(0),
-                                        vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}),
-                                        shadowClears);
-    cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
 
     vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
                           static_cast<float>(shadowMapSize_), 0, 1);
-    cmd.setViewport(0, shadowVp);
-    cmd.setScissor(0, vk::Rect2D({0, 0}, {shadowMapSize_, shadowMapSize_}));
+    vk::Rect2D shadowScissor({0, 0}, {shadowMapSize_, shadowMapSize_});
 
-    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-    recordDrawBucket(cmd, shadowDraws, lastBoundPipeline);
-    cmd.endRenderPass();
+    // Iterate every cascade layer so each one's subresource transitions to
+    // shader-read-only (required — the main shader view spans all layers).
+    // Stage 4a: only cascade 0 receives real shadow draws; layers 1..N-1 are
+    // cleared to depth=1 (= fully lit) and are not yet sampled by the forward
+    // shader. Stage 4c will render actual geometry into every layer.
+    for (uint32_t cascade = 0; cascade < shadowMapLayers_; ++cascade)
+    {
+        vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(),
+                                            shadowPass_.framebuffer(cascade), shadowScissor,
+                                            shadowClears);
+        cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
+        cmd.setViewport(0, shadowVp);
+        cmd.setScissor(0, shadowScissor);
+
+        if (cascade == 0)
+        {
+            auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+            recordDrawBucket(cmd, shadowDraws, lastBoundPipeline);
+        }
+
+        cmd.endRenderPass();
+    }
 }
 
 void Renderer::recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets)

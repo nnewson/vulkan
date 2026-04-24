@@ -42,10 +42,12 @@ public:
     // to the forward fragment shader without an explicit pipeline barrier.
     [[nodiscard]] static RenderPass createShadow(const Device& device);
 
-    // Builds a single framebuffer over an offscreen depth view, sized by
-    // extent. Owned framebuffer list is replaced on every call.
+    // Builds one framebuffer per supplied depth view (shadow-map layer), all
+    // sharing the same colour view (MoltenVK workaround, never sampled).
+    // Owned framebuffer list is replaced on every call. A single-element
+    // depthViews span reproduces the pre-CSM single-framebuffer behaviour.
     void createShadowFramebuffer(const Device& device, vk::ImageView colourView,
-                                 vk::ImageView depthView, uint32_t extent);
+                                 std::span<const vk::ImageView> depthViews, uint32_t extent);
 
     // Post-process render pass: a single colour attachment in swapchain
     // format, consumed by the presentation engine. Fragment shader samples

@@ -61,7 +61,11 @@ struct LightUBO
 {
     alignas(16) float direction[4]{}; // xyz normalised, w unused
     alignas(16) float colour[4]{};    // rgb, a = intensity
-    alignas(16) Mat4 lightViewProj{};
+    // Per-cascade light-space view-projection matrices. cascadeViewProj[0]
+    // matches the pre-CSM single lightViewProj when CSM is disabled.
+    alignas(16) Mat4 cascadeViewProj[4]{};
+    // View-space far-plane distances for each cascade (x..w = cascades 0..3).
+    alignas(16) float cascadeSplits[4]{};
     alignas(16) float iblParams[4]{};         // x = maxReflectionLod, y/z = IBL strengths
     alignas(16) float shadowParams[4]{};      // x = minBias, y = slopeBias, z = filterRadius
     alignas(16) float environmentParams[4]{}; // x = skyboxIntensity

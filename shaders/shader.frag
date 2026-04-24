@@ -21,7 +21,7 @@ layout(binding = 6) uniform sampler2D emissiveMap;
 layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
-layout(binding = 10) uniform sampler2DShadow shadowMap;
+layout(binding = 10) uniform sampler2DArrayShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
 layout(binding = 13) uniform samplerCube prefilteredMap;
 layout(binding = 14) uniform sampler2D brdfLut;
@@ -29,7 +29,8 @@ layout(binding = 14) uniform sampler2D brdfLut;
 layout(binding = 11) uniform LightUBO {
     vec4 direction;
     vec4 colour;
-    mat4 lightViewProj;
+    mat4 cascadeViewProj[4];
+    vec4 cascadeSplits;
     vec4 iblParams;
     vec4 shadowParams;
     vec4 environmentParams;
@@ -80,7 +81,8 @@ vec3 fresnelSchlickRoughness(float cosTheta, vec3 F0, float roughness)
 
 float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir)
 {
-    vec4 lightSpace = light.lightViewProj * vec4(worldPos, 1.0);
+    // Cascade 0 sampled explicitly — Stage 4d will select per fragment.
+    vec4 lightSpace = light.cascadeViewProj[0] * vec4(worldPos, 1.0);
     vec3 proj = lightSpace.xyz / lightSpace.w;
     proj.xy = proj.xy * 0.5 + 0.5;
     if (proj.z > 1.0 || proj.z < 0.0)
@@ -91,12 +93,14 @@ float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir)
     float filterRadius = light.shadowParams.z;
     float bias = max(minBias, slopeBias * (1.0 - max(dot(normal, lightDir), 0.0)));
 
-    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0));
+    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0).xy);
     float visibility = 0.0;
     for (int x = -1; x <= 1; ++x) {
         for (int y = -1; y <= 1; ++y) {
             vec2 offset = vec2(x, y) * texelSize * filterRadius;
-            visibility += texture(shadowMap, vec3(proj.xy + offset, proj.z - bias));
+            // sampler2DArrayShadow: (u, v, layer, depthRef). Layer is fixed at
+            // 0 until Stage 4d adds per-fragment cascade selection.
+            visibility += texture(shadowMap, vec4(proj.xy + offset, 0.0, proj.z - bias));
         }
     }
     return visibility / 9.0;

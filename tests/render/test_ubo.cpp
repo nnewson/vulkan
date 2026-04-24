@@ -194,10 +194,12 @@ TEST(UBO, LightUBOFieldOrder)
 {
     static_assert(offsetof(LightUBO, direction) < offsetof(LightUBO, colour),
                   "direction must precede colour to match shader layout");
-    static_assert(offsetof(LightUBO, colour) < offsetof(LightUBO, lightViewProj),
-                  "colour must precede lightViewProj to match shader layout");
-    static_assert(offsetof(LightUBO, lightViewProj) < offsetof(LightUBO, iblParams),
-                  "lightViewProj must precede iblParams to match shader layout");
+    static_assert(offsetof(LightUBO, colour) < offsetof(LightUBO, cascadeViewProj),
+                  "colour must precede cascadeViewProj to match shader layout");
+    static_assert(offsetof(LightUBO, cascadeViewProj) < offsetof(LightUBO, cascadeSplits),
+                  "cascadeViewProj must precede cascadeSplits to match shader layout");
+    static_assert(offsetof(LightUBO, cascadeSplits) < offsetof(LightUBO, iblParams),
+                  "cascadeSplits must precede iblParams to match shader layout");
     static_assert(offsetof(LightUBO, iblParams) < offsetof(LightUBO, shadowParams),
                   "iblParams must precede shadowParams to match shader layout");
     static_assert(offsetof(LightUBO, shadowParams) < offsetof(LightUBO, environmentParams),
@@ -211,8 +213,10 @@ TEST(UBO, LightUBODirectionAligned16)
                   "direction must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, colour) % 16 == 0,
                   "colour must be 16-byte aligned for std140 vec4");
-    static_assert(offsetof(LightUBO, lightViewProj) % 16 == 0,
-                  "lightViewProj must be 16-byte aligned for std140 mat4");
+    static_assert(offsetof(LightUBO, cascadeViewProj) % 16 == 0,
+                  "cascadeViewProj must be 16-byte aligned for std140 mat4[]");
+    static_assert(offsetof(LightUBO, cascadeSplits) % 16 == 0,
+                  "cascadeSplits must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, iblParams) % 16 == 0,
                   "iblParams must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, shadowParams) % 16 == 0,

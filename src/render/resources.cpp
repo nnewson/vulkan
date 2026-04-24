@@ -502,7 +502,7 @@ TextureHandle Resources::createFallbackTexture(FallbackTextureKind kind)
 
 // --- Shadow map ---
 
-TextureHandle Resources::createShadowMap(uint32_t extent)
+TextureHandle Resources::createShadowMap(uint32_t extent, uint32_t layerCount)
 {
     auto id = static_cast<uint32_t>(textures_.size());
     textures_.emplace_back();
@@ -510,7 +510,8 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     entry.format = vk::Format::eD32Sfloat;
 
     vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, entry.format, vk::Extent3D(extent, extent, 1),
-                              1, 1, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+                              1, layerCount, vk::SampleCountFlagBits::e1,
+                              vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eDepthStencilAttachment |
                                   vk::ImageUsageFlagBits::eSampled |
                                   vk::ImageUsageFlagBits::eTransferDst,
@@ -524,10 +525,28 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
     entry.image.bindMemory(*entry.memory, 0);
 
+    // Main view: 2D for single-layer (sampler2DShadow), 2DArray for multi-layer
+    // (sampler2DArrayShadow in the forward fragment shader).
+    vk::ImageViewType mainViewType =
+        layerCount > 1 ? vk::ImageViewType::e2DArray : vk::ImageViewType::e2D;
     vk::ImageViewCreateInfo viewCi(
-        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, 1));
+        {}, *entry.image, mainViewType, entry.format, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, 0, layerCount));
     entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    // Per-layer 2D views for use as framebuffer attachments — one shadow
+    // framebuffer binds one layer's depth via baseArrayLayer=L.
+    if (layerCount > 1)
+    {
+        entry.faceViews.reserve(layerCount);
+        for (uint32_t layer = 0; layer < layerCount; ++layer)
+        {
+            vk::ImageViewCreateInfo layerCi(
+                {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
+                vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eDepth, 0, 1, layer, 1));
+            entry.faceViews.emplace_back(device_->device(), layerCi);
+        }
+    }
 
     vk::SamplerCreateInfo samplerCi(
         {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
@@ -537,6 +556,13 @@ TextureHandle Resources::createShadowMap(uint32_t extent)
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
     return TextureHandle{id};
+}
+
+vk::ImageView Resources::vulkanShadowMapLayerView(TextureHandle handle,
+                                                   uint32_t layer) const noexcept
+{
+    const auto& entry = textures_[static_cast<uint32_t>(handle)];
+    return *entry.faceViews[layer];
 }
 
 TextureHandle Resources::createShadowColourAttachment(uint32_t extent)

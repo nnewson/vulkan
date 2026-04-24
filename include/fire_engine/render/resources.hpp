@@ -122,7 +122,13 @@ public:
     // eClampToBorder, white border) so the forward shader can do hardware PCF
     // via sampler2DShadow. Returned handle slots into the existing texture
     // registry — retrieve view/sampler via the vulkan* accessors.
-    [[nodiscard]] TextureHandle createShadowMap(uint32_t extent);
+    // layerCount > 1 produces a 2D array image for cascaded shadow mapping;
+    // per-layer 2D views are created for framebuffer attachment.
+    [[nodiscard]] TextureHandle createShadowMap(uint32_t extent, uint32_t layerCount = 1);
+
+    // Per-layer 2D view on a shadow-map array (framebuffer attachment use).
+    [[nodiscard]] vk::ImageView vulkanShadowMapLayerView(TextureHandle handle,
+                                                         uint32_t layer) const noexcept;
 
     // MoltenVK workaround: depth-only render passes fail to store on Metal
     // TBDR. Creates a throwaway B8G8R8A8 colour attachment so the shadow pass
