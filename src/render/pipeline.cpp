@@ -73,6 +73,10 @@ PipelineConfig Pipeline::shadowConfig(vk::RenderPass renderPass)
         {2, vk::DescriptorType::eUniformBuffer, 1, vk::ShaderStageFlagBits::eVertex},
         {3, vk::DescriptorType::eStorageBuffer, 1, vk::ShaderStageFlagBits::eVertex},
     };
+    // Cascade index pushed by the renderer once per shadow-pass iteration so
+    // the shadow vertex shader picks the matching lightViewProj[] entry.
+    config.pushConstantRanges.emplace_back(vk::ShaderStageFlagBits::eVertex, 0,
+                                           static_cast<uint32_t>(sizeof(ShadowPushConstants)));
     config.renderPass = renderPass;
     config.depthWrite = true;
     config.depthCompare = vk::CompareOp::eLessOrEqual;

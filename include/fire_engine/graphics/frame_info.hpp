@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 
 #include <fire_engine/graphics/gpu_handle.hpp>
@@ -28,7 +29,10 @@ struct FrameInfo
     Vec3 cameraTarget;
     AlphaPipelines pipelines{};
     PipelineHandle shadowPipeline{NullPipeline};
-    Mat4 lightViewProj{};
+    // Per-cascade light-space view-projection matrices. Object::render copies
+    // all four into the per-draw ShadowUBO so the shadow vertex shader can
+    // select by push-constant cascade index.
+    std::array<Mat4, 4> cascadeViewProjs{};
 };
 
 } // namespace fire_engine

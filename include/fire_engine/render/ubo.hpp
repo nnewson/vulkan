@@ -90,8 +90,16 @@ struct EnvironmentPrefilterPushConstants
 struct ShadowUBO
 {
     alignas(16) Mat4 model;
-    alignas(16) Mat4 lightViewProj;
+    // Per-cascade light-space view-projection matrices. The shadow vertex
+    // shader selects one via the ShadowPushConstants::cascadeIndex push
+    // constant that the renderer sets per shadow-pass iteration.
+    alignas(16) Mat4 lightViewProj[4];
     alignas(4) int hasSkin{0};
+};
+
+struct ShadowPushConstants
+{
+    alignas(4) int cascadeIndex{0};
 };
 
 } // namespace fire_engine

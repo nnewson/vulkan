@@ -722,9 +722,10 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
         cascadeViewProj[i] = fitCascade(sliceNear, splits[i]);
         sliceNear = splits[i];
     }
-    // Keep the single-matrix member pointing at cascade 0 so the shadow pass
-    // and RenderContext still work while 4c rewires them to use all 4.
-    lightViewProj_ = cascadeViewProj[0];
+    for (int i = 0; i < cascadeCount; ++i)
+    {
+        cascadeViewProjs_[i] = cascadeViewProj[i];
+    }
 
     LightUBO lightData{};
     lightData.direction[0] = lightDir.x();
@@ -815,11 +816,11 @@ void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCom
                           static_cast<float>(shadowMapSize_), 0, 1);
     vk::Rect2D shadowScissor({0, 0}, {shadowMapSize_, shadowMapSize_});
 
-    // Iterate every cascade layer so each one's subresource transitions to
-    // shader-read-only (required — the main shader view spans all layers).
-    // Stage 4a: only cascade 0 receives real shadow draws; layers 1..N-1 are
-    // cleared to depth=1 (= fully lit) and are not yet sampled by the forward
-    // shader. Stage 4c will render actual geometry into every layer.
+    // Render every caster into every cascade. The per-cascade lightViewProj
+    // already lives in ShadowUBO (written by Object::render from FrameInfo);
+    // the push constant picks which entry the shadow vertex shader uses.
+    const vk::PipelineLayout shadowPipelineLayout =
+        resources_.vulkanPipelineLayout(shadowPipelineHandle_);
     for (uint32_t cascade = 0; cascade < shadowMapLayers_; ++cascade)
     {
         vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(),
@@ -829,11 +830,13 @@ void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCom
         cmd.setViewport(0, shadowVp);
         cmd.setScissor(0, shadowScissor);
 
-        if (cascade == 0)
-        {
-            auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-            recordDrawBucket(cmd, shadowDraws, lastBoundPipeline);
-        }
+        ShadowPushConstants pc{};
+        pc.cascadeIndex = static_cast<int>(cascade);
+        cmd.pushConstants<ShadowPushConstants>(shadowPipelineLayout,
+                                               vk::ShaderStageFlagBits::eVertex, 0, pc);
+
+        auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
+        recordDrawBucket(cmd, shadowDraws, lastBoundPipeline);
 
         cmd.endRenderPass();
     }
@@ -918,7 +921,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
                       &drawCommands,
                       pipelines,
                       shadowPipelineHandle_,
-                      lightViewProj_};
+                      cascadeViewProjs_};
     scene.render(ctx);
 
     DrawBuckets buckets = buildDrawBuckets(drawCommands);

@@ -141,7 +141,7 @@ private:
     BufferHandle skyboxIndexBuffer_{NullBuffer};
     BufferHandle postProcessIndexBuffer_{NullBuffer};
     Resources::MappedBufferSet lightUbo_;
-    Mat4 lightViewProj_{};
+    std::array<Mat4, 4> cascadeViewProjs_{};
     std::vector<vk::Fence> imagesInFlight_{};
     uint32_t currentFrame_{0};
     uint32_t shadowMapSize_{0};

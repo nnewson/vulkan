@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <vector>
 
@@ -31,7 +32,7 @@ struct RenderContext
     std::vector<DrawCommand>* drawCommands{nullptr};
     AlphaPipelines pipelines{};
     PipelineHandle shadowPipeline{NullPipeline};
-    Mat4 lightViewProj{};
+    std::array<Mat4, 4> cascadeViewProjs{};
 
     [[nodiscard]] FrameInfo frameInfo() const noexcept;
 };

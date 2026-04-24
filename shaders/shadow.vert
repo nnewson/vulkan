@@ -2,9 +2,13 @@
 
 layout(binding = 0) uniform ShadowUBO {
     mat4 model;
-    mat4 lightViewProj;
+    mat4 lightViewProj[4];
     int hasSkin;
 } shadow;
+
+layout(push_constant) uniform ShadowPushConstants {
+    int cascadeIndex;
+} pc;
 
 layout(binding = 1) uniform SkinUBO {
     mat4 joints[64];
@@ -54,5 +58,5 @@ void main() {
     }
 
     vec4 worldPos = transform * vec4(pos, 1.0);
-    gl_Position = shadow.lightViewProj * worldPos;
+    gl_Position = shadow.lightViewProj[pc.cascadeIndex] * worldPos;
 }

@@ -212,7 +212,10 @@ void Object::load(Resources& resources)
 
         ShadowUBO initialShadow{};
         initialShadow.model = Mat4::identity();
-        initialShadow.lightViewProj = Mat4::identity();
+        for (Mat4& m : initialShadow.lightViewProj)
+        {
+            m = Mat4::identity();
+        }
         auto shadowSet = resources.createMappedUniformBuffers(sizeof(ShadowUBO));
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
@@ -327,7 +330,10 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     // shadow pass and forward draws replay inside the forward pass.
     ShadowUBO shadowData{};
     shadowData.model = world;
-    shadowData.lightViewProj = frame.lightViewProj;
+    for (std::size_t i = 0; i < frame.cascadeViewProjs.size(); ++i)
+    {
+        shadowData.lightViewProj[i] = frame.cascadeViewProjs[i];
+    }
     shadowData.hasSkin = ubo.hasSkin;
     for (auto& binding : bindings_)
     {
