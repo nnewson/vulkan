@@ -1,15 +1,19 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
+#include <span>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include <fastgltf/core.hpp>
 
-#include <fire_engine/core/tangent_generator.hpp>
 #include <fire_engine/animation/animation.hpp>
+#include <fire_engine/core/tangent_generator.hpp>
 #include <fire_engine/graphics/image.hpp>
+#include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
 {
@@ -34,6 +38,14 @@ public:
 
     static void loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
                           Assets& assets);
+
+    // Synthesises per-vertex normals from a triangle mesh when the source
+    // glTF lacks the NORMAL attribute. Smooth (area-weighted accumulate-and-
+    // normalize) so curved meshes look right; the spec's "flat normals"
+    // wording would require de-indexing and produces visibly worse results
+    // on real assets like Fox.gltf.
+    [[nodiscard]] static std::vector<Vec3> generateSmoothNormals(std::span<const Vec3> positions,
+                                                                 std::span<const uint32_t> indices);
 
     struct TexturePaths
     {
@@ -116,10 +128,9 @@ private:
     static Material* resolveMaterial(Material materialData, Assets& assets);
 
     [[nodiscard]]
-    static TangentGenerationResult loadGeometry(const fastgltf::Asset& asset,
-                                                const fastgltf::Primitive& primitive,
-                                                bool needsTangents, Resources& resources,
-                                                Assets& assets, std::size_t geoIdx);
+    static TangentGenerationResult
+    loadGeometry(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                 bool needsTangents, Resources& resources, Assets& assets, std::size_t geoIdx);
 
     [[nodiscard]]
     static Material loadMaterial(const fastgltf::Asset& asset,

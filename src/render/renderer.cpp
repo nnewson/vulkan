@@ -321,7 +321,8 @@ void Renderer::createSkyboxEnvironmentGpu()
                 // Destination mip: undefined → transfer-dst
                 barrier(mip, 1, vk::ImageLayout::eUndefined, vk::ImageLayout::eTransferDstOptimal,
                         {}, vk::AccessFlagBits::eTransferWrite,
-                        vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer);
+                        vk::PipelineStageFlagBits::eTopOfPipe,
+                        vk::PipelineStageFlagBits::eTransfer);
 
                 vk::ImageBlit blit(
                     vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, mip - 1, 0, 6),
@@ -333,9 +334,8 @@ void Renderer::createSkyboxEnvironmentGpu()
 
                 // Previous mip → shader-read-only (done as a blit source).
                 barrier(mip - 1, 1, vk::ImageLayout::eTransferSrcOptimal,
-                        vk::ImageLayout::eShaderReadOnlyOptimal,
-                        vk::AccessFlagBits::eTransferRead, vk::AccessFlagBits::eShaderRead,
-                        vk::PipelineStageFlagBits::eTransfer,
+                        vk::ImageLayout::eShaderReadOnlyOptimal, vk::AccessFlagBits::eTransferRead,
+                        vk::AccessFlagBits::eShaderRead, vk::PipelineStageFlagBits::eTransfer,
                         vk::PipelineStageFlagBits::eFragmentShader);
 
                 // This mip becomes the source for the next iteration.
@@ -530,8 +530,7 @@ void Renderer::createPrefilteredEnvironment()
                 capture.faceIndex = static_cast<int>(face);
                 capture.faceExtent = static_cast<int>(mipExtent);
                 capture.roughness = roughness;
-                capture.sourceFaceExtent =
-                    static_cast<int>(environmentConfig.skyboxCubemapExtent);
+                capture.sourceFaceExtent = static_cast<int>(environmentConfig.skyboxCubemapExtent);
                 capture.sourceMaxMip =
                     static_cast<float>(environmentConfig.skyboxCubemapMipLevels - 1);
 

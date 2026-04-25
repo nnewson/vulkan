@@ -94,8 +94,7 @@ RenderPass RenderPass::createShadow(const Device& device)
 }
 
 void RenderPass::createShadowFramebuffer(const Device& device, vk::ImageView colourView,
-                                         std::span<const vk::ImageView> depthViews,
-                                         uint32_t extent)
+                                         std::span<const vk::ImageView> depthViews, uint32_t extent)
 {
     framebuffers_.clear();
     framebuffers_.reserve(depthViews.size());

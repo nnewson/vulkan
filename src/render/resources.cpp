@@ -425,14 +425,13 @@ TextureHandle Resources::createRenderTargetCubemap(uint32_t faceExtent, uint32_t
     // Transfer src/dst enable vkCmdBlitImage-based mip generation (used for
     // the skybox cubemap so the prefilter pass can do importance-sampled
     // mip-weighted lookups). Small memory/bandwidth cost when unused.
-    vk::ImageCreateInfo imgCi(vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D,
-                              entry.format, vk::Extent3D(faceExtent, faceExtent, 1), mipLevels, 6,
-                              vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-                              vk::ImageUsageFlagBits::eColorAttachment |
-                                  vk::ImageUsageFlagBits::eSampled |
-                                  vk::ImageUsageFlagBits::eTransferSrc |
-                                  vk::ImageUsageFlagBits::eTransferDst,
-                              vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    vk::ImageCreateInfo imgCi(
+        vk::ImageCreateFlagBits::eCubeCompatible, vk::ImageType::e2D, entry.format,
+        vk::Extent3D(faceExtent, faceExtent, 1), mipLevels, 6, vk::SampleCountFlagBits::e1,
+        vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled |
+            vk::ImageUsageFlagBits::eTransferSrc | vk::ImageUsageFlagBits::eTransferDst,
+        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
     auto imgReq = entry.image.getMemoryRequirements();
@@ -510,8 +509,7 @@ TextureHandle Resources::createShadowMap(uint32_t extent, uint32_t layerCount)
     entry.format = vk::Format::eD32Sfloat;
 
     vk::ImageCreateInfo imgCi({}, vk::ImageType::e2D, entry.format, vk::Extent3D(extent, extent, 1),
-                              1, layerCount, vk::SampleCountFlagBits::e1,
-                              vk::ImageTiling::eOptimal,
+                              1, layerCount, vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
                               vk::ImageUsageFlagBits::eDepthStencilAttachment |
                                   vk::ImageUsageFlagBits::eSampled |
                                   vk::ImageUsageFlagBits::eTransferDst,
@@ -559,7 +557,7 @@ TextureHandle Resources::createShadowMap(uint32_t extent, uint32_t layerCount)
 }
 
 vk::ImageView Resources::vulkanShadowMapLayerView(TextureHandle handle,
-                                                   uint32_t layer) const noexcept
+                                                  uint32_t layer) const noexcept
 {
     const auto& entry = textures_[static_cast<uint32_t>(handle)];
     return *entry.faceViews[layer];

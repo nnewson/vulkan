@@ -147,9 +147,8 @@ TangentGenerationResult TangentGenerator::generate(const std::vector<Vec3>& posi
         }
 
         tangent = Vec3::normalise(tangent);
-        float handedness = Vec3::dotProduct(Vec3::crossProduct(normal, tangent), tan2[i]) < 0.0f
-                               ? -1.0f
-                               : 1.0f;
+        float handedness =
+            Vec3::dotProduct(Vec3::crossProduct(normal, tangent), tan2[i]) < 0.0f ? -1.0f : 1.0f;
 
         result.tangents[i] = Vec4{tangent.x(), tangent.y(), tangent.z(), handedness};
     }

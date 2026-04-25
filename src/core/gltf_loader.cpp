@@ -731,6 +731,48 @@ Material* GltfLoader::resolveMaterial(Material materialData, Assets& assets)
     return &assets.addMaterial(std::move(materialData));
 }
 
+std::vector<Vec3> GltfLoader::generateSmoothNormals(std::span<const Vec3> positions,
+                                                    std::span<const uint32_t> indices)
+{
+    std::vector<Vec3> normals(positions.size(), Vec3{0.0f, 0.0f, 0.0f});
+    for (std::size_t k = 0; k + 2 < indices.size(); k += 3)
+    {
+        const auto i0 = indices[k];
+        const auto i1 = indices[k + 1];
+        const auto i2 = indices[k + 2];
+        if (i0 >= positions.size() || i1 >= positions.size() || i2 >= positions.size())
+        {
+            continue;
+        }
+        const Vec3& a = positions[i0];
+        const Vec3& b = positions[i1];
+        const Vec3& c = positions[i2];
+        // cross(b - a, c - a). Magnitude is 2 × triangle area, so the
+        // un-normalised cross naturally area-weights the accumulation —
+        // larger triangles dominate at shared vertices, which is what we want.
+        const Vec3 e1{b.x() - a.x(), b.y() - a.y(), b.z() - a.z()};
+        const Vec3 e2{c.x() - a.x(), c.y() - a.y(), c.z() - a.z()};
+        const Vec3 face = Vec3::crossProduct(e1, e2);
+        normals[i0] += face;
+        normals[i1] += face;
+        normals[i2] += face;
+    }
+    for (auto& n : normals)
+    {
+        if (n.magnitudeSquared() > 1e-16f)
+        {
+            n = Vec3::normalise(n);
+        }
+        else
+        {
+            // Vertex unreferenced by any triangle (or degenerate fan). The
+            // up-pointing fallback is harmless because the vertex isn't drawn.
+            n = Vec3{0.0f, 1.0f, 0.0f};
+        }
+    }
+    return normals;
+}
+
 TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
                                                  const fastgltf::Primitive& primitive,
                                                  bool needsTangents, Resources& resources,
@@ -835,6 +877,25 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
         for (std::size_t i = 0; i < positions.size(); ++i)
         {
             idxs.push_back(static_cast<uint32_t>(i));
+        }
+    }
+
+    // glTF 2.0 spec: when NORMAL is absent the implementation must compute
+    // normals. Smooth (area-weighted) variant — matches glTF reference viewer
+    // output and avoids the ugly faceted look on curved meshes like Fox.
+    if (normals.empty() && !positions.empty())
+    {
+        std::vector<Vec3> enginePositions;
+        enginePositions.reserve(positions.size());
+        for (const auto& p : positions)
+        {
+            enginePositions.emplace_back(p.x(), p.y(), p.z());
+        }
+        const auto generated = GltfLoader::generateSmoothNormals(enginePositions, idxs);
+        normals.resize(positions.size());
+        for (std::size_t i = 0; i < generated.size(); ++i)
+        {
+            normals[i] = {generated[i].x(), generated[i].y(), generated[i].z()};
         }
     }
 

@@ -1,22 +1,28 @@
 #include <cmath>
+#include <cstdint>
 #include <filesystem>
+#include <vector>
 
 #include <fastgltf/core.hpp>
 #include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
+#include <fire_engine/core/gltf_loader.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/vec3.hpp>
 #include <fire_engine/scene/node.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 #include <gtest/gtest.h>
 
 using fire_engine::AlphaMode;
+using fire_engine::GltfLoader;
 using fire_engine::Mat4;
 using fire_engine::Material;
 using fire_engine::Node;
+using fire_engine::Vec3;
 
 // Mirrors the alpha-mode translation performed inside
 // GltfLoader::loadMaterial so the translation can be exercised without
@@ -287,6 +293,98 @@ TEST(GltfFixture, MinimalTriangleFixtureParses)
     EXPECT_EQ(asset.meshes[0].primitives[0].findAttribute("POSITION")->accessorIndex, 0u);
     ASSERT_EQ(asset.accessors.size(), 1u);
     EXPECT_EQ(asset.accessors[0].count, 3u);
+}
+
+// ==========================================================================
+// Smooth-normal generation — runs in the loader when a glTF primitive omits
+// the NORMAL attribute (Fox.gltf, etc.). Verifies the algorithm directly so
+// we don't need a GPU-backed Resources to exercise it.
+// ==========================================================================
+
+TEST(GenerateSmoothNormals, SingleTriangleProducesFaceNormal)
+{
+    // Triangle in XY plane, CCW when viewed from +Z. Face normal is +Z.
+    std::vector<Vec3> positions{
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+    };
+    std::vector<uint32_t> indices{0, 1, 2};
+
+    const auto normals = GltfLoader::generateSmoothNormals(positions, indices);
+    ASSERT_EQ(normals.size(), 3u);
+    for (const auto& n : normals)
+    {
+        EXPECT_NEAR(n.x(), 0.0f, 1e-5f);
+        EXPECT_NEAR(n.y(), 0.0f, 1e-5f);
+        EXPECT_NEAR(n.z(), 1.0f, 1e-5f);
+    }
+}
+
+TEST(GenerateSmoothNormals, SharedVertexAreaWeightedAverage)
+{
+    // Two triangles sharing vertex 0 at the origin. Both normals are +Z, so
+    // the shared vertex's accumulated normal is also +Z, unit length.
+    std::vector<Vec3> positions{
+        {0.0f, 0.0f, 0.0f}, // shared
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {-1.0f, 0.0f, 0.0f},
+    };
+    std::vector<uint32_t> indices{
+        0, 1, 2, // CCW from +Z, normal +Z
+        0, 2, 3, // CCW from +Z, normal +Z
+    };
+
+    const auto normals = GltfLoader::generateSmoothNormals(positions, indices);
+    ASSERT_EQ(normals.size(), 4u);
+    EXPECT_NEAR(normals[0].z(), 1.0f, 1e-5f);
+    EXPECT_NEAR(std::sqrt(normals[0].x() * normals[0].x() + normals[0].y() * normals[0].y() +
+                          normals[0].z() * normals[0].z()),
+                1.0f, 1e-5f);
+}
+
+TEST(GenerateSmoothNormals, UnreferencedVertexFallsBackToUp)
+{
+    // Three real triangle verts plus a stray fourth that no triangle uses.
+    // The stray's accumulated normal is zero; the function must not divide
+    // by zero and instead emits the documented up-pointing fallback.
+    std::vector<Vec3> positions{
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+        {99.0f, 99.0f, 99.0f}, // unreferenced
+    };
+    std::vector<uint32_t> indices{0, 1, 2};
+
+    const auto normals = GltfLoader::generateSmoothNormals(positions, indices);
+    ASSERT_EQ(normals.size(), 4u);
+    EXPECT_NEAR(normals[3].x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(normals[3].y(), 1.0f, 1e-5f);
+    EXPECT_NEAR(normals[3].z(), 0.0f, 1e-5f);
+}
+
+TEST(GenerateSmoothNormals, OutOfRangeIndicesAreSkipped)
+{
+    // Malformed mesh: an index references a vertex that doesn't exist.
+    // Function must skip the bad triangle without UB or crash; remaining
+    // triangle still contributes.
+    std::vector<Vec3> positions{
+        {0.0f, 0.0f, 0.0f},
+        {1.0f, 0.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f},
+    };
+    std::vector<uint32_t> indices{
+        0, 1, 2,  // good
+        0, 1, 99, // bad — index 99 out of range
+    };
+
+    const auto normals = GltfLoader::generateSmoothNormals(positions, indices);
+    ASSERT_EQ(normals.size(), 3u);
+    for (const auto& n : normals)
+    {
+        EXPECT_NEAR(n.z(), 1.0f, 1e-5f);
+    }
 }
 
 // ==========================================================================

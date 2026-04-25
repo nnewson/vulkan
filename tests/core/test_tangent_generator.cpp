@@ -132,26 +132,15 @@ TEST(TangentGenerator, FailsOnDegenerateUvMapping)
 TEST(TangentGenerator, FallsBackForVerticesOnlyInDegenerateUvTriangles)
 {
     std::vector<Vec3> positions = {
-        {0.0f, 0.0f, 0.0f},
-        {1.0f, 0.0f, 0.0f},
-        {1.0f, 1.0f, 0.0f},
-        {0.0f, 1.0f, 0.0f},
-        {2.0f, 0.0f, 0.0f},
-        {2.0f, 1.0f, 0.0f},
+        {0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f},
+        {0.0f, 1.0f, 0.0f}, {2.0f, 0.0f, 0.0f}, {2.0f, 1.0f, 0.0f},
     };
     std::vector<Vec3> normals(6, {0.0f, 0.0f, 1.0f});
     std::vector<Vec2> texcoords = {
-        {0.0f, 0.0f},
-        {1.0f, 0.0f},
-        {1.0f, 1.0f},
-        {0.0f, 1.0f},
-        {2.0f, 0.0f},
-        {2.0f, 0.0f},
+        {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}, {2.0f, 0.0f}, {2.0f, 0.0f},
     };
     std::vector<uint32_t> indices = {
-        0, 1, 2,
-        0, 2, 3,
-        1, 4, 5,
+        0, 1, 2, 0, 2, 3, 1, 4, 5,
     };
 
     auto result = TangentGenerator::generate(positions, normals, texcoords, indices);

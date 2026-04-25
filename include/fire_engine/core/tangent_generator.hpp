@@ -24,10 +24,9 @@ public:
     TangentGenerator() = delete;
 
     [[nodiscard]]
-    static TangentGenerationResult generate(const std::vector<Vec3>& positions,
-                                            const std::vector<Vec3>& normals,
-                                            const std::vector<Vec2>& texcoords,
-                                            const std::vector<uint32_t>& indices);
+    static TangentGenerationResult
+    generate(const std::vector<Vec3>& positions, const std::vector<Vec3>& normals,
+             const std::vector<Vec2>& texcoords, const std::vector<uint32_t>& indices);
 };
 
 } // namespace fire_engine
