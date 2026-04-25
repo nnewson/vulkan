@@ -37,6 +37,9 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         {12, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {13, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {14, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 15: shadow map again, but with a non-comparison sampler so PCSS can
+        // read raw depths during the blocker search.
+        {15, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
     return config;
@@ -95,12 +98,49 @@ PipelineConfig Pipeline::postProcessConfig(vk::RenderPass renderPass)
     config.fragShaderPath = "postprocess.frag.spv";
     config.bindings = {
         {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 1: bloom mip 0 — added by Stage 6.
+        {1, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     };
+    config.pushConstantRanges.emplace_back(
+        vk::ShaderStageFlagBits::eFragment, 0,
+        static_cast<uint32_t>(sizeof(PostProcessPushConstants)));
     config.renderPass = renderPass;
     config.useVertexInput = false;
     config.depthTestEnable = false;
     config.depthWrite = false;
     config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
+PipelineConfig Pipeline::bloomDownsampleConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config;
+    config.vertShaderPath = "postprocess.vert.spv";
+    config.fragShaderPath = "bloom_downsample.frag.spv";
+    config.bindings = {
+        {0, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+    };
+    config.pushConstantRanges.emplace_back(vk::ShaderStageFlagBits::eFragment, 0,
+                                           static_cast<uint32_t>(sizeof(BloomPushConstants)));
+    config.renderPass = renderPass;
+    config.useVertexInput = false;
+    config.depthTestEnable = false;
+    config.depthWrite = false;
+    config.cullMode = vk::CullModeFlagBits::eNone;
+    return config;
+}
+
+PipelineConfig Pipeline::bloomUpsampleConfig(vk::RenderPass renderPass)
+{
+    PipelineConfig config = bloomDownsampleConfig(renderPass);
+    config.fragShaderPath = "bloom_upsample.frag.spv";
+    // Additive blend so each upsample step adds its tent contribution onto
+    // the existing mip content (which was loaded via render-pass eLoad).
+    config.blendEnable = true;
+    config.srcColourBlend = vk::BlendFactor::eOne;
+    config.dstColourBlend = vk::BlendFactor::eOne;
+    config.srcAlphaBlend = vk::BlendFactor::eOne;
+    config.dstAlphaBlend = vk::BlendFactor::eOne;
     return config;
 }
 

@@ -130,6 +130,10 @@ public:
     [[nodiscard]] vk::ImageView vulkanShadowMapLayerView(TextureHandle handle,
                                                          uint32_t layer) const noexcept;
 
+    // Non-comparison sampler over the shadow image — used by PCSS to read raw
+    // depth values during the blocker search. Same image as vulkanSampler().
+    [[nodiscard]] vk::Sampler vulkanShadowSamplerLinear(TextureHandle handle) const noexcept;
+
     // MoltenVK workaround: depth-only render passes fail to store on Metal
     // TBDR. Creates a throwaway B8G8R8A8 colour attachment so the shadow pass
     // becomes a real (colour + depth) render pass. Contents are never read.
@@ -139,6 +143,14 @@ public:
     // usable as both a colour attachment (forward pass target) and a sampled
     // texture (post-process input). Linear-filter sampler, ClampToEdge.
     [[nodiscard]] TextureHandle createOffscreenColourTarget(vk::Extent2D extent);
+
+    // Multi-mip 2D HDR target used by the bloom downsample/upsample chain.
+    // Per-mip 2D views are created for framebuffer attachment + shader input.
+    [[nodiscard]] TextureHandle createBloomChain(uint32_t width, uint32_t height,
+                                                  uint32_t mipLevels);
+
+    [[nodiscard]] vk::ImageView vulkanBloomMipView(TextureHandle handle,
+                                                    uint32_t mipLevel) const noexcept;
 
     // Releases an existing offscreen / shadow texture entry so it can be
     // rebuilt at a new extent (e.g. on swapchain resize). The handle is
@@ -206,6 +218,25 @@ public:
     // input without reallocating sets.
     void updateSingleImageSamplerDescriptors(
         const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets, TextureHandle texture);
+
+    // Creates a single descriptor set with one combined-image-sampler binding
+    // bound to the supplied (view, sampler) pair. Used by bloom passes where
+    // the input view changes per pass (different mip).
+    [[nodiscard]] DescriptorSetHandle createImageViewDescriptor(vk::DescriptorSetLayout layout,
+                                                                vk::ImageView view,
+                                                                vk::Sampler sampler);
+
+    // Allocates a 2-binding descriptor set array for the post-process pass:
+    // binding 0 = HDR target, binding 1 = bloom mip 0 (additive bloom).
+    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+    createPostProcessDescriptors(vk::DescriptorSetLayout layout, TextureHandle hdrTarget,
+                                  TextureHandle bloomChain);
+
+    // Rewrites the post-process descriptor array so its two bindings target a
+    // new HDR view + bloom mip 0. Used on resize.
+    void updatePostProcessDescriptors(
+        const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets,
+        TextureHandle hdrTarget, TextureHandle bloomChain);
 
     // --- Shared light UBO (bound to every forward descriptor set) ---
 
@@ -315,6 +346,9 @@ private:
         vk::raii::DeviceMemory memory{nullptr};
         vk::raii::ImageView view{nullptr};
         vk::raii::Sampler sampler{nullptr};
+        // Shadow-map only: a second sampler with compareEnable=false, used by
+        // the PCSS blocker search to read raw depth values from the same image.
+        vk::raii::Sampler samplerLinear{nullptr};
         vk::Format format{vk::Format::eUndefined};
         std::vector<vk::raii::ImageView> faceViews;
         uint32_t mipLevels{1};

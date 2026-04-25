@@ -11,7 +11,7 @@ TEST(PipelineConfig, ForwardConfigIncludesIblBindings)
 {
     auto config = Pipeline::forwardConfig({});
 
-    EXPECT_EQ(config.bindings.size(), 15u);
+    EXPECT_EQ(config.bindings.size(), 16u);
 
     auto hasBinding = [&](uint32_t binding)
     {
@@ -22,6 +22,8 @@ TEST(PipelineConfig, ForwardConfigIncludesIblBindings)
     EXPECT_TRUE(hasBinding(12));
     EXPECT_TRUE(hasBinding(13));
     EXPECT_TRUE(hasBinding(14));
+    // PCSS: non-comparison sampler over the shadow image for blocker search.
+    EXPECT_TRUE(hasBinding(15));
 }
 
 TEST(PipelineConfig, SkyboxConfigIncludesCubemapSamplerBinding)

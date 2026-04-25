@@ -117,6 +117,16 @@ public:
     // test disabled, no culling, no vertex input.
     [[nodiscard]] static PipelineConfig postProcessConfig(vk::RenderPass renderPass);
 
+    // Bloom downsample: fullscreen triangle, samples one input mip, writes
+    // the next coarser mip. Push constant carries inverse-input-resolution
+    // and a first-pass flag (Karis-average to suppress firefly halos).
+    [[nodiscard]] static PipelineConfig bloomDownsampleConfig(vk::RenderPass renderPass);
+
+    // Bloom upsample: fullscreen triangle, samples a coarser mip with a tent
+    // filter, additively blends into the next finer mip. Push constant carries
+    // inverse-input-resolution.
+    [[nodiscard]] static PipelineConfig bloomUpsampleConfig(vk::RenderPass renderPass);
+
 private:
     void createDescriptorSetLayout(const std::vector<vk::DescriptorSetLayoutBinding>& bindings);
     void createGraphicsPipeline(const PipelineConfig& config);

@@ -96,6 +96,8 @@ private:
     void recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCommand>& shadowDraws);
     void recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
     void transitionOffscreenForSampling(vk::CommandBuffer cmd);
+    void recordBloomPasses(vk::CommandBuffer cmd);
+    void buildBloomResources();
     void recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex);
     void createSkyboxEnvironment();
     void createSkyboxEnvironmentGpu();
@@ -114,12 +116,16 @@ private:
     RenderPass forwardPass_;
     RenderPass shadowPass_;
     RenderPass postProcessPass_;
+    RenderPass bloomDownPass_;
+    RenderPass bloomUpPass_;
     Pipeline pipelineOpaque_;
     Pipeline pipelineOpaqueDoubleSided_;
     Pipeline pipelineBlend_;
     Pipeline skyboxPipeline_;
     Pipeline shadowPipeline_;
     Pipeline postProcessPipeline_;
+    Pipeline bloomDownsamplePipeline_;
+    Pipeline bloomUpsamplePipeline_;
     Frame frame_;
     Resources resources_;
     PipelineHandle forwardOpaqueHandle_{NullPipeline};
@@ -131,6 +137,10 @@ private:
     TextureHandle shadowMapHandle_{NullTexture};
     TextureHandle shadowColourHandle_{NullTexture};
     TextureHandle offscreenColourHandle_{NullTexture};
+    TextureHandle bloomChainHandle_{NullTexture};
+    // One descriptor set per bloom pass (downsample inputs + upsample inputs).
+    std::vector<DescriptorSetHandle> bloomDownDescSets_{};
+    std::vector<DescriptorSetHandle> bloomUpDescSets_{};
     TextureHandle skyboxCubemapHandle_{NullTexture};
     TextureHandle irradianceCubemapHandle_{NullTexture};
     TextureHandle prefilteredCubemapHandle_{NullTexture};

@@ -7,6 +7,7 @@
 #include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/math/constants.hpp>
+#include <fire_engine/render/constants.hpp>
 #include <fire_engine/render/resources.hpp>
 #include <fire_engine/render/ubo.hpp>
 
@@ -276,7 +277,7 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     ubo.view = Mat4::lookAt(frame.cameraPosition, frame.cameraTarget, {0, 1, 0});
     float aspect =
         static_cast<float>(frame.viewportWidth) / static_cast<float>(frame.viewportHeight);
-    ubo.proj = Mat4::perspective(45.0f * deg_to_rad, aspect, 0.1f, 1000.0f);
+    ubo.proj = Mat4::perspective(cameraFovRadians, aspect, cameraNearPlane, cameraFarPlane);
     ubo.cameraPos[0] = frame.cameraPosition.x();
     ubo.cameraPos[1] = frame.cameraPosition.y();
     ubo.cameraPos[2] = frame.cameraPosition.z();

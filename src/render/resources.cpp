@@ -553,6 +553,15 @@ TextureHandle Resources::createShadowMap(uint32_t extent, uint32_t layerCount)
         vk::CompareOp::eLess, 0.0f, 1.0f, vk::BorderColor::eFloatOpaqueWhite, vk::False);
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
+    // PCSS blocker search reads raw depth values, not comparison results, so
+    // it needs a non-comparison sampler over the same image.
+    vk::SamplerCreateInfo linearSamplerCi(
+        {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
+        vk::SamplerAddressMode::eClampToBorder, vk::SamplerAddressMode::eClampToBorder,
+        vk::SamplerAddressMode::eClampToBorder, 0.0f, vk::False, 1.0f, vk::False,
+        vk::CompareOp::eAlways, 0.0f, 1.0f, vk::BorderColor::eFloatOpaqueWhite, vk::False);
+    entry.samplerLinear = vk::raii::Sampler(device_->device(), linearSamplerCi);
+
     return TextureHandle{id};
 }
 
@@ -561,6 +570,11 @@ vk::ImageView Resources::vulkanShadowMapLayerView(TextureHandle handle,
 {
     const auto& entry = textures_[static_cast<uint32_t>(handle)];
     return *entry.faceViews[layer];
+}
+
+vk::Sampler Resources::vulkanShadowSamplerLinear(TextureHandle handle) const noexcept
+{
+    return *textures_[static_cast<uint32_t>(handle)].samplerLinear;
 }
 
 TextureHandle Resources::createShadowColourAttachment(uint32_t extent)
@@ -626,6 +640,61 @@ TextureHandle Resources::createOffscreenColourTarget(vk::Extent2D extent)
     entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
 
     return TextureHandle{id};
+}
+
+TextureHandle Resources::createBloomChain(uint32_t width, uint32_t height, uint32_t mipLevels)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+    entry.format = vk::Format::eR16G16B16A16Sfloat;
+    entry.mipLevels = mipLevels;
+
+    vk::ImageCreateInfo imgCi(
+        {}, vk::ImageType::e2D, entry.format, vk::Extent3D(width, height, 1), mipLevels, 1,
+        vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled,
+        vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi(
+        imgReq.size,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    // Main view spans all mips — used as the post-process bloom input via mip 0.
+    vk::ImageViewCreateInfo viewCi(
+        {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
+        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    // Per-mip 2D views — each downsample/upsample pass binds one as
+    // framebuffer attachment (write) and another as shader input (read).
+    entry.faceViews.reserve(mipLevels);
+    for (uint32_t m = 0; m < mipLevels; ++m)
+    {
+        vk::ImageViewCreateInfo mipCi(
+            {}, *entry.image, vk::ImageViewType::e2D, entry.format, {},
+            vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, m, 1, 0, 1));
+        entry.faceViews.emplace_back(device_->device(), mipCi);
+    }
+
+    vk::SamplerCreateInfo samplerCi(
+        {}, vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eNearest,
+        vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+        vk::SamplerAddressMode::eClampToEdge, 0.0f, vk::False, 1.0f, vk::False,
+        vk::CompareOp::eAlways, 0.0f, 0.0f, vk::BorderColor::eFloatOpaqueBlack, vk::False);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
+}
+
+vk::ImageView Resources::vulkanBloomMipView(TextureHandle handle,
+                                             uint32_t mipLevel) const noexcept
+{
+    return *textures_[static_cast<uint32_t>(handle)].faceViews[mipLevel];
 }
 
 void Resources::releaseTexture(TextureHandle handle)
@@ -725,7 +794,9 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
 
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 9},
+        // 10 samplers per set: baseColor, emissive, normal, mr, occlusion,
+        // shadowMap (compare), irradiance, prefiltered, brdfLut, shadowMapDepth.
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 10},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
@@ -791,6 +862,11 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
             vk::DescriptorImageInfo shadowTexInfo(*textures_[shadowTexIdx].sampler,
                                                   *textures_[shadowTexIdx].view,
                                                   vk::ImageLayout::eDepthStencilReadOnlyOptimal);
+            // Same shadow image, non-comparison sampler — read raw depths for
+            // the PCSS blocker search.
+            vk::DescriptorImageInfo shadowDepthTexInfo(
+                *textures_[shadowTexIdx].samplerLinear, *textures_[shadowTexIdx].view,
+                vk::ImageLayout::eDepthStencilReadOnlyOptimal);
 
             auto irradianceTexIdx = static_cast<uint32_t>(req.irradianceMap);
             vk::DescriptorImageInfo irradianceTexInfo(*textures_[irradianceTexIdx].sampler,
@@ -807,7 +883,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                                                    *textures_[brdfLutTexIdx].view,
                                                    vk::ImageLayout::eShaderReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 15> writes = {{
+            std::array<vk::WriteDescriptorSet, 16> writes = {{
                 {*sets[i], 0, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &uboBufInfo},
                 {*sets[i], 1, 0, 1, vk::DescriptorType::eUniformBuffer, nullptr, &matBufInfo},
                 {*sets[i], 2, 0, 1, vk::DescriptorType::eCombinedImageSampler, &texInfo},
@@ -824,6 +900,8 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 {*sets[i], 13, 0, 1, vk::DescriptorType::eCombinedImageSampler,
                  &prefilteredTexInfo},
                 {*sets[i], 14, 0, 1, vk::DescriptorType::eCombinedImageSampler, &brdfLutTexInfo},
+                {*sets[i], 15, 0, 1, vk::DescriptorType::eCombinedImageSampler,
+                 &shadowDepthTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 
@@ -1018,6 +1096,71 @@ void Resources::updateSingleImageSamplerDescriptors(
         vk::WriteDescriptorSet write(descriptorSetTable_[static_cast<uint32_t>(sets[i])], 0, 0, 1,
                                      vk::DescriptorType::eCombinedImageSampler, &imgInfo);
         device_->device().updateDescriptorSets(write, {});
+    }
+}
+
+DescriptorSetHandle Resources::createImageViewDescriptor(vk::DescriptorSetLayout layout,
+                                                         vk::ImageView view, vk::Sampler sampler)
+{
+    std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
+        {vk::DescriptorType::eCombinedImageSampler, 1},
+    }};
+    auto& poolEntry = createDescriptorPool(poolSizes, 1);
+    auto sets = allocateDescriptorSets(*poolEntry.pool, layout, 1);
+
+    vk::DescriptorImageInfo imgInfo(sampler, view, vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::WriteDescriptorSet write(*sets[0], 0, 0, 1, vk::DescriptorType::eCombinedImageSampler,
+                                 &imgInfo);
+    device_->device().updateDescriptorSets(write, {});
+
+    auto handle = registerDescriptorSet(*sets[0]);
+    retainDescriptorSets(poolEntry, sets);
+    return handle;
+}
+
+std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
+Resources::createPostProcessDescriptors(vk::DescriptorSetLayout layout, TextureHandle hdrTarget,
+                                         TextureHandle bloomChain)
+{
+    std::array<vk::DescriptorPoolSize, 1> poolSizes = {{
+        {vk::DescriptorType::eCombinedImageSampler, MAX_FRAMES_IN_FLIGHT * 2},
+    }};
+    auto& poolEntry = createDescriptorPool(poolSizes, MAX_FRAMES_IN_FLIGHT);
+    auto sets = allocateDescriptorSets(*poolEntry.pool, layout, MAX_FRAMES_IN_FLIGHT);
+
+    std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> result{};
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        result[i] = registerDescriptorSet(*sets[i]);
+    }
+    retainDescriptorSets(poolEntry, sets);
+
+    updatePostProcessDescriptors(result, hdrTarget, bloomChain);
+    return result;
+}
+
+void Resources::updatePostProcessDescriptors(
+    const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets, TextureHandle hdrTarget,
+    TextureHandle bloomChain)
+{
+    auto& hdrEntry = textures_[static_cast<uint32_t>(hdrTarget)];
+    auto& bloomEntry = textures_[static_cast<uint32_t>(bloomChain)];
+    // Bloom binding samples mip 0 of the chain (the final upsampled result).
+    vk::ImageView bloomMip0 = *bloomEntry.faceViews[0];
+
+    for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+    {
+        vk::DescriptorImageInfo hdrInfo(*hdrEntry.sampler, *hdrEntry.view,
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+        vk::DescriptorImageInfo bloomInfo(*bloomEntry.sampler, bloomMip0,
+                                          vk::ImageLayout::eShaderReadOnlyOptimal);
+        std::array<vk::WriteDescriptorSet, 2> writes = {{
+            {descriptorSetTable_[static_cast<uint32_t>(sets[i])], 0, 0, 1,
+             vk::DescriptorType::eCombinedImageSampler, &hdrInfo},
+            {descriptorSetTable_[static_cast<uint32_t>(sets[i])], 1, 0, 1,
+             vk::DescriptorType::eCombinedImageSampler, &bloomInfo},
+        }};
+        device_->device().updateDescriptorSets(writes, {});
     }
 }
 

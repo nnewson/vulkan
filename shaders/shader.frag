@@ -25,6 +25,9 @@ layout(binding = 10) uniform sampler2DArrayShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
 layout(binding = 13) uniform samplerCube prefilteredMap;
 layout(binding = 14) uniform sampler2D brdfLut;
+// PCSS blocker search reads raw depths from the same shadow image via a
+// non-comparison sampler. Binding 10 is for the hardware-PCF compare path.
+layout(binding = 15) uniform sampler2DArray shadowMapDepth;
 
 layout(binding = 11) uniform LightUBO {
     vec4 direction;
@@ -74,6 +77,28 @@ vec3 fresnelSchlick(float cosTheta, vec3 F0)
     return F0 + (1.0 - F0) * pow(clamp(1.0 - cosTheta, 0.0, 1.0), 5.0);
 }
 
+// 16-tap Poisson disk for PCSS blocker search and variable-radius PCF.
+const vec2 poissonDisk[16] = vec2[16](
+    vec2(-0.94201624, -0.39906216), vec2( 0.94558609, -0.76890725),
+    vec2(-0.09418410, -0.92938870), vec2( 0.34495938,  0.29387760),
+    vec2(-0.91588581,  0.45771432), vec2(-0.81544232, -0.87912464),
+    vec2(-0.38277543,  0.27676845), vec2( 0.97484398,  0.75648379),
+    vec2( 0.44323325, -0.97511554), vec2( 0.53742981, -0.47373420),
+    vec2(-0.26496911, -0.41893023), vec2( 0.79197514,  0.19090188),
+    vec2(-0.24188840,  0.99706507), vec2(-0.81409955,  0.91437590),
+    vec2( 0.19984126,  0.78641367), vec2( 0.14383161, -0.14100790)
+);
+
+// Per-pixel rotation hash so neighbouring fragments use different rotations
+// of the same Poisson kernel. Stops the kernel pattern from showing as moiré.
+mat2 poissonRotation(vec3 worldPos)
+{
+    float h = fract(sin(dot(worldPos.xy + worldPos.zx, vec2(12.9898, 78.233))) * 43758.5453);
+    float c = cos(h * 6.283185);
+    float s = sin(h * 6.283185);
+    return mat2(c, -s, s, c);
+}
+
 float pcfSample(vec3 worldPos, vec3 normal, vec3 lightDir, int cascade)
 {
     vec4 lightSpace = light.cascadeViewProj[cascade] * vec4(worldPos, 1.0);
@@ -84,22 +109,48 @@ float pcfSample(vec3 worldPos, vec3 normal, vec3 lightDir, int cascade)
 
     float minBias = light.shadowParams.x;
     float slopeBias = light.shadowParams.y;
-    float filterRadius = light.shadowParams.z;
+    float lightSize = light.shadowParams.w;
     float baseBias = max(minBias, slopeBias * (1.0 - max(dot(normal, lightDir), 0.0)));
-    // Far cascades cover proportionally more world per texel; bias must scale or
-    // distant fragments self-shadow into acne.
+    // Far cascades cover proportionally more world per texel; bias must scale.
     float bias = baseBias * exp2(float(cascade));
+    float receiverDepth = proj.z - bias;
 
-    vec2 texelSize = 1.0 / vec2(textureSize(shadowMap, 0).xy);
-    float visibility = 0.0;
-    for (int x = -1; x <= 1; ++x) {
-        for (int y = -1; y <= 1; ++y) {
-            vec2 offset = vec2(x, y) * texelSize * filterRadius;
-            visibility += texture(shadowMap,
-                                  vec4(proj.xy + offset, float(cascade), proj.z - bias));
+    mat2 rot = poissonRotation(worldPos);
+
+    // 1. Blocker search — average depth of any occluders within search radius.
+    //    Reads raw depths via the non-comparison sampler at binding 15.
+    float searchRadius = lightSize;
+    float blockerSum = 0.0;
+    int blockerCount = 0;
+    for (int i = 0; i < 16; ++i) {
+        vec2 off = rot * poissonDisk[i] * searchRadius;
+        float d = texture(shadowMapDepth, vec3(proj.xy + off, float(cascade))).r;
+        if (d < receiverDepth) {
+            blockerSum += d;
+            blockerCount++;
         }
     }
-    return visibility / 9.0;
+    if (blockerCount == 0) {
+        // No occluders → fully lit, skip the PCF cost entirely.
+        return 1.0;
+    }
+    float avgBlocker = blockerSum / float(blockerCount);
+
+    // 2. Penumbra size from blocker / receiver depth ratio (PCSS classical).
+    //    Larger gap → softer shadow.
+    float penumbra = (receiverDepth - avgBlocker) / max(avgBlocker, 1e-4) * lightSize;
+    // Floor at one shadow texel — keeps the kernel from collapsing to a single
+    // sample at razor-thin contact, which would re-introduce aliasing.
+    float texelSize = 1.0 / float(textureSize(shadowMap, 0).x);
+    float filterRadius = max(penumbra, texelSize);
+
+    // 3. Variable-radius PCF — same Poisson kernel, hardware compare sampler.
+    float vis = 0.0;
+    for (int i = 0; i < 16; ++i) {
+        vec2 off = rot * poissonDisk[i] * filterRadius;
+        vis += texture(shadowMap, vec4(proj.xy + off, float(cascade), receiverDepth));
+    }
+    return vis / 16.0;
 }
 
 int selectCascade(float viewDepth)

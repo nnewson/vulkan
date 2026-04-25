@@ -70,6 +70,21 @@ public:
     void createColourFramebuffers(const Device& device, std::span<const vk::ImageView> colourViews,
                                   uint32_t extent);
 
+    // Bloom downsample render pass — single colour attachment, loadOp=DontCare
+    // (overwrites destination mip), storeOp=Store, finalLayout=eShaderReadOnly.
+    [[nodiscard]] static RenderPass createBloomDown(const Device& device, vk::Format colourFormat);
+
+    // Bloom upsample render pass — loadOp=Load + initialLayout=eShaderReadOnly
+    // so the previous downsample's mip content is preserved. Pipeline uses
+    // additive blending to accumulate the upsampled contribution.
+    [[nodiscard]] static RenderPass createBloomUp(const Device& device, vk::Format colourFormat);
+
+    // Builds one framebuffer per (colour view, extent) pair. Used by bloom
+    // chain passes where each mip has a distinct extent.
+    void createColourFramebuffersPerMip(const Device& device,
+                                         std::span<const vk::ImageView> colourViews,
+                                         std::span<const vk::Extent2D> extents);
+
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {
         return *renderPass_;

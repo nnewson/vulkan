@@ -102,4 +102,24 @@ struct ShadowPushConstants
     alignas(4) int cascadeIndex{0};
 };
 
+struct BloomPushConstants
+{
+    // Inverse of the input mip's pixel resolution — used by the down/up
+    // filters to step in source-texel units across the kernel.
+    alignas(8) float invInputResolution[2]{0.0f, 0.0f};
+    // 1 = first downsample pass (reads HDR target). Triggers Karis-average
+    // weighting in the downsample shader to suppress firefly halos.
+    alignas(4) int isFirstPass{0};
+    int _pad0{0};
+};
+
+struct PostProcessPushConstants
+{
+    // 0 = bloom off (output identical to pre-bloom). Typical 0.02–0.08.
+    alignas(4) float bloomStrength{0.0f};
+    float _pad0{0.0f};
+    float _pad1{0.0f};
+    float _pad2{0.0f};
+};
+
 } // namespace fire_engine

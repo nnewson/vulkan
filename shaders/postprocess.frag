@@ -1,6 +1,14 @@
 #version 450
 
 layout(binding = 0) uniform sampler2D hdrInput;
+layout(binding = 1) uniform sampler2D bloomInput;
+
+layout(push_constant) uniform PostProcessPushConstants {
+    float bloomStrength;
+    float _pad0;
+    float _pad1;
+    float _pad2;
+} pc;
 
 layout(location = 0) in vec2 fragUv;
 
@@ -17,7 +25,12 @@ vec3 acesApproximation(vec3 x) {
 
 void main() {
     vec3 hdr = texture(hdrInput, fragUv).rgb;
-    vec3 mapped = acesApproximation(hdr);
+    // Bloom mip 0 carries the summed contribution from every coarser mip.
+    // Mix is a lerp not an add so bloomStrength = 0 yields the original image.
+    vec3 bloom = texture(bloomInput, fragUv).rgb;
+    vec3 composited = mix(hdr, hdr + bloom, pc.bloomStrength);
+
+    vec3 mapped = acesApproximation(composited);
     vec3 gamma = pow(mapped, vec3(1.0 / 2.2));
     outColor = vec4(gamma, 1.0);
 }

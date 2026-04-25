@@ -21,32 +21,10 @@ namespace fire_engine
 namespace
 {
 
-// Calibrated against the current ACES post-process so direct light stays crisp without washing out
-// midtones.
-constexpr float directionalLightIntensity = 0.95f;
-constexpr float diffuseIblStrength = 1.0f;
-constexpr float specularIblStrength = 0.7f;
-constexpr float skyboxIntensity = 1.0f;
-constexpr float shadowMinBias = 0.0008f;
-constexpr float shadowSlopeBias = 0.0035f;
-constexpr float shadowFilterRadius = 1.0f;
-
-struct EnvironmentConfig
-{
-    const char* filename{"skybox.hdr"};
-    uint32_t shadowMapExtent{2048};
-    uint32_t skyboxCubemapExtent{1024};
-    // log2(1024) + 1 = 11. Full mip chain on the skybox cubemap so the
-    // prefilter shader can do Filament-style importance-sampled mip-weighted
-    // lookups (blurrier mips for samples with low PDF).
-    uint32_t skyboxCubemapMipLevels{11};
-    uint32_t irradianceCubemapExtent{32};
-    uint32_t prefilteredCubemapExtent{128};
-    uint32_t prefilteredCubemapMipLevels{8};
-    uint32_t brdfLutExtent{256};
-};
-
-constexpr EnvironmentConfig environmentConfig{};
+// Default HDR environment asset, resolved against the project's asset dirs.
+// Tunable rendering values (extents, strengths, biases, etc.) live in
+// render/constants.hpp.
+constexpr const char* defaultEnvironmentFilename = "skybox.hdr";
 
 #ifndef FIRE_ENGINE_SOURCE_ASSET_DIR
 #define FIRE_ENGINE_SOURCE_ASSET_DIR "assets"
@@ -90,10 +68,10 @@ constexpr EnvironmentConfig environmentConfig{};
     }
 
     const std::array<fs::path, 4> candidates = {
-        fs::path(environmentConfig.filename),
-        fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / environmentConfig.filename,
-        fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / environmentConfig.filename,
-        fs::path("assets") / environmentConfig.filename,
+        fs::path(defaultEnvironmentFilename),
+        fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / defaultEnvironmentFilename,
+        fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / defaultEnvironmentFilename,
+        fs::path("assets") / defaultEnvironmentFilename,
     };
 
     for (const auto& candidate : candidates)
@@ -106,10 +84,10 @@ constexpr EnvironmentConfig environmentConfig{};
 
     throw std::runtime_error(
         "Failed to locate HDR environment asset. Tried: " +
-        fs::path(environmentConfig.filename).string() + ", " +
-        (fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / environmentConfig.filename).string() + ", " +
-        (fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / environmentConfig.filename).string() + ", " +
-        (fs::path("assets") / environmentConfig.filename).string());
+        fs::path(defaultEnvironmentFilename).string() + ", " +
+        (fs::path(FIRE_ENGINE_BUILD_ASSET_DIR) / defaultEnvironmentFilename).string() + ", " +
+        (fs::path(FIRE_ENGINE_SOURCE_ASSET_DIR) / defaultEnvironmentFilename).string() + ", " +
+        (fs::path("assets") / defaultEnvironmentFilename).string());
 }
 
 [[nodiscard]] Image loadEnvironmentImage(const std::string& requestedPath, const char* stageName)
@@ -139,6 +117,8 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
       forwardPass_(RenderPass::createForward(device_)),
       shadowPass_(RenderPass::createShadow(device_)),
       postProcessPass_(RenderPass::createPostProcess(device_, swapchain_)),
+      bloomDownPass_(RenderPass::createBloomDown(device_, vk::Format::eR16G16B16A16Sfloat)),
+      bloomUpPass_(RenderPass::createBloomUp(device_, vk::Format::eR16G16B16A16Sfloat)),
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
       pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
@@ -146,9 +126,12 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
       skyboxPipeline_(device_, Pipeline::skyboxConfig(forwardPass_.renderPass())),
       shadowPipeline_(device_, Pipeline::shadowConfig(shadowPass_.renderPass())),
       postProcessPipeline_(device_, Pipeline::postProcessConfig(postProcessPass_.renderPass())),
+      bloomDownsamplePipeline_(device_,
+                               Pipeline::bloomDownsampleConfig(bloomDownPass_.renderPass())),
+      bloomUpsamplePipeline_(device_, Pipeline::bloomUpsampleConfig(bloomUpPass_.renderPass())),
       frame_(device_, swapchain_),
       resources_(device_, pipelineOpaque_),
-      shadowMapSize_(environmentConfig.shadowMapExtent),
+      shadowMapSize_(shadowMapExtent),
       environmentPath_(std::move(environmentPath))
 {
     swapchain_.createDepthResources(device_);
@@ -157,6 +140,7 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
                                           resources_.vulkanImageView(offscreenColourHandle_),
                                           swapchain_.depthView(), swapchain_.extent());
     postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
+    buildBloomResources();
     forwardOpaqueHandle_ =
         resources_.registerPipeline(pipelineOpaque_.pipeline(), pipelineOpaque_.pipelineLayout());
     forwardOpaqueDoubleSidedHandle_ = resources_.registerPipeline(
@@ -174,8 +158,8 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
     skyboxIndexBuffer_ = resources_.createIndexBuffer(skyboxIndices);
     std::array<uint16_t, 3> postProcessIndices{0, 1, 2};
     postProcessIndexBuffer_ = resources_.createIndexBuffer(postProcessIndices);
-    postProcessDescSets_ = resources_.createSingleImageSamplerDescriptors(
-        postProcessPipeline_.descriptorSetLayout(), offscreenColourHandle_);
+    postProcessDescSets_ = resources_.createPostProcessDescriptors(
+        postProcessPipeline_.descriptorSetLayout(), offscreenColourHandle_, bloomChainHandle_);
 
     lightUbo_ = resources_.createMappedUniformBuffers(sizeof(LightUBO));
     resources_.lightBuffers(lightUbo_.buffers);
@@ -224,7 +208,7 @@ void Renderer::createSkyboxEnvironmentGpu()
     try
     {
         skyboxCubemapHandle_ = resources_.createRenderTargetCubemap(
-            environmentConfig.skyboxCubemapExtent, environmentConfig.skyboxCubemapMipLevels,
+            skyboxCubemapExtent, skyboxCubemapMipLevels,
             vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
 
         RenderPass environmentPass = RenderPass::createOffscreenColour(
@@ -241,7 +225,7 @@ void Renderer::createSkyboxEnvironmentGpu()
             resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 5),
         };
         environmentPass.createColourFramebuffers(device_, faceViews,
-                                                 environmentConfig.skyboxCubemapExtent);
+                                                 skyboxCubemapExtent);
 
         auto captureSets = resources_.createSingleImageSamplerDescriptors(
             environmentPipeline.descriptorSetLayout(), equirectHandle);
@@ -254,11 +238,11 @@ void Renderer::createSkyboxEnvironmentGpu()
         auto& cmd = cmds[0];
         cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(environmentConfig.skyboxCubemapExtent),
-                              static_cast<float>(environmentConfig.skyboxCubemapExtent), 0.0f,
+        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(skyboxCubemapExtent),
+                              static_cast<float>(skyboxCubemapExtent), 0.0f,
                               1.0f);
         vk::Rect2D renderArea(
-            {0, 0}, {environmentConfig.skyboxCubemapExtent, environmentConfig.skyboxCubemapExtent});
+            {0, 0}, {skyboxCubemapExtent, skyboxCubemapExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -266,7 +250,7 @@ void Renderer::createSkyboxEnvironmentGpu()
         {
             EnvironmentCaptureUBO capture{};
             capture.faceIndex = static_cast<int>(face);
-            capture.faceExtent = static_cast<int>(environmentConfig.skyboxCubemapExtent);
+            capture.faceExtent = static_cast<int>(skyboxCubemapExtent);
 
             vk::RenderPassBeginInfo beginInfo(environmentPass.renderPass(),
                                               environmentPass.framebuffer(face), renderArea,
@@ -289,7 +273,7 @@ void Renderer::createSkyboxEnvironmentGpu()
         // prefilter pass can do Filament mip-weighted importance sampling.
         // The render pass left mip 0 (all 6 layers) in eShaderReadOnlyOptimal;
         // mips 1..N-1 are still eUndefined.
-        const uint32_t skyboxMips = environmentConfig.skyboxCubemapMipLevels;
+        const uint32_t skyboxMips = skyboxCubemapMipLevels;
         if (skyboxMips > 1)
         {
             vk::Image skyboxImage = resources_.vulkanImage(skyboxCubemapHandle_);
@@ -313,7 +297,7 @@ void Renderer::createSkyboxEnvironmentGpu()
                     vk::AccessFlagBits::eTransferRead, vk::PipelineStageFlagBits::eFragmentShader,
                     vk::PipelineStageFlagBits::eTransfer);
 
-            int32_t srcExtent = static_cast<int32_t>(environmentConfig.skyboxCubemapExtent);
+            int32_t srcExtent = static_cast<int32_t>(skyboxCubemapExtent);
             for (uint32_t mip = 1; mip < skyboxMips; ++mip)
             {
                 int32_t dstExtent = std::max(1, srcExtent / 2);
@@ -384,7 +368,7 @@ void Renderer::createIrradianceEnvironment()
         sampler.wrapT = WrapMode::ClampToEdge;
 
         irradianceCubemapHandle_ = resources_.createRenderTargetCubemap(
-            environmentConfig.irradianceCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat, sampler);
+            irradianceCubemapExtent, 1, vk::Format::eR32G32B32A32Sfloat, sampler);
 
         RenderPass irradiancePass = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(irradianceCubemapHandle_));
@@ -400,7 +384,7 @@ void Renderer::createIrradianceEnvironment()
             resources_.vulkanCubemapFaceView(irradianceCubemapHandle_, 5),
         };
         irradiancePass.createColourFramebuffers(device_, faceViews,
-                                                environmentConfig.irradianceCubemapExtent);
+                                                irradianceCubemapExtent);
 
         auto captureSets = resources_.createSingleImageSamplerDescriptors(
             irradiancePipeline.descriptorSetLayout(), skyboxCubemapHandle_);
@@ -414,10 +398,10 @@ void Renderer::createIrradianceEnvironment()
         cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
         vk::Viewport viewport(
-            0.0f, 0.0f, static_cast<float>(environmentConfig.irradianceCubemapExtent),
-            static_cast<float>(environmentConfig.irradianceCubemapExtent), 0.0f, 1.0f);
-        vk::Rect2D renderArea({0, 0}, {environmentConfig.irradianceCubemapExtent,
-                                       environmentConfig.irradianceCubemapExtent});
+            0.0f, 0.0f, static_cast<float>(irradianceCubemapExtent),
+            static_cast<float>(irradianceCubemapExtent), 0.0f, 1.0f);
+        vk::Rect2D renderArea({0, 0}, {irradianceCubemapExtent,
+                                       irradianceCubemapExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -425,7 +409,7 @@ void Renderer::createIrradianceEnvironment()
         {
             EnvironmentCaptureUBO capture{};
             capture.faceIndex = static_cast<int>(face);
-            capture.faceExtent = static_cast<int>(environmentConfig.irradianceCubemapExtent);
+            capture.faceExtent = static_cast<int>(irradianceCubemapExtent);
 
             vk::RenderPassBeginInfo beginInfo(irradiancePass.renderPass(),
                                               irradiancePass.framebuffer(face), renderArea,
@@ -468,8 +452,8 @@ void Renderer::createPrefilteredEnvironment()
         sampler.wrapT = WrapMode::ClampToEdge;
 
         prefilteredCubemapHandle_ =
-            resources_.createRenderTargetCubemap(environmentConfig.prefilteredCubemapExtent,
-                                                 environmentConfig.prefilteredCubemapMipLevels,
+            resources_.createRenderTargetCubemap(prefilteredCubemapExtent,
+                                                 prefilteredCubemapMipLevels,
                                                  vk::Format::eR32G32B32A32Sfloat, sampler);
 
         RenderPass prefilterPassTemplate = RenderPass::createOffscreenColour(
@@ -480,10 +464,10 @@ void Renderer::createPrefilteredEnvironment()
             prefilterPipeline.descriptorSetLayout(), skyboxCubemapHandle_);
 
         std::vector<RenderPass> prefilterPasses;
-        prefilterPasses.reserve(environmentConfig.prefilteredCubemapMipLevels);
+        prefilterPasses.reserve(prefilteredCubemapMipLevels);
 
-        uint32_t mipExtent = environmentConfig.prefilteredCubemapExtent;
-        for (uint32_t level = 0; level < environmentConfig.prefilteredCubemapMipLevels; ++level)
+        uint32_t mipExtent = prefilteredCubemapExtent;
+        for (uint32_t level = 0; level < prefilteredCubemapMipLevels; ++level)
         {
             RenderPass mipPass = RenderPass::createOffscreenColour(
                 device_, resources_.textureFormat(prefilteredCubemapHandle_));
@@ -511,13 +495,13 @@ void Renderer::createPrefilteredEnvironment()
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
-        mipExtent = environmentConfig.prefilteredCubemapExtent;
-        for (uint32_t level = 0; level < environmentConfig.prefilteredCubemapMipLevels; ++level)
+        mipExtent = prefilteredCubemapExtent;
+        for (uint32_t level = 0; level < prefilteredCubemapMipLevels; ++level)
         {
             float roughness =
-                environmentConfig.prefilteredCubemapMipLevels > 1
+                prefilteredCubemapMipLevels > 1
                     ? static_cast<float>(level) /
-                          static_cast<float>(environmentConfig.prefilteredCubemapMipLevels - 1)
+                          static_cast<float>(prefilteredCubemapMipLevels - 1)
                     : 0.0f;
 
             vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(mipExtent),
@@ -530,9 +514,9 @@ void Renderer::createPrefilteredEnvironment()
                 capture.faceIndex = static_cast<int>(face);
                 capture.faceExtent = static_cast<int>(mipExtent);
                 capture.roughness = roughness;
-                capture.sourceFaceExtent = static_cast<int>(environmentConfig.skyboxCubemapExtent);
+                capture.sourceFaceExtent = static_cast<int>(skyboxCubemapExtent);
                 capture.sourceMaxMip =
-                    static_cast<float>(environmentConfig.skyboxCubemapMipLevels - 1);
+                    static_cast<float>(skyboxCubemapMipLevels - 1);
 
                 vk::RenderPassBeginInfo beginInfo(prefilterPasses[level].renderPass(),
                                                   prefilterPasses[level].framebuffer(face),
@@ -574,14 +558,14 @@ void Renderer::createBrdfLut()
     try
     {
         brdfLutHandle_ = resources_.createOffscreenColourTarget(
-            {environmentConfig.brdfLutExtent, environmentConfig.brdfLutExtent});
+            {brdfLutExtent, brdfLutExtent});
 
         RenderPass brdfPass =
             RenderPass::createOffscreenColour(device_, resources_.textureFormat(brdfLutHandle_));
         Pipeline brdfPipeline(device_, Pipeline::brdfIntegrationConfig(brdfPass.renderPass()));
 
         std::array<vk::ImageView, 1> views = {resources_.vulkanImageView(brdfLutHandle_)};
-        brdfPass.createColourFramebuffers(device_, views, environmentConfig.brdfLutExtent);
+        brdfPass.createColourFramebuffers(device_, views, brdfLutExtent);
 
         vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
                                          device_.graphicsFamily());
@@ -591,10 +575,10 @@ void Renderer::createBrdfLut()
         auto& cmd = cmds[0];
         cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
 
-        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(environmentConfig.brdfLutExtent),
-                              static_cast<float>(environmentConfig.brdfLutExtent), 0.0f, 1.0f);
+        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(brdfLutExtent),
+                              static_cast<float>(brdfLutExtent), 0.0f, 1.0f);
         vk::Rect2D renderArea({0, 0},
-                              {environmentConfig.brdfLutExtent, environmentConfig.brdfLutExtent});
+                              {brdfLutExtent, brdfLutExtent});
         vk::ClearValue clearColour(
             vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
 
@@ -623,20 +607,10 @@ void Renderer::createBrdfLut()
 
 void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect)
 {
-    // Must match the camera projection in Object::render.
-    constexpr float cameraFov = 45.0f * deg_to_rad;
-    constexpr float cameraNear = 0.1f;
-    // Shadow-map far plane. The camera projects to 1000m, but casters past this
-    // distance don't get shadowed — keeps the light's orthographic volume tight.
-    constexpr float shadowFarPlane = 50.0f;
-    // Pulls the light's near plane back along the light direction so casters
-    // behind the fitted sphere still write to the shadow map.
-    constexpr float depthBackExtend = 20.0f;
-
     const Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
 
     // Camera basis + light basis (shared by every cascade fit).
-    const float tanHalfFov = std::tan(cameraFov * 0.5f);
+    const float tanHalfFov = std::tan(cameraFovRadians * 0.5f);
     const Vec3 forward = Vec3::normalise(cameraTarget - cameraPosition);
     const Vec3 worldUp{0.0f, 1.0f, 0.0f};
     const Vec3 right = Vec3::normalise(Vec3::crossProduct(forward, worldUp));
@@ -649,7 +623,7 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     }
     const Vec3 lightRight = Vec3::normalise(Vec3::crossProduct(lightDir, lightUp));
     const Vec3 lightUpOrtho = Vec3::crossProduct(lightRight, lightDir);
-    const float shadowMapExtent = static_cast<float>(environmentConfig.shadowMapExtent);
+    const float shadowMapExtentF = static_cast<float>(shadowMapExtent);
 
     // Bounding-sphere fit for a single sub-frustum slice. Matches the Stage 1
     // fit — extracted so CSM can reuse it per cascade.
@@ -686,7 +660,7 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
         }
         radius = std::ceil(radius * 16.0f) / 16.0f;
 
-        const float worldPerTexel = (2.0f * radius) / shadowMapExtent;
+        const float worldPerTexel = (2.0f * radius) / shadowMapExtentF;
         const float centreU = Vec3::dotProduct(frustumCentre, lightRight);
         const float centreV = Vec3::dotProduct(frustumCentre, lightUpOrtho);
         const float centreW = Vec3::dotProduct(frustumCentre, lightDir);
@@ -695,33 +669,32 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
         const Vec3 snappedCentre =
             lightRight * snappedU + lightUpOrtho * snappedV + lightDir * centreW;
 
-        const Vec3 lightPos = snappedCentre - lightDir * (radius + depthBackExtend);
+        const Vec3 lightPos = snappedCentre - lightDir * (radius + shadowDepthBackExtend);
         const Mat4 lightView = Mat4::lookAt(lightPos, snappedCentre, lightUpOrtho);
         const Mat4 lightProj = Mat4::ortho(-radius, radius, -radius, radius, 0.0f,
-                                           2.0f * radius + 2.0f * depthBackExtend);
+                                           2.0f * radius + 2.0f * shadowDepthBackExtend);
         return lightProj * lightView;
     };
 
     // Log-uniform cascade splits (λ=0.5) — Practical Split Scheme. Keeps close
     // cascades small for near-camera detail while still covering shadowFarPlane.
-    constexpr int cascadeCount = 4;
-    float splits[cascadeCount];
-    for (int i = 0; i < cascadeCount; ++i)
+    float splits[shadowCascadeCount];
+    for (uint32_t i = 0; i < shadowCascadeCount; ++i)
     {
-        const float p = static_cast<float>(i + 1) / static_cast<float>(cascadeCount);
-        const float linear = cameraNear + (shadowFarPlane - cameraNear) * p;
-        const float logSplit = cameraNear * std::pow(shadowFarPlane / cameraNear, p);
+        const float p = static_cast<float>(i + 1) / static_cast<float>(shadowCascadeCount);
+        const float linear = cameraNearPlane + (shadowFarPlane - cameraNearPlane) * p;
+        const float logSplit = cameraNearPlane * std::pow(shadowFarPlane / cameraNearPlane, p);
         splits[i] = 0.5f * (linear + logSplit);
     }
 
-    Mat4 cascadeViewProj[cascadeCount];
-    float sliceNear = cameraNear;
-    for (int i = 0; i < cascadeCount; ++i)
+    Mat4 cascadeViewProj[shadowCascadeCount];
+    float sliceNear = cameraNearPlane;
+    for (uint32_t i = 0; i < shadowCascadeCount; ++i)
     {
         cascadeViewProj[i] = fitCascade(sliceNear, splits[i]);
         sliceNear = splits[i];
     }
-    for (int i = 0; i < cascadeCount; ++i)
+    for (uint32_t i = 0; i < shadowCascadeCount; ++i)
     {
         cascadeViewProjs_[i] = cascadeViewProj[i];
     }
@@ -735,7 +708,7 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     lightData.colour[1] = 1.0f;
     lightData.colour[2] = 1.0f;
     lightData.colour[3] = directionalLightIntensity;
-    for (int i = 0; i < cascadeCount; ++i)
+    for (uint32_t i = 0; i < shadowCascadeCount; ++i)
     {
         lightData.cascadeViewProj[i] = cascadeViewProj[i];
         lightData.cascadeSplits[i] = splits[i];
@@ -749,6 +722,7 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     lightData.shadowParams[0] = shadowMinBias;
     lightData.shadowParams[1] = shadowSlopeBias;
     lightData.shadowParams[2] = shadowFilterRadius;
+    lightData.shadowParams[3] = pcssLightSize;
     lightData.environmentParams[0] = skyboxIntensity;
     lightData.environmentParams[3] = cascadeDebugTint_ ? 1.0f : 0.0f;
     std::memcpy(lightUbo_.mapped[currentFrame_], &lightData, sizeof(lightData));
@@ -851,6 +825,136 @@ void Renderer::recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& bucke
     cmd.endRenderPass();
 }
 
+
+void Renderer::buildBloomResources()
+{
+    auto extent = swapchain_.extent();
+    uint32_t bloomWidth = std::max(1u, extent.width / 2);
+    uint32_t bloomHeight = std::max(1u, extent.height / 2);
+
+    bloomChainHandle_ = resources_.createBloomChain(bloomWidth, bloomHeight, bloomMipCount);
+
+    // Downsample writes every mip (0..N-1). Per-mip framebuffers + extents.
+    std::vector<vk::ImageView> downViews;
+    std::vector<vk::Extent2D> downExtents;
+    downViews.reserve(bloomMipCount);
+    downExtents.reserve(bloomMipCount);
+    for (uint32_t m = 0; m < bloomMipCount; ++m)
+    {
+        downViews.push_back(resources_.vulkanBloomMipView(bloomChainHandle_, m));
+        downExtents.push_back(
+            {std::max(1u, bloomWidth >> m), std::max(1u, bloomHeight >> m)});
+    }
+    bloomDownPass_.createColourFramebuffersPerMip(device_, downViews, downExtents);
+
+    // Upsample writes mips 0..N-2 only (mip N-1 stays as the source for the
+    // first upsample step). One framebuffer per writable mip.
+    std::vector<vk::ImageView> upViews;
+    std::vector<vk::Extent2D> upExtents;
+    upViews.reserve(bloomMipCount - 1);
+    upExtents.reserve(bloomMipCount - 1);
+    for (uint32_t m = 0; m < bloomMipCount - 1; ++m)
+    {
+        upViews.push_back(resources_.vulkanBloomMipView(bloomChainHandle_, m));
+        upExtents.push_back({std::max(1u, bloomWidth >> m), std::max(1u, bloomHeight >> m)});
+    }
+    bloomUpPass_.createColourFramebuffersPerMip(device_, upViews, upExtents);
+
+    // Descriptor sets. Downsample[0] reads the HDR target; the rest read the
+    // previous bloom mip. Upsample[m] reads bloom mip m+1, writes mip m.
+    bloomDownDescSets_.clear();
+    bloomDownDescSets_.reserve(bloomMipCount);
+    bloomDownDescSets_.push_back(resources_.createImageViewDescriptor(
+        bloomDownsamplePipeline_.descriptorSetLayout(),
+        resources_.vulkanImageView(offscreenColourHandle_),
+        resources_.vulkanSampler(offscreenColourHandle_)));
+    for (uint32_t m = 0; m < bloomMipCount - 1; ++m)
+    {
+        bloomDownDescSets_.push_back(resources_.createImageViewDescriptor(
+            bloomDownsamplePipeline_.descriptorSetLayout(),
+            resources_.vulkanBloomMipView(bloomChainHandle_, m),
+            resources_.vulkanSampler(bloomChainHandle_)));
+    }
+
+    bloomUpDescSets_.clear();
+    bloomUpDescSets_.reserve(bloomMipCount - 1);
+    for (uint32_t m = 0; m < bloomMipCount - 1; ++m)
+    {
+        bloomUpDescSets_.push_back(resources_.createImageViewDescriptor(
+            bloomUpsamplePipeline_.descriptorSetLayout(),
+            resources_.vulkanBloomMipView(bloomChainHandle_, m + 1),
+            resources_.vulkanSampler(bloomChainHandle_)));
+    }
+}
+
+void Renderer::recordBloomPasses(vk::CommandBuffer cmd)
+{
+    auto extent = swapchain_.extent();
+    uint32_t bloomWidth = std::max(1u, extent.width / 2);
+    uint32_t bloomHeight = std::max(1u, extent.height / 2);
+
+    const vk::PipelineLayout downLayout =
+        bloomDownsamplePipeline_.pipelineLayout();
+    const vk::PipelineLayout upLayout = bloomUpsamplePipeline_.pipelineLayout();
+
+    // Downsample chain: HDR → mip 0 → mip 1 → ... → mip N-1.
+    for (uint32_t m = 0; m < bloomMipCount; ++m)
+    {
+        uint32_t dstW = std::max(1u, bloomWidth >> m);
+        uint32_t dstH = std::max(1u, bloomHeight >> m);
+        // Source dimensions: mip 0 reads the full-res HDR target; subsequent
+        // passes read the previous (finer) mip of the bloom chain.
+        uint32_t srcW = (m == 0) ? extent.width : std::max(1u, bloomWidth >> (m - 1));
+        uint32_t srcH = (m == 0) ? extent.height : std::max(1u, bloomHeight >> (m - 1));
+
+        vk::RenderPassBeginInfo begin(bloomDownPass_.renderPass(),
+                                      bloomDownPass_.framebuffer(m),
+                                      vk::Rect2D({0, 0}, {dstW, dstH}), {});
+        cmd.beginRenderPass(begin, vk::SubpassContents::eInline);
+        cmd.setViewport(0, vk::Viewport(0, 0, static_cast<float>(dstW),
+                                         static_cast<float>(dstH), 0, 1));
+        cmd.setScissor(0, vk::Rect2D({0, 0}, {dstW, dstH}));
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bloomDownsamplePipeline_.pipeline());
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, downLayout, 0,
+                               resources_.vulkanDescriptorSet(bloomDownDescSets_[m]), {});
+        BloomPushConstants pc{};
+        pc.invInputResolution[0] = 1.0f / static_cast<float>(srcW);
+        pc.invInputResolution[1] = 1.0f / static_cast<float>(srcH);
+        pc.isFirstPass = (m == 0) ? 1 : 0;
+        cmd.pushConstants<BloomPushConstants>(downLayout, vk::ShaderStageFlagBits::eFragment, 0,
+                                              pc);
+        cmd.draw(3, 1, 0, 0);
+        cmd.endRenderPass();
+    }
+
+    // Upsample chain: mip N-1 → mip N-2 (additive) → ... → mip 0.
+    for (int m = static_cast<int>(bloomMipCount) - 2; m >= 0; --m)
+    {
+        uint32_t dstW = std::max(1u, bloomWidth >> m);
+        uint32_t dstH = std::max(1u, bloomHeight >> m);
+        uint32_t srcW = std::max(1u, bloomWidth >> (m + 1));
+        uint32_t srcH = std::max(1u, bloomHeight >> (m + 1));
+
+        vk::RenderPassBeginInfo begin(bloomUpPass_.renderPass(),
+                                      bloomUpPass_.framebuffer(static_cast<uint32_t>(m)),
+                                      vk::Rect2D({0, 0}, {dstW, dstH}), {});
+        cmd.beginRenderPass(begin, vk::SubpassContents::eInline);
+        cmd.setViewport(0, vk::Viewport(0, 0, static_cast<float>(dstW),
+                                         static_cast<float>(dstH), 0, 1));
+        cmd.setScissor(0, vk::Rect2D({0, 0}, {dstW, dstH}));
+        cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bloomUpsamplePipeline_.pipeline());
+        cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, upLayout, 0,
+                               resources_.vulkanDescriptorSet(bloomUpDescSets_[m]), {});
+        BloomPushConstants pc{};
+        pc.invInputResolution[0] = 1.0f / static_cast<float>(srcW);
+        pc.invInputResolution[1] = 1.0f / static_cast<float>(srcH);
+        pc.isFirstPass = 0;
+        cmd.pushConstants<BloomPushConstants>(upLayout, vk::ShaderStageFlagBits::eFragment, 0, pc);
+        cmd.draw(3, 1, 0, 0);
+        cmd.endRenderPass();
+    }
+}
+
 void Renderer::transitionOffscreenForSampling(vk::CommandBuffer cmd)
 {
     vk::ImageMemoryBarrier offscreenReadyForSampling(
@@ -883,6 +987,11 @@ void Renderer::recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex)
     cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics,
                            resources_.vulkanPipelineLayout(postProcessPipelineHandle_), 0, ppSet,
                            {});
+    PostProcessPushConstants ppc{};
+    ppc.bloomStrength = bloomStrength;
+    cmd.pushConstants<PostProcessPushConstants>(
+        resources_.vulkanPipelineLayout(postProcessPipelineHandle_),
+        vk::ShaderStageFlagBits::eFragment, 0, ppc);
     cmd.bindIndexBuffer(resources_.vulkanBuffer(postProcessIndexBuffer_), 0,
                         vk::IndexType::eUint16);
     cmd.drawIndexed(3, 1, 0, 0, 0);
@@ -928,6 +1037,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     recordShadowPass(cmd, buckets.shadow);
     recordForwardPass(cmd, buckets);
     transitionOffscreenForSampling(cmd);
+    recordBloomPasses(cmd);
     recordPostProcessPass(cmd, *imageIndex);
 
     cmd.end();
@@ -1016,7 +1126,7 @@ void Renderer::recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
     Vec3 right = Vec3::normalise(Vec3::crossProduct(forward, worldUp));
     Vec3 up = Vec3::crossProduct(right, forward);
 
-    constexpr float skyboxFov = 45.0f * deg_to_rad;
+    constexpr float skyboxFov = cameraFovRadians;
     auto extent = swapchain_.extent();
     float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
     float tanHalfFov = std::tan(skyboxFov * 0.5f);
@@ -1064,7 +1174,11 @@ void Renderer::recreateSwapchain(const Window& display)
                                           resources_.vulkanImageView(offscreenColourHandle_),
                                           swapchain_.depthView(), swapchain_.extent());
     postProcessPass_.createPostProcessFramebuffers(device_, swapchain_);
-    resources_.updateSingleImageSamplerDescriptors(postProcessDescSets_, offscreenColourHandle_);
+    // Bloom chain follows swapchain — drop the old one, build at the new size.
+    resources_.releaseTexture(bloomChainHandle_);
+    buildBloomResources();
+    resources_.updatePostProcessDescriptors(postProcessDescSets_, offscreenColourHandle_,
+                                            bloomChainHandle_);
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }

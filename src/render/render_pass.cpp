@@ -115,6 +115,67 @@ void RenderPass::createForwardFramebuffer(const Device& device, vk::ImageView co
     framebuffers_.emplace_back(device.device(), ci);
 }
 
+RenderPass RenderPass::createBloomDown(const Device& device, vk::Format colourFormat)
+{
+    vk::AttachmentDescription colourAtt(
+        {}, colourFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef);
+
+    vk::SubpassDependency dep(
+        VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eFragmentShader,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eShaderRead,
+        vk::AccessFlagBits::eColorAttachmentWrite);
+
+    vk::RenderPassCreateInfo ci({}, colourAtt, subpass, dep);
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
+RenderPass RenderPass::createBloomUp(const Device& device, vk::Format colourFormat)
+{
+    // initialLayout=eShaderReadOnlyOptimal because the downsample pass left
+    // every mip in that layout. loadOp=Load preserves it; the upsample pipeline
+    // uses additive blending on top.
+    vk::AttachmentDescription colourAtt(
+        {}, colourFormat, vk::SampleCountFlagBits::e1, vk::AttachmentLoadOp::eLoad,
+        vk::AttachmentStoreOp::eStore, vk::AttachmentLoadOp::eDontCare,
+        vk::AttachmentStoreOp::eDontCare, vk::ImageLayout::eShaderReadOnlyOptimal,
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    vk::AttachmentReference colourRef(0, vk::ImageLayout::eColorAttachmentOptimal);
+    vk::SubpassDescription subpass({}, vk::PipelineBindPoint::eGraphics, {}, colourRef);
+
+    vk::SubpassDependency dep(
+        VK_SUBPASS_EXTERNAL, 0, vk::PipelineStageFlagBits::eFragmentShader,
+        vk::PipelineStageFlagBits::eColorAttachmentOutput, vk::AccessFlagBits::eShaderRead,
+        vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite);
+
+    vk::RenderPassCreateInfo ci({}, colourAtt, subpass, dep);
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
+void RenderPass::createColourFramebuffersPerMip(const Device& device,
+                                                std::span<const vk::ImageView> colourViews,
+                                                std::span<const vk::Extent2D> extents)
+{
+    framebuffers_.clear();
+    framebuffers_.reserve(colourViews.size());
+    for (std::size_t i = 0; i < colourViews.size(); ++i)
+    {
+        vk::ImageView v = colourViews[i];
+        vk::FramebufferCreateInfo ci({}, *renderPass_, v, extents[i].width, extents[i].height, 1);
+        framebuffers_.emplace_back(device.device(), ci);
+    }
+}
+
 RenderPass RenderPass::createPostProcess(const Device& device, const Swapchain& swapchain)
 {
     vk::AttachmentDescription colourAtt(

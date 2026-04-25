@@ -80,6 +80,8 @@ set(SHADER_SOURCES
     shaders/shadow.frag
     shaders/postprocess.vert
     shaders/postprocess.frag
+    shaders/bloom_downsample.frag
+    shaders/bloom_upsample.frag
 )
 
 foreach(shader IN LISTS SHADER_SOURCES)
