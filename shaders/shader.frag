@@ -268,7 +268,11 @@ void main() {
 
     float ao = 1.0;
     if (material.extraFlags.x == 1) {
-        ao = texture(occlusionMap, fragTexCoord).r;
+        // glTF spec: occluded = lerp(colour, colour * sampled, strength).
+        // Equivalent to ao = mix(1.0, sampled, strength) when applied as a
+        // multiplier downstream.
+        float sampled = texture(occlusionMap, fragTexCoord).r;
+        ao = mix(1.0, sampled, material.materialParams.w);
     }
 
     vec3 diffuseAmbientTerm = diffuseIbl * ao;

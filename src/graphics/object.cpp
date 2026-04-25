@@ -253,6 +253,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.materialParams[0] = mat.metallic();
     ubo.materialParams[1] = mat.normalScale();
     ubo.materialParams[2] = (mat.alphaMode() == AlphaMode::Mask) ? mat.alphaCutoff() : 0.0f;
+    ubo.materialParams[3] = mat.occlusionStrength();
     ubo.textureFlags[0] = mat.hasTexture() ? 1 : 0;
     ubo.textureFlags[1] = mat.hasEmissiveTexture() ? 1 : 0;
     ubo.textureFlags[2] = mat.hasNormalTexture() ? 1 : 0;

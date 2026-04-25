@@ -285,7 +285,11 @@ std::string GltfLoader::nodeName(const fastgltf::Asset& asset, const fastgltf::N
 
 fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem::path& gltfPath)
 {
-    fastgltf::Parser parser;
+    // fastgltf only parses extension data when the extension is enabled here.
+    // Without the opt-in, extension fields silently stay at their defaults.
+    constexpr fastgltf::Extensions enabledExtensions =
+        fastgltf::Extensions::KHR_materials_emissive_strength;
+    fastgltf::Parser parser(enabledExtensions);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
     {
@@ -1109,13 +1113,22 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         material.metallic(static_cast<float>(pbr.metallicFactor));
         material.roughness(static_cast<float>(pbr.roughnessFactor));
 
-        material.emissive({static_cast<float>(gltfMat.emissiveFactor.x()),
-                           static_cast<float>(gltfMat.emissiveFactor.y()),
-                           static_cast<float>(gltfMat.emissiveFactor.z())});
+        // KHR_materials_emissive_strength: multiplies emissiveFactor at load
+        // time. Default 1.0 = unchanged. Authored values >1.0 produce HDR
+        // emissives that read correctly through the bloom chain.
+        const float emissiveStrength = static_cast<float>(gltfMat.emissiveStrength);
+        material.emissive({static_cast<float>(gltfMat.emissiveFactor.x()) * emissiveStrength,
+                           static_cast<float>(gltfMat.emissiveFactor.y()) * emissiveStrength,
+                           static_cast<float>(gltfMat.emissiveFactor.z()) * emissiveStrength});
 
         if (gltfMat.normalTexture.has_value())
         {
             material.normalScale(static_cast<float>(gltfMat.normalTexture.value().scale));
+        }
+        if (gltfMat.occlusionTexture.has_value())
+        {
+            material.occlusionStrength(
+                static_cast<float>(gltfMat.occlusionTexture.value().strength));
         }
 
         switch (gltfMat.alphaMode)

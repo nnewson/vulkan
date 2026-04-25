@@ -156,6 +156,17 @@ public:
         normalScale_ = v;
     }
 
+    // glTF: shader output = lerp(colour, colour * sampledAO, strength).
+    // Spec default is 1.0 (full occlusion contribution).
+    [[nodiscard]] float occlusionStrength() const noexcept
+    {
+        return occlusionStrength_;
+    }
+    void occlusionStrength(float v) noexcept
+    {
+        occlusionStrength_ = v;
+    }
+
     [[nodiscard]] AlphaMode alphaMode() const noexcept
     {
         return alphaMode_;
@@ -191,6 +202,7 @@ private:
     float metallic_{0.0f};
     float alpha_{1.0f};
     float normalScale_{1.0f};
+    float occlusionStrength_{1.0f};
     AlphaMode alphaMode_{AlphaMode::Opaque};
     float alphaCutoff_{0.5f};
     bool doubleSided_{false};

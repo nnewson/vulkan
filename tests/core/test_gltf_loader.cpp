@@ -24,6 +24,26 @@ using fire_engine::Material;
 using fire_engine::Node;
 using fire_engine::Vec3;
 
+// Mirrors the occlusion-strength translation performed inside
+// GltfLoader::loadMaterial so it can be exercised without a GPU.
+static void applyOcclusionStrength(const fastgltf::Material& gltfMat, Material& material)
+{
+    if (gltfMat.occlusionTexture.has_value())
+    {
+        material.occlusionStrength(static_cast<float>(gltfMat.occlusionTexture.value().strength));
+    }
+}
+
+// Mirrors KHR_materials_emissive_strength translation: emissiveFactor is
+// scaled by emissiveStrength at load time. Default emissiveStrength = 1.0.
+static void applyEmissiveStrength(const fastgltf::Material& gltfMat, Material& material)
+{
+    const float strength = static_cast<float>(gltfMat.emissiveStrength);
+    material.emissive({static_cast<float>(gltfMat.emissiveFactor.x()) * strength,
+                       static_cast<float>(gltfMat.emissiveFactor.y()) * strength,
+                       static_cast<float>(gltfMat.emissiveFactor.z()) * strength});
+}
+
 // Mirrors the alpha-mode translation performed inside
 // GltfLoader::loadMaterial so the translation can be exercised without
 // needing a GPU-backed Resources object.
@@ -425,6 +445,77 @@ TEST(MaterialAlphaFields, BlendMapsThrough)
     applyAlphaFields(gltfMat, material);
     EXPECT_EQ(material.alphaMode(), AlphaMode::Blend);
     EXPECT_TRUE(material.doubleSided());
+}
+
+// ==========================================================================
+// Occlusion strength — glTF spec default is 1.0; explicit values must round
+// trip through GltfLoader::loadMaterial onto Material::occlusionStrength().
+// ==========================================================================
+
+TEST(MaterialOcclusionStrength, DefaultsToOne)
+{
+    Material material;
+    EXPECT_FLOAT_EQ(material.occlusionStrength(), 1.0f);
+}
+
+TEST(MaterialOcclusionStrength, AbsentTextureLeavesStrengthUnchanged)
+{
+    fastgltf::Material gltfMat{};
+    Material material;
+    material.occlusionStrength(0.42f);
+    applyOcclusionStrength(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.occlusionStrength(), 0.42f);
+}
+
+TEST(MaterialOcclusionStrength, ExplicitStrengthRoundTrips)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.occlusionTexture.emplace().strength = 0.5f;
+    Material material;
+    applyOcclusionStrength(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.occlusionStrength(), 0.5f);
+}
+
+// ==========================================================================
+// KHR_materials_emissive_strength — emissiveFactor is multiplied by the
+// extension's strength scalar at load time so HDR emissives reach the bloom
+// chain at the authored magnitude.
+// ==========================================================================
+
+TEST(EmissiveStrength, DefaultStrengthIsIdentity)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.emissiveFactor = {0.5f, 0.25f, 0.125f};
+    // emissiveStrength defaults to 1.0 per the extension spec.
+    Material material;
+    applyEmissiveStrength(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.emissive().r(), 0.5f);
+    EXPECT_FLOAT_EQ(material.emissive().g(), 0.25f);
+    EXPECT_FLOAT_EQ(material.emissive().b(), 0.125f);
+}
+
+TEST(EmissiveStrength, ExplicitStrengthScalesEmissiveFactor)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.emissiveFactor = {1.0f, 0.5f, 0.25f};
+    gltfMat.emissiveStrength = 4.0f;
+    Material material;
+    applyEmissiveStrength(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.emissive().r(), 4.0f);
+    EXPECT_FLOAT_EQ(material.emissive().g(), 2.0f);
+    EXPECT_FLOAT_EQ(material.emissive().b(), 1.0f);
+}
+
+TEST(EmissiveStrength, ZeroStrengthZeroesEmission)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.emissiveFactor = {1.0f, 1.0f, 1.0f};
+    gltfMat.emissiveStrength = 0.0f;
+    Material material;
+    applyEmissiveStrength(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.emissive().r(), 0.0f);
+    EXPECT_FLOAT_EQ(material.emissive().g(), 0.0f);
+    EXPECT_FLOAT_EQ(material.emissive().b(), 0.0f);
 }
 
 // ==========================================================================
