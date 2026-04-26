@@ -51,6 +51,12 @@ target_include_directories(fireengine PUBLIC ${PROJECT_SOURCE_DIR}/include ${Stb
 target_compile_features(fireengine PUBLIC cxx_std_23)
 target_compile_options(fireengine PRIVATE -Wall -Wextra -Wpedantic)
 target_compile_definitions(fireengine PRIVATE
+    VK_ENABLE_BETA_EXTENSIONS
+)
+target_compile_definitions(fireengine PUBLIC
+    VULKAN_HPP_NO_CONSTRUCTORS
+)
+target_compile_definitions(fireengine PRIVATE
     FIRE_ENGINE_SOURCE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
     FIRE_ENGINE_BUILD_ASSET_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )

@@ -111,8 +111,7 @@ void Object::load(Resources& resources)
                 {
                     for (std::size_t v = 0; v < numVerts; ++v)
                     {
-                        const Vec3& d =
-                            (t < src.size() && v < src[t].size()) ? src[t][v] : Vec3{};
+                        const Vec3& d = (t < src.size() && v < src[t].size()) ? src[t][v] : Vec3{};
                         *dst++ = d.x();
                         *dst++ = d.y();
                         *dst++ = d.z();

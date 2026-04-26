@@ -15,17 +15,26 @@ Swapchain::Swapchain(const Device& device, const Window& window)
 void Swapchain::createDepthResources(const Device& device)
 {
     vk::Format depthFmt = vk::Format::eD32Sfloat;
-    vk::ImageCreateInfo ci({}, vk::ImageType::e2D, depthFmt,
-                           vk::Extent3D(extent_.width, extent_.height, 1), 1, 1,
-                           vk::SampleCountFlagBits::e1, vk::ImageTiling::eOptimal,
-                           vk::ImageUsageFlagBits::eDepthStencilAttachment,
-                           vk::SharingMode::eExclusive, {}, vk::ImageLayout::eUndefined);
+    vk::ImageCreateInfo ci{
+        .imageType = vk::ImageType::e2D,
+        .format = depthFmt,
+        .extent = vk::Extent3D{.width = extent_.width, .height = extent_.height, .depth = 1},
+        .mipLevels = 1,
+        .arrayLayers = 1,
+        .samples = vk::SampleCountFlagBits::e1,
+        .tiling = vk::ImageTiling::eOptimal,
+        .usage = vk::ImageUsageFlagBits::eDepthStencilAttachment,
+        .sharingMode = vk::SharingMode::eExclusive,
+        .initialLayout = vk::ImageLayout::eUndefined,
+    };
     depthImage_ = vk::raii::Image(*device_, ci);
 
     auto req = depthImage_.getMemoryRequirements();
-    vk::MemoryAllocateInfo ai(
-        req.size,
-        device.findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    vk::MemoryAllocateInfo ai{
+        .allocationSize = req.size,
+        .memoryTypeIndex =
+            device.findMemoryType(req.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal),
+    };
     depthMem_ = vk::raii::DeviceMemory(*device_, ai);
     depthImage_.bindMemory(*depthMem_, 0);
     depthView_ = createImageView(*depthImage_, depthFmt, vk::ImageAspectFlagBits::eDepth);
@@ -63,12 +72,22 @@ void Swapchain::createSwapchain(const Device& device, const Window& window)
     uint32_t families[] = {device.graphicsFamily(), device.presentFamily()};
     bool concurrent = device.graphicsFamily() != device.presentFamily();
 
-    vk::SwapchainCreateInfoKHR ci(
-        {}, *device.surface(), imgCount, fmt.format, fmt.colorSpace, extent, 1,
-        vk::ImageUsageFlagBits::eColorAttachment,
-        concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
-        concurrent ? 2u : 0u, concurrent ? families : nullptr, caps.currentTransform,
-        vk::CompositeAlphaFlagBitsKHR::eOpaque, mode, vk::True);
+    vk::SwapchainCreateInfoKHR ci{
+        .surface = *device.surface(),
+        .minImageCount = imgCount,
+        .imageFormat = fmt.format,
+        .imageColorSpace = fmt.colorSpace,
+        .imageExtent = extent,
+        .imageArrayLayers = 1,
+        .imageUsage = vk::ImageUsageFlagBits::eColorAttachment,
+        .imageSharingMode = concurrent ? vk::SharingMode::eConcurrent : vk::SharingMode::eExclusive,
+        .queueFamilyIndexCount = concurrent ? 2u : 0u,
+        .pQueueFamilyIndices = concurrent ? families : nullptr,
+        .preTransform = caps.currentTransform,
+        .compositeAlpha = vk::CompositeAlphaFlagBitsKHR::eOpaque,
+        .presentMode = mode,
+        .clipped = vk::True,
+    };
 
     swapchain_ = vk::raii::SwapchainKHR(*device_, ci);
     images_ = swapchain_.getImages();
@@ -121,7 +140,7 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
         return caps.currentExtent;
     }
     auto [w, h] = window.framebufferSize();
-    vk::Extent2D ext(static_cast<uint32_t>(w), static_cast<uint32_t>(h));
+    vk::Extent2D ext{.width = static_cast<uint32_t>(w), .height = static_cast<uint32_t>(h)};
     ext.width = std::clamp(ext.width, caps.minImageExtent.width, caps.maxImageExtent.width);
     ext.height = std::clamp(ext.height, caps.minImageExtent.height, caps.maxImageExtent.height);
     return ext;
@@ -130,8 +149,16 @@ vk::Extent2D Swapchain::chooseSwapExtent(const Window& window,
 vk::raii::ImageView Swapchain::createImageView(vk::Image img, vk::Format fmt,
                                                vk::ImageAspectFlags aspect)
 {
-    vk::ImageViewCreateInfo ci({}, img, vk::ImageViewType::e2D, fmt, {},
-                               vk::ImageSubresourceRange(aspect, 0, 1, 0, 1));
+    vk::ImageViewCreateInfo ci{
+        .image = img,
+        .viewType = vk::ImageViewType::e2D,
+        .format = fmt,
+        .subresourceRange = vk::ImageSubresourceRange{.aspectMask = aspect,
+                                                      .baseMipLevel = 0,
+                                                      .levelCount = 1,
+                                                      .baseArrayLayer = 0,
+                                                      .layerCount = 1},
+    };
     return vk::raii::ImageView(*device_, ci);
 }
 

@@ -15,15 +15,20 @@ Frame::Frame(const Device& device, Swapchain& swapchain)
 
 vk::raii::CommandPool Frame::createCommandPool(const Device& device)
 {
-    vk::CommandPoolCreateInfo ci(vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
-                                 device.graphicsFamily());
+    vk::CommandPoolCreateInfo ci{
+        .flags = vk::CommandPoolCreateFlagBits::eResetCommandBuffer,
+        .queueFamilyIndex = device.graphicsFamily(),
+    };
     return vk::raii::CommandPool(*device_, ci);
 }
 
 void Frame::createCommandBuffers()
 {
-    vk::CommandBufferAllocateInfo ai(*cmdPool_, vk::CommandBufferLevel::ePrimary,
-                                     static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT));
+    vk::CommandBufferAllocateInfo ai{
+        .commandPool = *cmdPool_,
+        .level = vk::CommandBufferLevel::ePrimary,
+        .commandBufferCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT),
+    };
     auto bufs = device_->allocateCommandBuffers(ai);
     cmdBufs_.reserve(bufs.size());
     for (auto& b : bufs)
@@ -34,8 +39,10 @@ void Frame::createCommandBuffers()
 
 void Frame::createSyncObjects()
 {
-    vk::SemaphoreCreateInfo sci;
-    vk::FenceCreateInfo fci(vk::FenceCreateFlagBits::eSignaled);
+    vk::SemaphoreCreateInfo sci{};
+    vk::FenceCreateInfo fci{
+        .flags = vk::FenceCreateFlagBits::eSignaled,
+    };
 
     imageAvail_.reserve(MAX_FRAMES_IN_FLIGHT);
     inFlight_.reserve(MAX_FRAMES_IN_FLIGHT);
@@ -59,7 +66,7 @@ void Frame::destroyRenderFinishedSemaphores()
 
 void Frame::createRenderFinishedSemaphores(size_t count)
 {
-    vk::SemaphoreCreateInfo sci;
+    vk::SemaphoreCreateInfo sci{};
     renderDone_.clear();
     renderDone_.reserve(count);
     for (size_t i = 0; i < count; ++i)

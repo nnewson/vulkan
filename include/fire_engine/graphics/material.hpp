@@ -183,24 +183,72 @@ public:
     // Defaults are 0 — matches glTF spec when omitted. B3 wires the loader to
     // honour the source asset's per-slot index; for now nothing populates
     // anything other than 0, so behaviour is unchanged.
-    [[nodiscard]] int baseColorTexCoord() const noexcept { return baseColorTexCoord_; }
-    void baseColorTexCoord(int v) noexcept { baseColorTexCoord_ = v; }
-    [[nodiscard]] int emissiveTexCoord() const noexcept { return emissiveTexCoord_; }
-    void emissiveTexCoord(int v) noexcept { emissiveTexCoord_ = v; }
-    [[nodiscard]] int normalTexCoord() const noexcept { return normalTexCoord_; }
-    void normalTexCoord(int v) noexcept { normalTexCoord_ = v; }
-    [[nodiscard]] int metallicRoughnessTexCoord() const noexcept { return metallicRoughnessTexCoord_; }
-    void metallicRoughnessTexCoord(int v) noexcept { metallicRoughnessTexCoord_ = v; }
-    [[nodiscard]] int occlusionTexCoord() const noexcept { return occlusionTexCoord_; }
-    void occlusionTexCoord(int v) noexcept { occlusionTexCoord_ = v; }
+    [[nodiscard]] int baseColorTexCoord() const noexcept
+    {
+        return baseColorTexCoord_;
+    }
+    void baseColorTexCoord(int v) noexcept
+    {
+        baseColorTexCoord_ = v;
+    }
+    [[nodiscard]] int emissiveTexCoord() const noexcept
+    {
+        return emissiveTexCoord_;
+    }
+    void emissiveTexCoord(int v) noexcept
+    {
+        emissiveTexCoord_ = v;
+    }
+    [[nodiscard]] int normalTexCoord() const noexcept
+    {
+        return normalTexCoord_;
+    }
+    void normalTexCoord(int v) noexcept
+    {
+        normalTexCoord_ = v;
+    }
+    [[nodiscard]] int metallicRoughnessTexCoord() const noexcept
+    {
+        return metallicRoughnessTexCoord_;
+    }
+    void metallicRoughnessTexCoord(int v) noexcept
+    {
+        metallicRoughnessTexCoord_ = v;
+    }
+    [[nodiscard]] int occlusionTexCoord() const noexcept
+    {
+        return occlusionTexCoord_;
+    }
+    void occlusionTexCoord(int v) noexcept
+    {
+        occlusionTexCoord_ = v;
+    }
 
     // KHR_texture_transform per-slot UV transforms. Identity by default.
-    [[nodiscard]] UvTransform baseColorUvTransform() const noexcept { return baseColorUvTransform_; }
-    void baseColorUvTransform(UvTransform t) noexcept { baseColorUvTransform_ = t; }
-    [[nodiscard]] UvTransform emissiveUvTransform() const noexcept { return emissiveUvTransform_; }
-    void emissiveUvTransform(UvTransform t) noexcept { emissiveUvTransform_ = t; }
-    [[nodiscard]] UvTransform normalUvTransform() const noexcept { return normalUvTransform_; }
-    void normalUvTransform(UvTransform t) noexcept { normalUvTransform_ = t; }
+    [[nodiscard]] UvTransform baseColorUvTransform() const noexcept
+    {
+        return baseColorUvTransform_;
+    }
+    void baseColorUvTransform(UvTransform t) noexcept
+    {
+        baseColorUvTransform_ = t;
+    }
+    [[nodiscard]] UvTransform emissiveUvTransform() const noexcept
+    {
+        return emissiveUvTransform_;
+    }
+    void emissiveUvTransform(UvTransform t) noexcept
+    {
+        emissiveUvTransform_ = t;
+    }
+    [[nodiscard]] UvTransform normalUvTransform() const noexcept
+    {
+        return normalUvTransform_;
+    }
+    void normalUvTransform(UvTransform t) noexcept
+    {
+        normalUvTransform_ = t;
+    }
     [[nodiscard]] UvTransform metallicRoughnessUvTransform() const noexcept
     {
         return metallicRoughnessUvTransform_;
@@ -209,8 +257,14 @@ public:
     {
         metallicRoughnessUvTransform_ = t;
     }
-    [[nodiscard]] UvTransform occlusionUvTransform() const noexcept { return occlusionUvTransform_; }
-    void occlusionUvTransform(UvTransform t) noexcept { occlusionUvTransform_ = t; }
+    [[nodiscard]] UvTransform occlusionUvTransform() const noexcept
+    {
+        return occlusionUvTransform_;
+    }
+    void occlusionUvTransform(UvTransform t) noexcept
+    {
+        occlusionUvTransform_ = t;
+    }
 
     [[nodiscard]] AlphaMode alphaMode() const noexcept
     {

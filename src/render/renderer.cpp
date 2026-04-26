@@ -207,9 +207,9 @@ void Renderer::createSkyboxEnvironmentGpu()
 
     try
     {
-        skyboxCubemapHandle_ = resources_.createRenderTargetCubemap(
-            skyboxCubemapExtent, skyboxCubemapMipLevels,
-            vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
+        skyboxCubemapHandle_ =
+            resources_.createRenderTargetCubemap(skyboxCubemapExtent, skyboxCubemapMipLevels,
+                                                 vk::Format::eR32G32B32A32Sfloat, cubemapSampler);
 
         RenderPass environmentPass = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(skyboxCubemapHandle_));
@@ -224,27 +224,42 @@ void Renderer::createSkyboxEnvironmentGpu()
             resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 4),
             resources_.vulkanCubemapFaceView(skyboxCubemapHandle_, 5),
         };
-        environmentPass.createColourFramebuffers(device_, faceViews,
-                                                 skyboxCubemapExtent);
+        environmentPass.createColourFramebuffers(device_, faceViews, skyboxCubemapExtent);
 
         auto captureSets = resources_.createSingleImageSamplerDescriptors(
             environmentPipeline.descriptorSetLayout(), equirectHandle);
 
-        vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
-                                         device_.graphicsFamily());
+        vk::CommandPoolCreateInfo poolCi{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient,
+            .queueFamilyIndex = device_.graphicsFamily(),
+        };
         vk::raii::CommandPool commandPool(device_.device(), poolCi);
-        vk::CommandBufferAllocateInfo cmdAi(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+        vk::CommandBufferAllocateInfo cmdAi{
+            .commandPool = *commandPool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1,
+        };
         auto cmds = device_.device().allocateCommandBuffers(cmdAi);
         auto& cmd = cmds[0];
-        cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+        cmd.begin(vk::CommandBufferBeginInfo{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        });
 
-        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(skyboxCubemapExtent),
-                              static_cast<float>(skyboxCubemapExtent), 0.0f,
-                              1.0f);
-        vk::Rect2D renderArea(
-            {0, 0}, {skyboxCubemapExtent, skyboxCubemapExtent});
-        vk::ClearValue clearColour(
-            vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+        vk::Viewport viewport{
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(skyboxCubemapExtent),
+            .height = static_cast<float>(skyboxCubemapExtent),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vk::Rect2D renderArea{
+            .offset = vk::Offset2D{.x = 0, .y = 0},
+            .extent = vk::Extent2D{.width = skyboxCubemapExtent, .height = skyboxCubemapExtent},
+        };
+        vk::ClearValue clearColour{
+            .color = vk::ClearColorValue{.float32 = {{0.0f, 0.0f, 0.0f, 1.0f}}},
+        };
 
         for (uint32_t face = 0; face < 6; ++face)
         {
@@ -252,9 +267,13 @@ void Renderer::createSkyboxEnvironmentGpu()
             capture.faceIndex = static_cast<int>(face);
             capture.faceExtent = static_cast<int>(skyboxCubemapExtent);
 
-            vk::RenderPassBeginInfo beginInfo(environmentPass.renderPass(),
-                                              environmentPass.framebuffer(face), renderArea,
-                                              clearColour);
+            vk::RenderPassBeginInfo beginInfo{
+                .renderPass = environmentPass.renderPass(),
+                .framebuffer = environmentPass.framebuffer(face),
+                .renderArea = renderArea,
+                .clearValueCount = 1,
+                .pClearValues = &clearColour,
+            };
             cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
             cmd.setViewport(0, viewport);
             cmd.setScissor(0, renderArea);
@@ -283,11 +302,21 @@ void Renderer::createSkyboxEnvironmentGpu()
                                vk::AccessFlags dstAccess, vk::PipelineStageFlags srcStage,
                                vk::PipelineStageFlags dstStage)
             {
-                vk::ImageMemoryBarrier b(srcAccess, dstAccess, oldLayout, newLayout,
-                                         vk::QueueFamilyIgnored, vk::QueueFamilyIgnored,
-                                         skyboxImage,
-                                         vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor,
-                                                                   baseMip, mipCount, 0, 6));
+                vk::ImageMemoryBarrier b{
+                    .srcAccessMask = srcAccess,
+                    .dstAccessMask = dstAccess,
+                    .oldLayout = oldLayout,
+                    .newLayout = newLayout,
+                    .srcQueueFamilyIndex = vk::QueueFamilyIgnored,
+                    .dstQueueFamilyIndex = vk::QueueFamilyIgnored,
+                    .image = skyboxImage,
+                    .subresourceRange =
+                        vk::ImageSubresourceRange{.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                  .baseMipLevel = baseMip,
+                                                  .levelCount = mipCount,
+                                                  .baseArrayLayer = 0,
+                                                  .layerCount = 6},
+                };
                 cmd.pipelineBarrier(srcStage, dstStage, {}, {}, {}, b);
             };
 
@@ -308,11 +337,22 @@ void Renderer::createSkyboxEnvironmentGpu()
                         vk::PipelineStageFlagBits::eTopOfPipe,
                         vk::PipelineStageFlagBits::eTransfer);
 
-                vk::ImageBlit blit(
-                    vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, mip - 1, 0, 6),
-                    {vk::Offset3D{0, 0, 0}, vk::Offset3D{srcExtent, srcExtent, 1}},
-                    vk::ImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, mip, 0, 6),
-                    {vk::Offset3D{0, 0, 0}, vk::Offset3D{dstExtent, dstExtent, 1}});
+                vk::ImageBlit blit{
+                    .srcSubresource =
+                        vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                   .mipLevel = mip - 1,
+                                                   .baseArrayLayer = 0,
+                                                   .layerCount = 6},
+                    .srcOffsets = {{vk::Offset3D{.x = 0, .y = 0, .z = 0},
+                                    vk::Offset3D{.x = srcExtent, .y = srcExtent, .z = 1}}},
+                    .dstSubresource =
+                        vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                   .mipLevel = mip,
+                                                   .baseArrayLayer = 0,
+                                                   .layerCount = 6},
+                    .dstOffsets = {{vk::Offset3D{.x = 0, .y = 0, .z = 0},
+                                    vk::Offset3D{.x = dstExtent, .y = dstExtent, .z = 1}}},
+                };
                 cmd.blitImage(skyboxImage, vk::ImageLayout::eTransferSrcOptimal, skyboxImage,
                               vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
 
@@ -341,7 +381,10 @@ void Renderer::createSkyboxEnvironmentGpu()
         cmd.end();
 
         vk::CommandBuffer rawCmd = *cmd;
-        vk::SubmitInfo submitInfo({}, {}, rawCmd);
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &rawCmd,
+        };
         device_.graphicsQueue().submit(submitInfo);
         device_.graphicsQueue().waitIdle();
     }
@@ -383,27 +426,43 @@ void Renderer::createIrradianceEnvironment()
             resources_.vulkanCubemapFaceView(irradianceCubemapHandle_, 4),
             resources_.vulkanCubemapFaceView(irradianceCubemapHandle_, 5),
         };
-        irradiancePass.createColourFramebuffers(device_, faceViews,
-                                                irradianceCubemapExtent);
+        irradiancePass.createColourFramebuffers(device_, faceViews, irradianceCubemapExtent);
 
         auto captureSets = resources_.createSingleImageSamplerDescriptors(
             irradiancePipeline.descriptorSetLayout(), skyboxCubemapHandle_);
 
-        vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
-                                         device_.graphicsFamily());
+        vk::CommandPoolCreateInfo poolCi{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient,
+            .queueFamilyIndex = device_.graphicsFamily(),
+        };
         vk::raii::CommandPool commandPool(device_.device(), poolCi);
-        vk::CommandBufferAllocateInfo cmdAi(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+        vk::CommandBufferAllocateInfo cmdAi{
+            .commandPool = *commandPool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1,
+        };
         auto cmds = device_.device().allocateCommandBuffers(cmdAi);
         auto& cmd = cmds[0];
-        cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+        cmd.begin(vk::CommandBufferBeginInfo{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        });
 
-        vk::Viewport viewport(
-            0.0f, 0.0f, static_cast<float>(irradianceCubemapExtent),
-            static_cast<float>(irradianceCubemapExtent), 0.0f, 1.0f);
-        vk::Rect2D renderArea({0, 0}, {irradianceCubemapExtent,
-                                       irradianceCubemapExtent});
-        vk::ClearValue clearColour(
-            vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+        vk::Viewport viewport{
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(irradianceCubemapExtent),
+            .height = static_cast<float>(irradianceCubemapExtent),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vk::Rect2D renderArea{
+            .offset = vk::Offset2D{.x = 0, .y = 0},
+            .extent =
+                vk::Extent2D{.width = irradianceCubemapExtent, .height = irradianceCubemapExtent},
+        };
+        vk::ClearValue clearColour{
+            .color = vk::ClearColorValue{.float32 = {{0.0f, 0.0f, 0.0f, 1.0f}}},
+        };
 
         for (uint32_t face = 0; face < 6; ++face)
         {
@@ -411,9 +470,13 @@ void Renderer::createIrradianceEnvironment()
             capture.faceIndex = static_cast<int>(face);
             capture.faceExtent = static_cast<int>(irradianceCubemapExtent);
 
-            vk::RenderPassBeginInfo beginInfo(irradiancePass.renderPass(),
-                                              irradiancePass.framebuffer(face), renderArea,
-                                              clearColour);
+            vk::RenderPassBeginInfo beginInfo{
+                .renderPass = irradiancePass.renderPass(),
+                .framebuffer = irradiancePass.framebuffer(face),
+                .renderArea = renderArea,
+                .clearValueCount = 1,
+                .pClearValues = &clearColour,
+            };
             cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
             cmd.setViewport(0, viewport);
             cmd.setScissor(0, renderArea);
@@ -431,7 +494,10 @@ void Renderer::createIrradianceEnvironment()
         cmd.end();
 
         vk::CommandBuffer rawCmd = *cmd;
-        vk::SubmitInfo submitInfo({}, {}, rawCmd);
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &rawCmd,
+        };
         device_.graphicsQueue().submit(submitInfo);
         device_.graphicsQueue().waitIdle();
     }
@@ -451,10 +517,9 @@ void Renderer::createPrefilteredEnvironment()
         sampler.wrapS = WrapMode::ClampToEdge;
         sampler.wrapT = WrapMode::ClampToEdge;
 
-        prefilteredCubemapHandle_ =
-            resources_.createRenderTargetCubemap(prefilteredCubemapExtent,
-                                                 prefilteredCubemapMipLevels,
-                                                 vk::Format::eR32G32B32A32Sfloat, sampler);
+        prefilteredCubemapHandle_ = resources_.createRenderTargetCubemap(
+            prefilteredCubemapExtent, prefilteredCubemapMipLevels, vk::Format::eR32G32B32A32Sfloat,
+            sampler);
 
         RenderPass prefilterPassTemplate = RenderPass::createOffscreenColour(
             device_, resources_.textureFormat(prefilteredCubemapHandle_));
@@ -484,29 +549,46 @@ void Renderer::createPrefilteredEnvironment()
             mipExtent = std::max(1u, mipExtent / 2);
         }
 
-        vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
-                                         device_.graphicsFamily());
+        vk::CommandPoolCreateInfo poolCi{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient,
+            .queueFamilyIndex = device_.graphicsFamily(),
+        };
         vk::raii::CommandPool commandPool(device_.device(), poolCi);
-        vk::CommandBufferAllocateInfo cmdAi(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+        vk::CommandBufferAllocateInfo cmdAi{
+            .commandPool = *commandPool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1,
+        };
         auto cmds = device_.device().allocateCommandBuffers(cmdAi);
         auto& cmd = cmds[0];
-        cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+        cmd.begin(vk::CommandBufferBeginInfo{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        });
 
-        vk::ClearValue clearColour(
-            vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+        vk::ClearValue clearColour{
+            .color = vk::ClearColorValue{.float32 = {{0.0f, 0.0f, 0.0f, 1.0f}}},
+        };
 
         mipExtent = prefilteredCubemapExtent;
         for (uint32_t level = 0; level < prefilteredCubemapMipLevels; ++level)
         {
-            float roughness =
-                prefilteredCubemapMipLevels > 1
-                    ? static_cast<float>(level) /
-                          static_cast<float>(prefilteredCubemapMipLevels - 1)
-                    : 0.0f;
+            float roughness = prefilteredCubemapMipLevels > 1
+                                  ? static_cast<float>(level) /
+                                        static_cast<float>(prefilteredCubemapMipLevels - 1)
+                                  : 0.0f;
 
-            vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(mipExtent),
-                                  static_cast<float>(mipExtent), 0.0f, 1.0f);
-            vk::Rect2D renderArea({0, 0}, {mipExtent, mipExtent});
+            vk::Viewport viewport{
+                .x = 0.0f,
+                .y = 0.0f,
+                .width = static_cast<float>(mipExtent),
+                .height = static_cast<float>(mipExtent),
+                .minDepth = 0.0f,
+                .maxDepth = 1.0f,
+            };
+            vk::Rect2D renderArea{
+                .offset = vk::Offset2D{.x = 0, .y = 0},
+                .extent = vk::Extent2D{.width = mipExtent, .height = mipExtent},
+            };
 
             for (uint32_t face = 0; face < 6; ++face)
             {
@@ -515,12 +597,15 @@ void Renderer::createPrefilteredEnvironment()
                 capture.faceExtent = static_cast<int>(mipExtent);
                 capture.roughness = roughness;
                 capture.sourceFaceExtent = static_cast<int>(skyboxCubemapExtent);
-                capture.sourceMaxMip =
-                    static_cast<float>(skyboxCubemapMipLevels - 1);
+                capture.sourceMaxMip = static_cast<float>(skyboxCubemapMipLevels - 1);
 
-                vk::RenderPassBeginInfo beginInfo(prefilterPasses[level].renderPass(),
-                                                  prefilterPasses[level].framebuffer(face),
-                                                  renderArea, clearColour);
+                vk::RenderPassBeginInfo beginInfo{
+                    .renderPass = prefilterPasses[level].renderPass(),
+                    .framebuffer = prefilterPasses[level].framebuffer(face),
+                    .renderArea = renderArea,
+                    .clearValueCount = 1,
+                    .pClearValues = &clearColour,
+                };
                 cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
                 cmd.setViewport(0, viewport);
                 cmd.setScissor(0, renderArea);
@@ -541,7 +626,10 @@ void Renderer::createPrefilteredEnvironment()
         cmd.end();
 
         vk::CommandBuffer rawCmd = *cmd;
-        vk::SubmitInfo submitInfo({}, {}, rawCmd);
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &rawCmd,
+        };
         device_.graphicsQueue().submit(submitInfo);
         device_.graphicsQueue().waitIdle();
     }
@@ -557,8 +645,7 @@ void Renderer::createBrdfLut()
 {
     try
     {
-        brdfLutHandle_ = resources_.createOffscreenColourTarget(
-            {brdfLutExtent, brdfLutExtent});
+        brdfLutHandle_ = resources_.createOffscreenColourTarget({brdfLutExtent, brdfLutExtent});
 
         RenderPass brdfPass =
             RenderPass::createOffscreenColour(device_, resources_.textureFormat(brdfLutHandle_));
@@ -567,23 +654,45 @@ void Renderer::createBrdfLut()
         std::array<vk::ImageView, 1> views = {resources_.vulkanImageView(brdfLutHandle_)};
         brdfPass.createColourFramebuffers(device_, views, brdfLutExtent);
 
-        vk::CommandPoolCreateInfo poolCi(vk::CommandPoolCreateFlagBits::eTransient,
-                                         device_.graphicsFamily());
+        vk::CommandPoolCreateInfo poolCi{
+            .flags = vk::CommandPoolCreateFlagBits::eTransient,
+            .queueFamilyIndex = device_.graphicsFamily(),
+        };
         vk::raii::CommandPool commandPool(device_.device(), poolCi);
-        vk::CommandBufferAllocateInfo cmdAi(*commandPool, vk::CommandBufferLevel::ePrimary, 1);
+        vk::CommandBufferAllocateInfo cmdAi{
+            .commandPool = *commandPool,
+            .level = vk::CommandBufferLevel::ePrimary,
+            .commandBufferCount = 1,
+        };
         auto cmds = device_.device().allocateCommandBuffers(cmdAi);
         auto& cmd = cmds[0];
-        cmd.begin(vk::CommandBufferBeginInfo(vk::CommandBufferUsageFlagBits::eOneTimeSubmit));
+        cmd.begin(vk::CommandBufferBeginInfo{
+            .flags = vk::CommandBufferUsageFlagBits::eOneTimeSubmit,
+        });
 
-        vk::Viewport viewport(0.0f, 0.0f, static_cast<float>(brdfLutExtent),
-                              static_cast<float>(brdfLutExtent), 0.0f, 1.0f);
-        vk::Rect2D renderArea({0, 0},
-                              {brdfLutExtent, brdfLutExtent});
-        vk::ClearValue clearColour(
-            vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f}));
+        vk::Viewport viewport{
+            .x = 0.0f,
+            .y = 0.0f,
+            .width = static_cast<float>(brdfLutExtent),
+            .height = static_cast<float>(brdfLutExtent),
+            .minDepth = 0.0f,
+            .maxDepth = 1.0f,
+        };
+        vk::Rect2D renderArea{
+            .offset = vk::Offset2D{.x = 0, .y = 0},
+            .extent = vk::Extent2D{.width = brdfLutExtent, .height = brdfLutExtent},
+        };
+        vk::ClearValue clearColour{
+            .color = vk::ClearColorValue{.float32 = {{0.0f, 0.0f, 0.0f, 1.0f}}},
+        };
 
-        vk::RenderPassBeginInfo beginInfo(brdfPass.renderPass(), brdfPass.framebuffer(0),
-                                          renderArea, clearColour);
+        vk::RenderPassBeginInfo beginInfo{
+            .renderPass = brdfPass.renderPass(),
+            .framebuffer = brdfPass.framebuffer(0),
+            .renderArea = renderArea,
+            .clearValueCount = 1,
+            .pClearValues = &clearColour,
+        };
         cmd.beginRenderPass(beginInfo, vk::SubpassContents::eInline);
         cmd.setViewport(0, viewport);
         cmd.setScissor(0, renderArea);
@@ -593,7 +702,10 @@ void Renderer::createBrdfLut()
         cmd.end();
 
         vk::CommandBuffer rawCmd = *cmd;
-        vk::SubmitInfo submitInfo({}, {}, rawCmd);
+        vk::SubmitInfo submitInfo{
+            .commandBufferCount = 1,
+            .pCommandBuffers = &rawCmd,
+        };
         device_.graphicsQueue().submit(submitInfo);
         device_.graphicsQueue().waitIdle();
     }
@@ -782,13 +894,23 @@ void Renderer::recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCom
 
 void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCommand>& shadowDraws)
 {
-    std::array<vk::ClearValue, 2> shadowClears;
-    shadowClears[0].color = vk::ClearColorValue(std::array<float, 4>{0.0f, 0.0f, 0.0f, 1.0f});
-    shadowClears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+    std::array<vk::ClearValue, 2> shadowClears = {
+        vk::ClearValue{.color = vk::ClearColorValue{.float32 = {{0.0f, 0.0f, 0.0f, 1.0f}}}},
+        vk::ClearValue{.depthStencil = vk::ClearDepthStencilValue{.depth = 1.0f, .stencil = 0}},
+    };
 
-    vk::Viewport shadowVp(0, 0, static_cast<float>(shadowMapSize_),
-                          static_cast<float>(shadowMapSize_), 0, 1);
-    vk::Rect2D shadowScissor({0, 0}, {shadowMapSize_, shadowMapSize_});
+    vk::Viewport shadowVp{
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = static_cast<float>(shadowMapSize_),
+        .height = static_cast<float>(shadowMapSize_),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
+    vk::Rect2D shadowScissor{
+        .offset = vk::Offset2D{.x = 0, .y = 0},
+        .extent = vk::Extent2D{.width = shadowMapSize_, .height = shadowMapSize_},
+    };
 
     // Render every caster into every cascade. The per-cascade lightViewProj
     // already lives in ShadowUBO (written by Object::render from FrameInfo);
@@ -797,9 +919,13 @@ void Renderer::recordShadowPass(vk::CommandBuffer cmd, const std::vector<DrawCom
         resources_.vulkanPipelineLayout(shadowPipelineHandle_);
     for (uint32_t cascade = 0; cascade < shadowMapLayers_; ++cascade)
     {
-        vk::RenderPassBeginInfo shadowBegin(shadowPass_.renderPass(),
-                                            shadowPass_.framebuffer(cascade), shadowScissor,
-                                            shadowClears);
+        vk::RenderPassBeginInfo shadowBegin{
+            .renderPass = shadowPass_.renderPass(),
+            .framebuffer = shadowPass_.framebuffer(cascade),
+            .renderArea = shadowScissor,
+            .clearValueCount = static_cast<uint32_t>(shadowClears.size()),
+            .pClearValues = shadowClears.data(),
+        };
         cmd.beginRenderPass(shadowBegin, vk::SubpassContents::eInline);
         cmd.setViewport(0, shadowVp);
         cmd.setScissor(0, shadowScissor);
@@ -825,7 +951,6 @@ void Renderer::recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& bucke
     cmd.endRenderPass();
 }
 
-
 void Renderer::buildBloomResources()
 {
     auto extent = swapchain_.extent();
@@ -842,8 +967,7 @@ void Renderer::buildBloomResources()
     for (uint32_t m = 0; m < bloomMipCount; ++m)
     {
         downViews.push_back(resources_.vulkanBloomMipView(bloomChainHandle_, m));
-        downExtents.push_back(
-            {std::max(1u, bloomWidth >> m), std::max(1u, bloomHeight >> m)});
+        downExtents.push_back({std::max(1u, bloomWidth >> m), std::max(1u, bloomHeight >> m)});
     }
     bloomDownPass_.createColourFramebuffersPerMip(device_, downViews, downExtents);
 
@@ -864,10 +988,10 @@ void Renderer::buildBloomResources()
     // previous bloom mip. Upsample[m] reads bloom mip m+1, writes mip m.
     bloomDownDescSets_.clear();
     bloomDownDescSets_.reserve(bloomMipCount);
-    bloomDownDescSets_.push_back(resources_.createImageViewDescriptor(
-        bloomDownsamplePipeline_.descriptorSetLayout(),
-        resources_.vulkanImageView(offscreenColourHandle_),
-        resources_.vulkanSampler(offscreenColourHandle_)));
+    bloomDownDescSets_.push_back(
+        resources_.createImageViewDescriptor(bloomDownsamplePipeline_.descriptorSetLayout(),
+                                             resources_.vulkanImageView(offscreenColourHandle_),
+                                             resources_.vulkanSampler(offscreenColourHandle_)));
     for (uint32_t m = 0; m < bloomMipCount - 1; ++m)
     {
         bloomDownDescSets_.push_back(resources_.createImageViewDescriptor(
@@ -893,8 +1017,7 @@ void Renderer::recordBloomPasses(vk::CommandBuffer cmd)
     uint32_t bloomWidth = std::max(1u, extent.width / 2);
     uint32_t bloomHeight = std::max(1u, extent.height / 2);
 
-    const vk::PipelineLayout downLayout =
-        bloomDownsamplePipeline_.pipelineLayout();
+    const vk::PipelineLayout downLayout = bloomDownsamplePipeline_.pipelineLayout();
     const vk::PipelineLayout upLayout = bloomUpsamplePipeline_.pipelineLayout();
 
     // Downsample chain: HDR → mip 0 → mip 1 → ... → mip N-1.
@@ -907,13 +1030,23 @@ void Renderer::recordBloomPasses(vk::CommandBuffer cmd)
         uint32_t srcW = (m == 0) ? extent.width : std::max(1u, bloomWidth >> (m - 1));
         uint32_t srcH = (m == 0) ? extent.height : std::max(1u, bloomHeight >> (m - 1));
 
-        vk::RenderPassBeginInfo begin(bloomDownPass_.renderPass(),
-                                      bloomDownPass_.framebuffer(m),
-                                      vk::Rect2D({0, 0}, {dstW, dstH}), {});
+        vk::Rect2D renderArea{
+            .offset = vk::Offset2D{.x = 0, .y = 0},
+            .extent = vk::Extent2D{.width = dstW, .height = dstH},
+        };
+        vk::RenderPassBeginInfo begin{
+            .renderPass = bloomDownPass_.renderPass(),
+            .framebuffer = bloomDownPass_.framebuffer(m),
+            .renderArea = renderArea,
+        };
         cmd.beginRenderPass(begin, vk::SubpassContents::eInline);
-        cmd.setViewport(0, vk::Viewport(0, 0, static_cast<float>(dstW),
-                                         static_cast<float>(dstH), 0, 1));
-        cmd.setScissor(0, vk::Rect2D({0, 0}, {dstW, dstH}));
+        cmd.setViewport(0, vk::Viewport{.x = 0.0f,
+                                        .y = 0.0f,
+                                        .width = static_cast<float>(dstW),
+                                        .height = static_cast<float>(dstH),
+                                        .minDepth = 0.0f,
+                                        .maxDepth = 1.0f});
+        cmd.setScissor(0, renderArea);
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bloomDownsamplePipeline_.pipeline());
         cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, downLayout, 0,
                                resources_.vulkanDescriptorSet(bloomDownDescSets_[m]), {});
@@ -935,13 +1068,23 @@ void Renderer::recordBloomPasses(vk::CommandBuffer cmd)
         uint32_t srcW = std::max(1u, bloomWidth >> (m + 1));
         uint32_t srcH = std::max(1u, bloomHeight >> (m + 1));
 
-        vk::RenderPassBeginInfo begin(bloomUpPass_.renderPass(),
-                                      bloomUpPass_.framebuffer(static_cast<uint32_t>(m)),
-                                      vk::Rect2D({0, 0}, {dstW, dstH}), {});
+        vk::Rect2D renderArea{
+            .offset = vk::Offset2D{.x = 0, .y = 0},
+            .extent = vk::Extent2D{.width = dstW, .height = dstH},
+        };
+        vk::RenderPassBeginInfo begin{
+            .renderPass = bloomUpPass_.renderPass(),
+            .framebuffer = bloomUpPass_.framebuffer(static_cast<uint32_t>(m)),
+            .renderArea = renderArea,
+        };
         cmd.beginRenderPass(begin, vk::SubpassContents::eInline);
-        cmd.setViewport(0, vk::Viewport(0, 0, static_cast<float>(dstW),
-                                         static_cast<float>(dstH), 0, 1));
-        cmd.setScissor(0, vk::Rect2D({0, 0}, {dstW, dstH}));
+        cmd.setViewport(0, vk::Viewport{.x = 0.0f,
+                                        .y = 0.0f,
+                                        .width = static_cast<float>(dstW),
+                                        .height = static_cast<float>(dstH),
+                                        .minDepth = 0.0f,
+                                        .maxDepth = 1.0f});
+        cmd.setScissor(0, renderArea);
         cmd.bindPipeline(vk::PipelineBindPoint::eGraphics, bloomUpsamplePipeline_.pipeline());
         cmd.bindDescriptorSets(vk::PipelineBindPoint::eGraphics, upLayout, 0,
                                resources_.vulkanDescriptorSet(bloomUpDescSets_[m]), {});
@@ -957,12 +1100,20 @@ void Renderer::recordBloomPasses(vk::CommandBuffer cmd)
 
 void Renderer::transitionOffscreenForSampling(vk::CommandBuffer cmd)
 {
-    vk::ImageMemoryBarrier offscreenReadyForSampling(
-        vk::AccessFlagBits::eColorAttachmentWrite, vk::AccessFlagBits::eShaderRead,
-        vk::ImageLayout::eShaderReadOnlyOptimal, vk::ImageLayout::eShaderReadOnlyOptimal,
-        VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED,
-        resources_.vulkanImage(offscreenColourHandle_),
-        vk::ImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, 1, 0, 1));
+    vk::ImageMemoryBarrier offscreenReadyForSampling{
+        .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+        .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+        .oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+        .image = resources_.vulkanImage(offscreenColourHandle_),
+        .subresourceRange = vk::ImageSubresourceRange{.aspectMask = vk::ImageAspectFlagBits::eColor,
+                                                      .baseMipLevel = 0,
+                                                      .levelCount = 1,
+                                                      .baseArrayLayer = 0,
+                                                      .layerCount = 1},
+    };
     cmd.pipelineBarrier(vk::PipelineStageFlagBits::eColorAttachmentOutput,
                         vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {},
                         offscreenReadyForSampling);
@@ -971,15 +1122,27 @@ void Renderer::transitionOffscreenForSampling(vk::CommandBuffer cmd)
 void Renderer::recordPostProcessPass(vk::CommandBuffer cmd, uint32_t imageIndex)
 {
     auto extent = swapchain_.extent();
-    vk::RenderPassBeginInfo ppBegin(postProcessPass_.renderPass(),
-                                    postProcessPass_.framebuffer(imageIndex),
-                                    vk::Rect2D({0, 0}, extent), {});
+    vk::Rect2D renderArea{
+        .offset = vk::Offset2D{.x = 0, .y = 0},
+        .extent = extent,
+    };
+    vk::RenderPassBeginInfo ppBegin{
+        .renderPass = postProcessPass_.renderPass(),
+        .framebuffer = postProcessPass_.framebuffer(imageIndex),
+        .renderArea = renderArea,
+    };
     cmd.beginRenderPass(ppBegin, vk::SubpassContents::eInline);
 
-    vk::Viewport vp(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height), 0,
-                    1);
+    vk::Viewport vp{
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = static_cast<float>(extent.width),
+        .height = static_cast<float>(extent.height),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
     cmd.setViewport(0, vp);
-    cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
+    cmd.setScissor(0, renderArea);
     cmd.bindPipeline(vk::PipelineBindPoint::eGraphics,
                      resources_.vulkanPipeline(postProcessPipelineHandle_));
 
@@ -1078,19 +1241,35 @@ std::optional<uint32_t> Renderer::acquireNextImage(Window& display)
 void Renderer::beginRenderPass(vk::CommandBuffer cmd)
 {
     auto extent = swapchain_.extent();
-    std::array<vk::ClearValue, 2> clears{};
-    clears[0].color = vk::ClearColorValue(std::array<float, 4>{0.02f, 0.02f, 0.02f, 1.0f});
-    clears[1].depthStencil = vk::ClearDepthStencilValue(1.0f, 0);
+    std::array<vk::ClearValue, 2> clears = {
+        vk::ClearValue{.color = vk::ClearColorValue{.float32 = {{0.02f, 0.02f, 0.02f, 1.0f}}}},
+        vk::ClearValue{.depthStencil = vk::ClearDepthStencilValue{.depth = 1.0f, .stencil = 0}},
+    };
 
-    vk::RenderPassBeginInfo rpBegin(forwardPass_.renderPass(), forwardPass_.framebuffer(0),
-                                    vk::Rect2D({0, 0}, extent), clears);
+    vk::Rect2D renderArea{
+        .offset = vk::Offset2D{.x = 0, .y = 0},
+        .extent = extent,
+    };
+    vk::RenderPassBeginInfo rpBegin{
+        .renderPass = forwardPass_.renderPass(),
+        .framebuffer = forwardPass_.framebuffer(0),
+        .renderArea = renderArea,
+        .clearValueCount = static_cast<uint32_t>(clears.size()),
+        .pClearValues = clears.data(),
+    };
 
     cmd.beginRenderPass(rpBegin, vk::SubpassContents::eInline);
 
-    vk::Viewport viewport(0, 0, static_cast<float>(extent.width), static_cast<float>(extent.height),
-                          0, 1);
+    vk::Viewport viewport{
+        .x = 0.0f,
+        .y = 0.0f,
+        .width = static_cast<float>(extent.width),
+        .height = static_cast<float>(extent.height),
+        .minDepth = 0.0f,
+        .maxDepth = 1.0f,
+    };
     cmd.setViewport(0, viewport);
-    cmd.setScissor(0, vk::Rect2D({0, 0}, extent));
+    cmd.setScissor(0, renderArea);
 }
 
 void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t imageIndex)
@@ -1098,12 +1277,26 @@ void Renderer::submitAndPresent(Window& display, vk::CommandBuffer cmd, uint32_t
     vk::PipelineStageFlags waitStage = vk::PipelineStageFlagBits::eColorAttachmentOutput;
     auto imageAvail = frame_.imageAvailable(currentFrame_);
     auto renderDone = frame_.renderFinished(imageIndex);
-    vk::SubmitInfo si(imageAvail, waitStage, cmd, renderDone);
+    vk::SubmitInfo si{
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &imageAvail,
+        .pWaitDstStageMask = &waitStage,
+        .commandBufferCount = 1,
+        .pCommandBuffers = &cmd,
+        .signalSemaphoreCount = 1,
+        .pSignalSemaphores = &renderDone,
+    };
 
     device_.graphicsQueue().submit(si, frame_.inFlightFence(currentFrame_));
 
     auto swapchain = swapchain_.swapchain();
-    vk::PresentInfoKHR pi(renderDone, swapchain, imageIndex);
+    vk::PresentInfoKHR pi{
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores = &renderDone,
+        .swapchainCount = 1,
+        .pSwapchains = &swapchain,
+        .pImageIndices = &imageIndex,
+    };
 
     vk::Result presentResult = device_.presentQueue().presentKHR(pi);
     if (presentResult == vk::Result::eErrorOutOfDateKHR ||

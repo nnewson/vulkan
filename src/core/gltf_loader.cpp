@@ -364,9 +364,8 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
     // fastgltf only parses extension data when the extension is enabled here.
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
-        fastgltf::Extensions::KHR_materials_emissive_strength
-        | fastgltf::Extensions::KHR_texture_transform
-        | fastgltf::Extensions::KHR_materials_unlit;
+        fastgltf::Extensions::KHR_materials_emissive_strength |
+        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit;
     fastgltf::Parser parser(enabledExtensions);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
@@ -1275,8 +1274,7 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         }
         if (gltfMat.normalTexture.has_value())
         {
-            material.normalTexCoord(
-                static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
+            material.normalTexCoord(static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
         }
         if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
         {

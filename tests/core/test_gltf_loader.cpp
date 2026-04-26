@@ -72,13 +72,11 @@ static void applyTexCoordIndices(const fastgltf::Material& gltfMat, Material& ma
     }
     if (gltfMat.emissiveTexture.has_value())
     {
-        material.emissiveTexCoord(
-            static_cast<int>(gltfMat.emissiveTexture.value().texCoordIndex));
+        material.emissiveTexCoord(static_cast<int>(gltfMat.emissiveTexture.value().texCoordIndex));
     }
     if (gltfMat.normalTexture.has_value())
     {
-        material.normalTexCoord(
-            static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
+        material.normalTexCoord(static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
     }
     if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
     {

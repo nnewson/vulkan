@@ -82,8 +82,8 @@ public:
     // Builds one framebuffer per (colour view, extent) pair. Used by bloom
     // chain passes where each mip has a distinct extent.
     void createColourFramebuffersPerMip(const Device& device,
-                                         std::span<const vk::ImageView> colourViews,
-                                         std::span<const vk::Extent2D> extents);
+                                        std::span<const vk::ImageView> colourViews,
+                                        std::span<const vk::Extent2D> extents);
 
     [[nodiscard]] vk::RenderPass renderPass() const noexcept
     {

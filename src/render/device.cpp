@@ -1,5 +1,3 @@
-#define VK_ENABLE_BETA_EXTENSIONS
-
 #include <iostream>
 #include <set>
 #include <string>
@@ -31,8 +29,13 @@ Device::Device(const Window& window)
 
 void Device::createInstance()
 {
-    constexpr vk::ApplicationInfo appInfo("FireEngine", VK_MAKE_VERSION(1, 0, 0), "No Engine",
-                                          VK_MAKE_VERSION(1, 0, 0), vk::ApiVersion14);
+    constexpr vk::ApplicationInfo appInfo{
+        .pApplicationName = "FireEngine",
+        .applicationVersion = VK_MAKE_VERSION(1, 0, 0),
+        .pEngineName = "No Engine",
+        .engineVersion = VK_MAKE_VERSION(1, 0, 0),
+        .apiVersion = vk::ApiVersion14,
+    };
 
     auto exts = Window::requiredVulkanExtensions();
     exts.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
@@ -45,8 +48,14 @@ void Device::createInstance()
         printValidationInfo();
     }
 
-    vk::InstanceCreateInfo ci(vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR, &appInfo,
-                              layers, exts);
+    vk::InstanceCreateInfo ci{
+        .flags = vk::InstanceCreateFlagBits::eEnumeratePortabilityKHR,
+        .pApplicationInfo = &appInfo,
+        .enabledLayerCount = static_cast<uint32_t>(layers.size()),
+        .ppEnabledLayerNames = layers.data(),
+        .enabledExtensionCount = static_cast<uint32_t>(exts.size()),
+        .ppEnabledExtensionNames = exts.data(),
+    };
 
     instance_ = vk::raii::Instance(context_, ci);
 }
@@ -157,7 +166,11 @@ void Device::createLogicalDevice()
     float prio = 1.0f;
     for (uint32_t fam : uniqueFamilies)
     {
-        qcis.emplace_back(vk::DeviceQueueCreateFlags{}, fam, 1, &prio);
+        qcis.push_back(vk::DeviceQueueCreateInfo{
+            .queueFamilyIndex = fam,
+            .queueCount = 1,
+            .pQueuePriorities = &prio,
+        });
     }
 
     vk::PhysicalDeviceFeatures features{};
@@ -169,8 +182,14 @@ void Device::createLogicalDevice()
     vk::PhysicalDevicePortabilitySubsetFeaturesKHR portability{};
     portability.mutableComparisonSamplers = vk::True;
 
-    vk::DeviceCreateInfo ci({}, qcis, {}, deviceExtensions, &features);
-    ci.pNext = &portability;
+    vk::DeviceCreateInfo ci{
+        .pNext = &portability,
+        .queueCreateInfoCount = static_cast<uint32_t>(qcis.size()),
+        .pQueueCreateInfos = qcis.data(),
+        .enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size()),
+        .ppEnabledExtensionNames = deviceExtensions.data(),
+        .pEnabledFeatures = &features,
+    };
 
     device_ = vk::raii::Device(physDevice_, ci);
     graphicsQueue_ = device_.getQueue(graphicsFamily_, 0);
@@ -194,11 +213,18 @@ std::pair<vk::raii::Buffer, vk::raii::DeviceMemory>
 Device::createBuffer(vk::DeviceSize size, vk::BufferUsageFlags usage,
                      vk::MemoryPropertyFlags props) const
 {
-    vk::BufferCreateInfo ci({}, size, usage, vk::SharingMode::eExclusive);
+    vk::BufferCreateInfo ci{
+        .size = size,
+        .usage = usage,
+        .sharingMode = vk::SharingMode::eExclusive,
+    };
     vk::raii::Buffer buf(device_, ci);
 
     auto req = buf.getMemoryRequirements();
-    vk::MemoryAllocateInfo ai(req.size, findMemoryType(req.memoryTypeBits, props));
+    vk::MemoryAllocateInfo ai{
+        .allocationSize = req.size,
+        .memoryTypeIndex = findMemoryType(req.memoryTypeBits, props),
+    };
     vk::raii::DeviceMemory mem(device_, ai);
     buf.bindMemory(*mem, 0);
 

@@ -133,7 +133,7 @@ TEST(UBO, MaterialUBOTexCoordIndicesRoundTrip)
     ubo.texCoordIndices[1] = 0;
     ubo.texCoordIndices[2] = 1; // normal on TEXCOORD_1
     ubo.texCoordIndices[3] = 0;
-    ubo.extraFlags[1] = 1;       // occlusion on TEXCOORD_1
+    ubo.extraFlags[1] = 1; // occlusion on TEXCOORD_1
     EXPECT_EQ(ubo.texCoordIndices[0], 1);
     EXPECT_EQ(ubo.texCoordIndices[2], 1);
     EXPECT_EQ(ubo.extraFlags[1], 1);
