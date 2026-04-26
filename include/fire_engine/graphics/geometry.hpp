@@ -100,6 +100,17 @@ public:
         morphNormals_ = std::move(v);
     }
 
+    // glTF morph TANGENT deltas — Vec3 per vertex per target (no handedness;
+    // the base tangent's .w stays unchanged across targets per spec).
+    [[nodiscard]] const std::vector<std::vector<Vec3>>& morphTangents() const noexcept
+    {
+        return morphTangents_;
+    }
+    void morphTangents(std::vector<std::vector<Vec3>> v) noexcept
+    {
+        morphTangents_ = std::move(v);
+    }
+
     [[nodiscard]] std::size_t morphTargetCount() const noexcept
     {
         return morphPositions_.size();
@@ -112,6 +123,7 @@ private:
 
     std::vector<std::vector<Vec3>> morphPositions_;
     std::vector<std::vector<Vec3>> morphNormals_;
+    std::vector<std::vector<Vec3>> morphTangents_;
 
     BufferHandle vertexBuffer_{NullBuffer};
     BufferHandle indexBuffer_{NullBuffer};

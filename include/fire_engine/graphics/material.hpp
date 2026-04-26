@@ -239,6 +239,18 @@ public:
         doubleSided_ = v;
     }
 
+    // KHR_materials_unlit. When true, the renderer skips BRDF/IBL/shadow and
+    // outputs the (textured) base colour directly. Used for skybox geometry,
+    // foliage cards, UI quads, decals — anything authored without lighting.
+    [[nodiscard]] bool unlit() const noexcept
+    {
+        return unlit_;
+    }
+    void unlit(bool v) noexcept
+    {
+        unlit_ = v;
+    }
+
 private:
     std::string name_;
     Colour3 diffuse_{};
@@ -261,6 +273,7 @@ private:
     AlphaMode alphaMode_{AlphaMode::Opaque};
     float alphaCutoff_{0.5f};
     bool doubleSided_{false};
+    bool unlit_{false};
 
     const Texture* texture_{nullptr};
     const Texture* emissiveTexture_{nullptr};

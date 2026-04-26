@@ -49,17 +49,23 @@ layout(location = 8) out vec2 fragTexCoord1;
 void main() {
     vec3 pos = inPos;
     vec3 normal = inNormal;
+    vec3 tangent = inTangent.xyz;
 
-    // Apply morph targets
+    // Apply morph targets. SSBO layout (per Object::load):
+    //   [pos_0..N-1, norm_0..N-1, tang_0..N-1] each as vec4(xyz, 0).
+    // Tangent slice is all-zero when the source asset doesn't ship morph
+    // TANGENT data, so the additive blend is a no-op then.
     if (morph.hasMorph == 1) {
         int nTargets = morph.morphTargetCount;
         int nVerts = morph.vertexCount;
         for (int i = 0; i < nTargets; i++) {
             int posOffset = i * nVerts + gl_VertexIndex;
             int normOffset = (nTargets + i) * nVerts + gl_VertexIndex;
+            int tangOffset = (2 * nTargets + i) * nVerts + gl_VertexIndex;
             float w = morph.weights[i / 4][i % 4];
             pos += w * morphTargets.data[posOffset].xyz;
             normal += w * morphTargets.data[normOffset].xyz;
+            tangent += w * morphTargets.data[tangOffset].xyz;
         }
     }
 
@@ -84,9 +90,10 @@ void main() {
     fragWorldPos = worldPos.xyz;
     fragTexCoord = inTexCoord;
 
-    // TBN matrix for normal mapping
+    // TBN matrix for normal mapping. Use the morph-blended tangent so facial
+    // expression rigs get correct normal-mapped lighting per blend.
     vec3 N = normalize(fragNormal);
-    vec3 T = normalMatrix * inTangent.xyz;
+    vec3 T = normalMatrix * tangent;
     T = normalize(T - N * dot(N, T));
     vec3 B = normalize(cross(N, T)) * inTangent.w;
     fragTBN = mat3(T, B, N);

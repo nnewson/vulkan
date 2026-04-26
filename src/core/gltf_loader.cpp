@@ -37,9 +37,10 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 2> kSupportedExtensions = {
+constexpr std::array<std::string_view, 3> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
     std::string_view{"KHR_texture_transform"},
+    std::string_view{"KHR_materials_unlit"},
 };
 } // namespace
 
@@ -364,7 +365,8 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
         fastgltf::Extensions::KHR_materials_emissive_strength
-        | fastgltf::Extensions::KHR_texture_transform;
+        | fastgltf::Extensions::KHR_texture_transform
+        | fastgltf::Extensions::KHR_materials_unlit;
     fastgltf::Parser parser(enabledExtensions);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
@@ -1103,12 +1105,14 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
     {
         std::vector<std::vector<Vec3>> morphPositions;
         std::vector<std::vector<Vec3>> morphNormals;
+        std::vector<std::vector<Vec3>> morphTangents;
 
         for (std::size_t ti = 0; ti < primitive.targets.size(); ++ti)
         {
             const auto& target = primitive.targets[ti];
             std::vector<Vec3> targetPos(positions.size());
             std::vector<Vec3> targetNorm(positions.size());
+            std::vector<Vec3> targetTang(positions.size());
 
             for (const auto& attr : target)
             {
@@ -1125,14 +1129,24 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
                         asset, accessor, [&](fastgltf::math::fvec3 n, std::size_t idx)
                         { targetNorm[idx] = Vec3{n.x(), n.y(), n.z()}; });
                 }
+                else if (attr.name == "TANGENT")
+                {
+                    // glTF spec: morph TANGENT deltas are vec3 (xyz only —
+                    // handedness in the base tangent's .w stays unchanged).
+                    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+                        asset, accessor, [&](fastgltf::math::fvec3 t, std::size_t idx)
+                        { targetTang[idx] = Vec3{t.x(), t.y(), t.z()}; });
+                }
             }
 
             morphPositions.push_back(std::move(targetPos));
             morphNormals.push_back(std::move(targetNorm));
+            morphTangents.push_back(std::move(targetTang));
         }
 
         geometry.morphPositions(std::move(morphPositions));
         geometry.morphNormals(std::move(morphNormals));
+        geometry.morphTangents(std::move(morphTangents));
     }
 
     geometry.load(resources);
@@ -1314,6 +1328,10 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         {
             material.occlusionUvTransform(readUvTransform(gltfMat.occlusionTexture.value()));
         }
+
+        // KHR_materials_unlit. fastgltf surfaces this as a plain bool that
+        // stays false unless the extension is present + enabled on the parser.
+        material.unlit(gltfMat.unlit);
 
         switch (gltfMat.alphaMode)
         {

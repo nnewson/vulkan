@@ -725,6 +725,34 @@ TEST(UvTransformLoader, ExplicitTransformRoundTrips)
 }
 
 // ==========================================================================
+// KHR_materials_unlit — bool round-trips through fastgltf onto Material.
+// Default false; renderer's lighting path is the same as before.
+// ==========================================================================
+
+TEST(MaterialUnlit, DefaultIsLit)
+{
+    Material material;
+    EXPECT_FALSE(material.unlit());
+}
+
+TEST(MaterialUnlit, GltfFlagPropagates)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.unlit = true;
+    Material material;
+    material.unlit(gltfMat.unlit);
+    EXPECT_TRUE(material.unlit());
+}
+
+TEST(MaterialUnlit, AbsentFlagLeavesLit)
+{
+    fastgltf::Material gltfMat{};
+    Material material;
+    material.unlit(gltfMat.unlit);
+    EXPECT_FALSE(material.unlit());
+}
+
+// ==========================================================================
 // Vertex colour extraction (mirrors GltfLoader::extractPrimitive)
 // ==========================================================================
 

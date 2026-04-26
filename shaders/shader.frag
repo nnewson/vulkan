@@ -259,6 +259,13 @@ void main() {
     }
     if (alpha < material.materialParams.z) discard;
 
+    // KHR_materials_unlit. Skip BRDF/IBL/shadow entirely; output the textured
+    // base colour directly. Post-process tonemap still runs on the HDR target.
+    if (material.extraFlags.z == 1) {
+        outColor = vec4(baseColor, alpha);
+        return;
+    }
+
     // Metallic/roughness — sample from texture if available
     float roughness = material.emissiveRoughness.a;
     float metallic = material.materialParams.x;

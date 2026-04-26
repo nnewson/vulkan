@@ -93,44 +93,36 @@ void Object::load(Resources& resources)
         }
         else
         {
-            // Pack position and normal deltas as vec4 (xyz + padding)
-            std::size_t totalEntries = numTargets * numVerts * 2;
+            // Pack pos/normal/tangent deltas as vec4 (xyz + 0). Layout:
+            // [pos0..N, norm0..N, tang0..N]. Tangents may be all-zeros when
+            // the source asset doesn't ship morph TANGENT data.
+            std::size_t totalEntries = numTargets * numVerts * 3;
             std::size_t ssboSize = totalEntries * sizeof(float) * 4;
             std::vector<float> ssboData(totalEntries * 4, 0.0f);
             float* dst = ssboData.data();
 
             const auto& morphPositions = binding.geometry->morphPositions();
             const auto& morphNormals = binding.geometry->morphNormals();
+            const auto& morphTangents = binding.geometry->morphTangents();
 
-            // Write position deltas
-            for (std::size_t t = 0; t < numTargets; ++t)
+            auto writeDeltas = [&](const std::vector<std::vector<Vec3>>& src)
             {
-                for (std::size_t v = 0; v < numVerts; ++v)
+                for (std::size_t t = 0; t < numTargets; ++t)
                 {
-                    const auto& pos = (t < morphPositions.size() && v < morphPositions[t].size())
-                                          ? morphPositions[t][v]
-                                          : Vec3{};
-                    *dst++ = pos.x();
-                    *dst++ = pos.y();
-                    *dst++ = pos.z();
-                    *dst++ = 0.0f;
+                    for (std::size_t v = 0; v < numVerts; ++v)
+                    {
+                        const Vec3& d =
+                            (t < src.size() && v < src[t].size()) ? src[t][v] : Vec3{};
+                        *dst++ = d.x();
+                        *dst++ = d.y();
+                        *dst++ = d.z();
+                        *dst++ = 0.0f;
+                    }
                 }
-            }
-
-            // Write normal deltas
-            for (std::size_t t = 0; t < numTargets; ++t)
-            {
-                for (std::size_t v = 0; v < numVerts; ++v)
-                {
-                    const auto& norm = (t < morphNormals.size() && v < morphNormals[t].size())
-                                           ? morphNormals[t][v]
-                                           : Vec3{};
-                    *dst++ = norm.x();
-                    *dst++ = norm.y();
-                    *dst++ = norm.z();
-                    *dst++ = 0.0f;
-                }
-            }
+            };
+            writeDeltas(morphPositions);
+            writeDeltas(morphNormals);
+            writeDeltas(morphTangents);
 
             auto ssboSet = resources.createMappedStorageBuffer(ssboSize, ssboData.data());
             geoInfo.morphSsbo = ssboSet.buffers[0];
@@ -260,6 +252,7 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.textureFlags[3] = mat.hasMetallicRoughnessTexture() ? 1 : 0;
     ubo.extraFlags[0] = mat.hasOcclusionTexture() ? 1 : 0;
     ubo.extraFlags[1] = mat.occlusionTexCoord();
+    ubo.extraFlags[2] = mat.unlit() ? 1 : 0;
     ubo.texCoordIndices[0] = mat.baseColorTexCoord();
     ubo.texCoordIndices[1] = mat.emissiveTexCoord();
     ubo.texCoordIndices[2] = mat.normalTexCoord();
