@@ -2,10 +2,12 @@
 
 #include <fire_engine/render/resources.hpp>
 
+#include <array>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <string_view>
 #include <unordered_set>
 #include <variant>
 
@@ -29,6 +31,78 @@
 
 namespace fire_engine
 {
+
+namespace
+{
+// Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
+// Add a string here when enabling a new extension on the parser; the two must
+// stay in lockstep or the loader silently accepts data it can't actually use.
+constexpr std::array<std::string_view, 1> kSupportedExtensions = {
+    std::string_view{"KHR_materials_emissive_strength"},
+};
+} // namespace
+
+bool GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType type) noexcept
+{
+    return type == fastgltf::PrimitiveType::Triangles;
+}
+
+namespace
+{
+const char* primitiveTypeName(fastgltf::PrimitiveType type)
+{
+    switch (type)
+    {
+    case fastgltf::PrimitiveType::Points:
+        return "Points";
+    case fastgltf::PrimitiveType::Lines:
+        return "Lines";
+    case fastgltf::PrimitiveType::LineLoop:
+        return "LineLoop";
+    case fastgltf::PrimitiveType::LineStrip:
+        return "LineStrip";
+    case fastgltf::PrimitiveType::Triangles:
+        return "Triangles";
+    case fastgltf::PrimitiveType::TriangleStrip:
+        return "TriangleStrip";
+    case fastgltf::PrimitiveType::TriangleFan:
+        return "TriangleFan";
+    }
+    return "Unknown";
+}
+} // namespace
+
+void GltfLoader::ensureSupportedExtensions(std::span<const std::string_view> required)
+{
+    std::vector<std::string_view> unsupported;
+    for (const auto& ext : required)
+    {
+        bool found = false;
+        for (const auto& supported : kSupportedExtensions)
+        {
+            if (ext == supported)
+            {
+                found = true;
+                break;
+            }
+        }
+        if (!found)
+        {
+            unsupported.push_back(ext);
+        }
+    }
+    if (unsupported.empty())
+    {
+        return;
+    }
+    std::string msg = "glTF asset requires unsupported extension(s):";
+    for (const auto& ext : unsupported)
+    {
+        msg += " ";
+        msg.append(ext);
+    }
+    throw std::runtime_error(msg);
+}
 
 // ---------------------------------------------------------------------------
 // Sampler helpers
@@ -349,6 +423,16 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources
     auto gltfPath = std::filesystem::path(path);
     auto result = parseAsset(gltfPath);
     auto& asset = result.get();
+
+    // fastgltf stores extensionsRequired in a pmr-allocated string vector.
+    // Lift to string_view for the helper's portable signature.
+    std::vector<std::string_view> requiredViews;
+    requiredViews.reserve(asset.extensionsRequired.size());
+    for (const auto& ext : asset.extensionsRequired)
+    {
+        requiredViews.emplace_back(ext);
+    }
+    ensureSupportedExtensions(requiredViews);
 
     presizeAssets(asset, assets);
 
@@ -785,6 +869,14 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
     auto& geometry = assets.geometry(geoIdx);
     if (geometry.loaded())
     {
+        return {};
+    }
+
+    if (!isSupportedPrimitiveType(primitive.type))
+    {
+        std::clog << "Skipping glTF primitive with unsupported mode: "
+                  << primitiveTypeName(primitive.type)
+                  << " (only Triangles is currently rendered).\n";
         return {};
     }
 

@@ -519,6 +519,77 @@ TEST(EmissiveStrength, ZeroStrengthZeroesEmission)
 }
 
 // ==========================================================================
+// extensionsRequired — spec MUST refuse to load assets needing extensions we
+// don't support. Helper is exposed on GltfLoader so we can hit it without a
+// full asset.
+// ==========================================================================
+
+TEST(EnsureSupportedExtensions, EmptyVectorAccepts)
+{
+    std::vector<std::string_view> required;
+    EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
+}
+
+TEST(EnsureSupportedExtensions, SupportedExtensionAccepts)
+{
+    std::vector<std::string_view> required{"KHR_materials_emissive_strength"};
+    EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
+}
+
+TEST(EnsureSupportedExtensions, UnsupportedExtensionThrows)
+{
+    std::vector<std::string_view> required{"KHR_draco_mesh_compression"};
+    try
+    {
+        GltfLoader::ensureSupportedExtensions(required);
+        FAIL() << "expected ensureSupportedExtensions to throw";
+    }
+    catch (const std::runtime_error& e)
+    {
+        EXPECT_NE(std::string(e.what()).find("KHR_draco_mesh_compression"), std::string::npos);
+    }
+}
+
+TEST(EnsureSupportedExtensions, MixedThrowsListingOnlyUnsupported)
+{
+    std::vector<std::string_view> required{"KHR_materials_emissive_strength",
+                                           "KHR_mesh_quantization", "KHR_texture_basisu"};
+    try
+    {
+        GltfLoader::ensureSupportedExtensions(required);
+        FAIL() << "expected ensureSupportedExtensions to throw";
+    }
+    catch (const std::runtime_error& e)
+    {
+        const std::string what(e.what());
+        EXPECT_NE(what.find("KHR_mesh_quantization"), std::string::npos);
+        EXPECT_NE(what.find("KHR_texture_basisu"), std::string::npos);
+        // The supported one must not be listed in the unsupported message.
+        EXPECT_EQ(what.find("KHR_materials_emissive_strength"), std::string::npos);
+    }
+}
+
+// ==========================================================================
+// Primitive mode — vertex layout / index buffer assume triangles. Anything
+// else gets skipped (with a warning at load time).
+// ==========================================================================
+
+TEST(SupportedPrimitiveType, TrianglesIsSupported)
+{
+    EXPECT_TRUE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::Triangles));
+}
+
+TEST(SupportedPrimitiveType, AllOtherModesAreSkipped)
+{
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::Points));
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::Lines));
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::LineLoop));
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::LineStrip));
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::TriangleStrip));
+    EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::TriangleFan));
+}
+
+// ==========================================================================
 // Vertex colour extraction (mirrors GltfLoader::extractPrimitive)
 // ==========================================================================
 

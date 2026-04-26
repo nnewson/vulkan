@@ -47,6 +47,19 @@ public:
     [[nodiscard]] static std::vector<Vec3> generateSmoothNormals(std::span<const Vec3> positions,
                                                                  std::span<const uint32_t> indices);
 
+    // glTF 2.0 §3.2: implementations MUST refuse to load assets whose
+    // `extensionsRequired` lists anything they don't support. Throws a
+    // std::runtime_error naming each unsupported extension. Anything not
+    // declared `required` (only `used`) is informational and ignored here.
+    // Span of string_view so the call site can pass either fastgltf's
+    // pmr-allocated strings or a plain std::vector from a unit test.
+    static void ensureSupportedExtensions(std::span<const std::string_view> required);
+
+    // Triangles only. Other primitive modes (POINTS / LINES / *_STRIP /
+    // *_FAN) would need different vertex layout and index handling — we skip
+    // the primitive with a warning rather than render garbage.
+    [[nodiscard]] static bool isSupportedPrimitiveType(fastgltf::PrimitiveType type) noexcept;
+
     struct TexturePaths
     {
         std::string baseColour;
