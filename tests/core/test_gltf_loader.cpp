@@ -44,6 +44,54 @@ static void applyEmissiveStrength(const fastgltf::Material& gltfMat, Material& m
                        static_cast<float>(gltfMat.emissiveFactor.z()) * strength});
 }
 
+// Mirrors KHR_texture_transform translation: when a TextureInfo carries the
+// extension, copy offset/scale/rotation onto the matching Material slot.
+static fire_engine::UvTransform readUvTransform(const fastgltf::TextureInfo& info)
+{
+    fire_engine::UvTransform t;
+    if (info.transform)
+    {
+        const auto& src = *info.transform;
+        t.offsetX = static_cast<float>(src.uvOffset.x());
+        t.offsetY = static_cast<float>(src.uvOffset.y());
+        t.scaleX = static_cast<float>(src.uvScale.x());
+        t.scaleY = static_cast<float>(src.uvScale.y());
+        t.rotation = static_cast<float>(src.rotation);
+    }
+    return t;
+}
+
+// Mirrors per-slot texCoord-index translation: each glTF TextureInfo names a
+// texCoord index (0 = TEXCOORD_0 default, 1 = TEXCOORD_1).
+static void applyTexCoordIndices(const fastgltf::Material& gltfMat, Material& material)
+{
+    if (gltfMat.pbrData.baseColorTexture.has_value())
+    {
+        material.baseColorTexCoord(
+            static_cast<int>(gltfMat.pbrData.baseColorTexture.value().texCoordIndex));
+    }
+    if (gltfMat.emissiveTexture.has_value())
+    {
+        material.emissiveTexCoord(
+            static_cast<int>(gltfMat.emissiveTexture.value().texCoordIndex));
+    }
+    if (gltfMat.normalTexture.has_value())
+    {
+        material.normalTexCoord(
+            static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
+    }
+    if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
+    {
+        material.metallicRoughnessTexCoord(
+            static_cast<int>(gltfMat.pbrData.metallicRoughnessTexture.value().texCoordIndex));
+    }
+    if (gltfMat.occlusionTexture.has_value())
+    {
+        material.occlusionTexCoord(
+            static_cast<int>(gltfMat.occlusionTexture.value().texCoordIndex));
+    }
+}
+
 // Mirrors the alpha-mode translation performed inside
 // GltfLoader::loadMaterial so the translation can be exercised without
 // needing a GPU-backed Resources object.
@@ -587,6 +635,93 @@ TEST(SupportedPrimitiveType, AllOtherModesAreSkipped)
     EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::LineStrip));
     EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::TriangleStrip));
     EXPECT_FALSE(GltfLoader::isSupportedPrimitiveType(fastgltf::PrimitiveType::TriangleFan));
+}
+
+// ==========================================================================
+// Per-slot UV-set indices — each glTF TextureInfo names a `texCoord` index
+// that the loader must record on Material so the shader samples the right
+// vertex stream.
+// ==========================================================================
+
+TEST(MaterialTexCoordIndices, AbsentTexturesLeaveDefaultsZero)
+{
+    fastgltf::Material gltfMat{};
+    Material material;
+    applyTexCoordIndices(gltfMat, material);
+    EXPECT_EQ(material.baseColorTexCoord(), 0);
+    EXPECT_EQ(material.emissiveTexCoord(), 0);
+    EXPECT_EQ(material.normalTexCoord(), 0);
+    EXPECT_EQ(material.metallicRoughnessTexCoord(), 0);
+    EXPECT_EQ(material.occlusionTexCoord(), 0);
+}
+
+TEST(MaterialTexCoordIndices, ExplicitTexCoordOnesRoundTrip)
+{
+    fastgltf::Material gltfMat{};
+    gltfMat.pbrData.baseColorTexture.emplace().texCoordIndex = 1;
+    gltfMat.emissiveTexture.emplace().texCoordIndex = 1;
+    gltfMat.normalTexture.emplace().texCoordIndex = 1;
+    gltfMat.pbrData.metallicRoughnessTexture.emplace().texCoordIndex = 1;
+    gltfMat.occlusionTexture.emplace().texCoordIndex = 1;
+    Material material;
+    applyTexCoordIndices(gltfMat, material);
+    EXPECT_EQ(material.baseColorTexCoord(), 1);
+    EXPECT_EQ(material.emissiveTexCoord(), 1);
+    EXPECT_EQ(material.normalTexCoord(), 1);
+    EXPECT_EQ(material.metallicRoughnessTexCoord(), 1);
+    EXPECT_EQ(material.occlusionTexCoord(), 1);
+}
+
+TEST(MaterialTexCoordIndices, MixedSlotsRoundTrip)
+{
+    // Common real-world layout: occlusion baked onto its own UV set.
+    fastgltf::Material gltfMat{};
+    gltfMat.pbrData.baseColorTexture.emplace().texCoordIndex = 0;
+    gltfMat.occlusionTexture.emplace().texCoordIndex = 1;
+    Material material;
+    applyTexCoordIndices(gltfMat, material);
+    EXPECT_EQ(material.baseColorTexCoord(), 0);
+    EXPECT_EQ(material.occlusionTexCoord(), 1);
+}
+
+// ==========================================================================
+// KHR_texture_transform — when present, fastgltf parses uvOffset/uvScale/
+// rotation onto TextureInfo; loader copies them onto the per-slot Material
+// UvTransform. Absent → identity.
+// ==========================================================================
+
+TEST(UvTransformDefault, FieldsAreIdentity)
+{
+    fire_engine::UvTransform t;
+    EXPECT_FLOAT_EQ(t.offsetX, 0.0f);
+    EXPECT_FLOAT_EQ(t.offsetY, 0.0f);
+    EXPECT_FLOAT_EQ(t.scaleX, 1.0f);
+    EXPECT_FLOAT_EQ(t.scaleY, 1.0f);
+    EXPECT_FLOAT_EQ(t.rotation, 0.0f);
+}
+
+TEST(UvTransformLoader, AbsentExtensionGivesIdentity)
+{
+    fastgltf::TextureInfo info{};
+    auto t = readUvTransform(info);
+    EXPECT_FLOAT_EQ(t.offsetX, 0.0f);
+    EXPECT_FLOAT_EQ(t.scaleX, 1.0f);
+    EXPECT_FLOAT_EQ(t.rotation, 0.0f);
+}
+
+TEST(UvTransformLoader, ExplicitTransformRoundTrips)
+{
+    fastgltf::TextureInfo info{};
+    info.transform = std::make_unique<fastgltf::TextureTransform>();
+    info.transform->uvOffset = {0.25f, 0.5f};
+    info.transform->uvScale = {2.0f, 3.0f};
+    info.transform->rotation = 1.5f;
+    auto t = readUvTransform(info);
+    EXPECT_FLOAT_EQ(t.offsetX, 0.25f);
+    EXPECT_FLOAT_EQ(t.offsetY, 0.5f);
+    EXPECT_FLOAT_EQ(t.scaleX, 2.0f);
+    EXPECT_FLOAT_EQ(t.scaleY, 3.0f);
+    EXPECT_FLOAT_EQ(t.rotation, 1.5f);
 }
 
 // ==========================================================================

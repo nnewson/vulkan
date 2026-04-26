@@ -114,6 +114,18 @@ public:
         tangent_ = t;
     }
 
+    // Second UV set. glTF allows materials to point individual textures at
+    // either TEXCOORD_0 or TEXCOORD_1; absent when the source mesh only
+    // declares one set, in which case the loader copies texCoord into here.
+    [[nodiscard]] Vec2 texCoord1() const noexcept
+    {
+        return texCoord1_;
+    }
+    void texCoord1(Vec2 tc) noexcept
+    {
+        texCoord1_ = tc;
+    }
+
     [[nodiscard]]
     bool operator==(const Vertex& other) const noexcept
     {
@@ -131,6 +143,7 @@ private:
     Joints4 joints_{};
     Vec4 weights_{};
     Vec4 tangent_{};
+    Vec2 texCoord1_{};
 };
 
 } // namespace fire_engine

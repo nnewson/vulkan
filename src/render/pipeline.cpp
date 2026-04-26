@@ -244,7 +244,7 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
     auto stages = createShaderStages(config, vertMod, fragMod);
 
     vk::VertexInputBindingDescription bindDesc(0, sizeof(Vertex), vk::VertexInputRate::eVertex);
-    std::array<vk::VertexInputAttributeDescription, 7> attrDesc = {{
+    std::array<vk::VertexInputAttributeDescription, 8> attrDesc = {{
         {0, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, position_))},
         {1, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, colour_))},
         {2, 0, vk::Format::eR32G32B32Sfloat, static_cast<uint32_t>(offsetof(Vertex, normal_))},
@@ -252,6 +252,7 @@ void Pipeline::createGraphicsPipeline(const PipelineConfig& config)
         {4, 0, vk::Format::eR32G32B32A32Uint, static_cast<uint32_t>(offsetof(Vertex, joints_))},
         {5, 0, vk::Format::eR32G32B32A32Sfloat, static_cast<uint32_t>(offsetof(Vertex, weights_))},
         {6, 0, vk::Format::eR32G32B32A32Sfloat, static_cast<uint32_t>(offsetof(Vertex, tangent_))},
+        {8, 0, vk::Format::eR32G32Sfloat, static_cast<uint32_t>(offsetof(Vertex, texCoord1_))},
     }};
     vk::PipelineVertexInputStateCreateInfo vertInput;
     if (config.useVertexInput)

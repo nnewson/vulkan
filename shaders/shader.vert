@@ -32,6 +32,9 @@ layout(location = 3) in vec2 inTexCoord;
 layout(location = 4) in uvec4 inJoints;
 layout(location = 5) in vec4 inWeights;
 layout(location = 6) in vec4 inTangent;
+// Second UV set; loader falls back to inTexCoord values when the mesh only
+// has TEXCOORD_0, so this is always defined.
+layout(location = 8) in vec2 inTexCoord1;
 
 layout(location = 0) out vec3 fragColor;
 layout(location = 1) out vec3 fragNormal;
@@ -41,6 +44,7 @@ layout(location = 4) out mat3 fragTBN;
 // Positive distance along the view forward axis. The forward fragment shader
 // uses this for cascade selection against light.cascadeSplits.
 layout(location = 7) out float fragViewDepth;
+layout(location = 8) out vec2 fragTexCoord1;
 
 void main() {
     vec3 pos = inPos;
@@ -73,6 +77,7 @@ void main() {
     gl_Position = ubo.proj * ubo.view * worldPos;
     fragColor = inColor;
     fragViewDepth = -(ubo.view * worldPos).z;
+    fragTexCoord1 = inTexCoord1;
 
     mat3 normalMatrix = transpose(inverse(mat3(transform)));
     fragNormal = normalMatrix * normal;

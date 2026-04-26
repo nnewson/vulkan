@@ -206,6 +206,25 @@ TEST(VertexEquality, DefaultVerticesAreEqual)
 }
 
 // ==========================================================================
+// Second UV set (TEXCOORD_1) — defaults to (0, 0); round-trips via accessors.
+// ==========================================================================
+
+TEST(VertexTexCoord1, DefaultsToZero)
+{
+    Vertex v;
+    EXPECT_FLOAT_EQ(v.texCoord1().s(), 0.0f);
+    EXPECT_FLOAT_EQ(v.texCoord1().t(), 0.0f);
+}
+
+TEST(VertexTexCoord1, SetterRoundTrips)
+{
+    Vertex v;
+    v.texCoord1({0.25f, 0.75f});
+    EXPECT_FLOAT_EQ(v.texCoord1().s(), 0.25f);
+    EXPECT_FLOAT_EQ(v.texCoord1().t(), 0.75f);
+}
+
+// ==========================================================================
 // Copy and Move Semantics
 // ==========================================================================
 
@@ -272,9 +291,10 @@ TEST(VertexLayout, SizeAndOffsets)
     static_assert(sizeof(Vec2) == sizeof(float) * 2);
     static_assert(sizeof(Vec4) == sizeof(float) * 4);
 
-    // Vertex size: Vec3(12) + Colour3(12) + Vec3(12) + Vec2(8) + Joints4(16)
-    //            + Vec4(16) + Vec4(16) = 92 bytes
+    // Vertex size: position(Vec3 12) + colour(Colour3 12) + normal(Vec3 12)
+    //            + texCoord(Vec2 8) + joints(Joints4 16) + weights(Vec4 16)
+    //            + tangent(Vec4 16) + texCoord1(Vec2 8) = 100 bytes
     static_assert(sizeof(Joints4) == sizeof(uint32_t) * 4);
-    static_assert(sizeof(Vertex) == sizeof(Vec3) * 2 + sizeof(Colour3) + sizeof(Vec2) +
+    static_assert(sizeof(Vertex) == sizeof(Vec3) * 2 + sizeof(Colour3) + sizeof(Vec2) * 2 +
                                         sizeof(Joints4) + sizeof(Vec4) * 2);
 }

@@ -37,8 +37,9 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 1> kSupportedExtensions = {
+constexpr std::array<std::string_view, 2> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
+    std::string_view{"KHR_texture_transform"},
 };
 } // namespace
 
@@ -362,7 +363,8 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
     // fastgltf only parses extension data when the extension is enabled here.
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
-        fastgltf::Extensions::KHR_materials_emissive_strength;
+        fastgltf::Extensions::KHR_materials_emissive_strength
+        | fastgltf::Extensions::KHR_texture_transform;
     fastgltf::Parser parser(enabledExtensions);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
@@ -883,6 +885,7 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
     const auto* posAttr = primitive.findAttribute("POSITION");
     const auto* normAttr = primitive.findAttribute("NORMAL");
     const auto* uvAttr = primitive.findAttribute("TEXCOORD_0");
+    const auto* uv1Attr = primitive.findAttribute("TEXCOORD_1");
     const auto* colourAttr = primitive.findAttribute("COLOR_0");
     const auto* jointsAttr = primitive.findAttribute("JOINTS_0");
     const auto* weightsAttr = primitive.findAttribute("WEIGHTS_0");
@@ -917,6 +920,19 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
         fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec2>(
             asset, uvAccessor,
             [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords[idx] = uv; });
+    }
+
+    // Optional second UV set. Stage B will let materials sample either set
+    // per texture slot; for now we just round-trip the data into the GPU
+    // buffer so the shader path can pick it up later.
+    std::vector<fastgltf::math::fvec2> texcoords1;
+    if (uv1Attr != primitive.attributes.end())
+    {
+        const auto& uv1Accessor = asset.accessors[uv1Attr->accessorIndex];
+        texcoords1.resize(uv1Accessor.count);
+        fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec2>(
+            asset, uv1Accessor,
+            [&](fastgltf::math::fvec2 uv, std::size_t idx) { texcoords1[idx] = uv; });
     }
 
     // Joint indices — may be uint8 or uint16 in glTF, stored as uint32
@@ -1070,7 +1086,14 @@ TangentGenerationResult GltfLoader::loadGeometry(const fastgltf::Asset& asset,
             tang = tangents[i];
         }
 
-        verts.push_back(Vertex{pos, vertexColour, norm, Vec2{u, v}, jt, wt, tang});
+        // Second UV set falls back to the first when the source mesh only
+        // has TEXCOORD_0 — keeps the shader path uniform.
+        const float u1 = (i < texcoords1.size()) ? texcoords1[i].x() : u;
+        const float v1 = (i < texcoords1.size()) ? texcoords1[i].y() : v;
+
+        Vertex vertex{pos, vertexColour, norm, Vec2{u, v}, jt, wt, tang};
+        vertex.texCoord1(Vec2{u1, v1});
+        verts.push_back(vertex);
     }
     geometry.vertices(std::move(verts));
     geometry.indices(std::move(idxs));
@@ -1221,6 +1244,75 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         {
             material.occlusionStrength(
                 static_cast<float>(gltfMat.occlusionTexture.value().strength));
+        }
+
+        // Per-slot UV-set index. glTF allows each material texture to point at
+        // TEXCOORD_0 or TEXCOORD_1; defaults to 0 when absent (matches the
+        // spec). The shader picks the right stream via material.texCoordIndices.
+        if (gltfMat.pbrData.baseColorTexture.has_value())
+        {
+            material.baseColorTexCoord(
+                static_cast<int>(gltfMat.pbrData.baseColorTexture.value().texCoordIndex));
+        }
+        if (gltfMat.emissiveTexture.has_value())
+        {
+            material.emissiveTexCoord(
+                static_cast<int>(gltfMat.emissiveTexture.value().texCoordIndex));
+        }
+        if (gltfMat.normalTexture.has_value())
+        {
+            material.normalTexCoord(
+                static_cast<int>(gltfMat.normalTexture.value().texCoordIndex));
+        }
+        if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
+        {
+            material.metallicRoughnessTexCoord(
+                static_cast<int>(gltfMat.pbrData.metallicRoughnessTexture.value().texCoordIndex));
+        }
+        if (gltfMat.occlusionTexture.has_value())
+        {
+            material.occlusionTexCoord(
+                static_cast<int>(gltfMat.occlusionTexture.value().texCoordIndex));
+        }
+
+        // KHR_texture_transform per-slot UV transforms. fastgltf parses the
+        // extension into TextureInfo::transform when the parser opts in;
+        // absent → identity transform → no behaviour change for old assets.
+        auto readUvTransform = [](const fastgltf::TextureInfo& info) noexcept -> UvTransform
+        {
+            UvTransform t;
+            if (info.transform)
+            {
+                const auto& src = *info.transform;
+                t.offsetX = static_cast<float>(src.uvOffset.x());
+                t.offsetY = static_cast<float>(src.uvOffset.y());
+                t.scaleX = static_cast<float>(src.uvScale.x());
+                t.scaleY = static_cast<float>(src.uvScale.y());
+                t.rotation = static_cast<float>(src.rotation);
+            }
+            return t;
+        };
+        if (gltfMat.pbrData.baseColorTexture.has_value())
+        {
+            material.baseColorUvTransform(
+                readUvTransform(gltfMat.pbrData.baseColorTexture.value()));
+        }
+        if (gltfMat.emissiveTexture.has_value())
+        {
+            material.emissiveUvTransform(readUvTransform(gltfMat.emissiveTexture.value()));
+        }
+        if (gltfMat.normalTexture.has_value())
+        {
+            material.normalUvTransform(readUvTransform(gltfMat.normalTexture.value()));
+        }
+        if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
+        {
+            material.metallicRoughnessUvTransform(
+                readUvTransform(gltfMat.pbrData.metallicRoughnessTexture.value()));
+        }
+        if (gltfMat.occlusionTexture.has_value())
+        {
+            material.occlusionUvTransform(readUvTransform(gltfMat.occlusionTexture.value()));
         }
 
         switch (gltfMat.alphaMode)

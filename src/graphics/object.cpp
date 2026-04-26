@@ -259,6 +259,29 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.textureFlags[2] = mat.hasNormalTexture() ? 1 : 0;
     ubo.textureFlags[3] = mat.hasMetallicRoughnessTexture() ? 1 : 0;
     ubo.extraFlags[0] = mat.hasOcclusionTexture() ? 1 : 0;
+    ubo.extraFlags[1] = mat.occlusionTexCoord();
+    ubo.texCoordIndices[0] = mat.baseColorTexCoord();
+    ubo.texCoordIndices[1] = mat.emissiveTexCoord();
+    ubo.texCoordIndices[2] = mat.normalTexCoord();
+    ubo.texCoordIndices[3] = mat.metallicRoughnessTexCoord();
+
+    auto packUv = [](float* dst, const UvTransform& t) noexcept
+    {
+        dst[0] = t.offsetX;
+        dst[1] = t.offsetY;
+        dst[2] = t.scaleX;
+        dst[3] = t.scaleY;
+    };
+    packUv(ubo.uvBaseColor, mat.baseColorUvTransform());
+    packUv(ubo.uvEmissive, mat.emissiveUvTransform());
+    packUv(ubo.uvNormal, mat.normalUvTransform());
+    packUv(ubo.uvMetallicRoughness, mat.metallicRoughnessUvTransform());
+    packUv(ubo.uvOcclusion, mat.occlusionUvTransform());
+    ubo.uvRotations[0] = mat.baseColorUvTransform().rotation;
+    ubo.uvRotations[1] = mat.emissiveUvTransform().rotation;
+    ubo.uvRotations[2] = mat.normalUvTransform().rotation;
+    ubo.uvRotations[3] = mat.metallicRoughnessUvTransform().rotation;
+    ubo.uvRotationsExtra[0] = mat.occlusionUvTransform().rotation;
     return ubo;
 }
 

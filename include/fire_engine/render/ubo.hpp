@@ -24,7 +24,25 @@ struct MaterialUBO
     alignas(16) float emissiveRoughness[4]{};
     alignas(16) float materialParams[4]{};
     alignas(16) int textureFlags[4]{};
+    // .x = occlusion-texture present flag (legacy), .y = occlusion's UV-set
+    // index (0 or 1). Other slots' UV-set indices live in texCoordIndices.
     alignas(16) int extraFlags[4]{};
+    // glTF allows each material texture slot to point at TEXCOORD_0 or
+    // TEXCOORD_1. Defaults are 0 everywhere — assets without the per-slot
+    // override read TEXCOORD_0 as before. Layout: x=baseColor, y=emissive,
+    // z=normal, w=metallicRoughness. Occlusion lives in extraFlags.y.
+    alignas(16) int texCoordIndices[4]{};
+    // KHR_texture_transform per-slot (offset.xy + scale.xy). Defaults to
+    // identity (offset 0, scale 1). Rotations live in uvRotations[*] below.
+    alignas(16) float uvBaseColor[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvEmissive[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvNormal[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvMetallicRoughness[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvOcclusion[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    // x=base, y=emissive, z=normal, w=metallicRoughness rotation (radians,
+    // CCW). Occlusion's rotation lives separately in uvRotationsExtra.x.
+    alignas(16) float uvRotations[4]{};
+    alignas(16) float uvRotationsExtra[4]{};
 };
 
 struct SkinUBO

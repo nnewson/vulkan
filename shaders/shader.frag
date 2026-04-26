@@ -12,7 +12,20 @@ layout(binding = 1) uniform MaterialUBO {
     vec4 emissiveRoughness;
     vec4 materialParams;
     ivec4 textureFlags;
+    // .x = occlusion-texture present, .y = occlusion's UV-set index.
     ivec4 extraFlags;
+    // x=baseColor, y=emissive, z=normal, w=metallicRoughness UV-set index.
+    ivec4 texCoordIndices;
+    // KHR_texture_transform per-slot offset.xy + scale.xy. Identity by default.
+    vec4 uvBaseColor;
+    vec4 uvEmissive;
+    vec4 uvNormal;
+    vec4 uvMetallicRoughness;
+    vec4 uvOcclusion;
+    // Rotations (radians, CCW) packed: x=base, y=emissive, z=normal, w=mr.
+    vec4 uvRotations;
+    // .x = occlusion rotation; rest reserved.
+    vec4 uvRotationsExtra;
 } material;
 
 layout(binding = 2) uniform sampler2D texSampler;
@@ -45,8 +58,26 @@ layout(location = 2) in vec3 fragWorldPos;
 layout(location = 3) in vec2 fragTexCoord;
 layout(location = 4) in mat3 fragTBN;
 layout(location = 7) in float fragViewDepth;
+layout(location = 8) in vec2 fragTexCoord1;
 
 layout(location = 0) out vec4 outColor;
+
+vec2 pickUv(int index)
+{
+    return index == 0 ? fragTexCoord : fragTexCoord1;
+}
+
+// KHR_texture_transform: scale → rotate → translate (CCW around origin).
+// offsetScale.xy = offset, offsetScale.zw = scale.
+vec2 applyUvTransform(vec2 uv, vec4 offsetScale, float rotation)
+{
+    vec2 scaled = uv * offsetScale.zw;
+    float c = cos(rotation);
+    float s = sin(rotation);
+    vec2 rotated = vec2(c * scaled.x - s * scaled.y,
+                        s * scaled.x + c * scaled.y);
+    return rotated + offsetScale.xy;
+}
 
 const float PI = 3.14159265359;
 
@@ -193,7 +224,9 @@ float computeShadow(vec3 worldPos, vec3 normal, vec3 lightDir, int cascade, floa
 void main() {
     vec3 N;
     if (material.textureFlags.z == 1) {
-        vec3 mapNormal = texture(normalMap, fragTexCoord).rgb * 2.0 - 1.0;
+        vec2 uvNormal = applyUvTransform(pickUv(material.texCoordIndices.z),
+                                         material.uvNormal, material.uvRotations.z);
+        vec3 mapNormal = texture(normalMap, uvNormal).rgb * 2.0 - 1.0;
         mapNormal.xy *= material.materialParams.y;
         N = normalize(fragTBN * mapNormal);
     } else {
@@ -213,7 +246,9 @@ void main() {
     // Sample base colour texture once
     vec4 texColor = vec4(1.0);
     if (material.textureFlags.x == 1) {
-        texColor = texture(texSampler, fragTexCoord);
+        vec2 uvBase = applyUvTransform(pickUv(material.texCoordIndices.x),
+                                       material.uvBaseColor, material.uvRotations.x);
+        texColor = texture(texSampler, uvBase);
     }
     vec3 baseColor = material.diffuseAlpha.rgb * fragColor * texColor.rgb;
 
@@ -228,7 +263,9 @@ void main() {
     float roughness = material.emissiveRoughness.a;
     float metallic = material.materialParams.x;
     if (material.textureFlags.w == 1) {
-        vec4 mrSample = texture(metallicRoughnessMap, fragTexCoord);
+        vec2 uvMr = applyUvTransform(pickUv(material.texCoordIndices.w),
+                                     material.uvMetallicRoughness, material.uvRotations.w);
+        vec4 mrSample = texture(metallicRoughnessMap, uvMr);
         roughness *= mrSample.g;
         metallic *= mrSample.b;
     }
@@ -271,7 +308,9 @@ void main() {
         // glTF spec: occluded = lerp(colour, colour * sampled, strength).
         // Equivalent to ao = mix(1.0, sampled, strength) when applied as a
         // multiplier downstream.
-        float sampled = texture(occlusionMap, fragTexCoord).r;
+        vec2 uvOcc = applyUvTransform(pickUv(material.extraFlags.y),
+                                      material.uvOcclusion, material.uvRotationsExtra.x);
+        float sampled = texture(occlusionMap, uvOcc).r;
         ao = mix(1.0, sampled, material.materialParams.w);
     }
 
@@ -283,7 +322,9 @@ void main() {
     // Emissive
     vec3 emissiveTerm = material.emissiveRoughness.rgb;
     if (material.textureFlags.y == 1) {
-        emissiveTerm *= texture(emissiveMap, fragTexCoord).rgb;
+        vec2 uvEm = applyUvTransform(pickUv(material.texCoordIndices.y),
+                                     material.uvEmissive, material.uvRotations.y);
+        emissiveTerm *= texture(emissiveMap, uvEm).rgb;
     }
 
     int cascade = selectCascade(fragViewDepth);

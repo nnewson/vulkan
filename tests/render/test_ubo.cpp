@@ -87,6 +87,8 @@ TEST(UBO, MaterialUBOFieldOrder)
                   "emissiveRoughness must precede materialParams to match shader layout");
     static_assert(offsetof(MaterialUBO, materialParams) < offsetof(MaterialUBO, textureFlags),
                   "materialParams must precede textureFlags to match shader layout");
+    static_assert(offsetof(MaterialUBO, extraFlags) < offsetof(MaterialUBO, texCoordIndices),
+                  "extraFlags must precede texCoordIndices to match shader layout");
     static_assert(offsetof(MaterialUBO, textureFlags) < offsetof(MaterialUBO, extraFlags),
                   "textureFlags must precede extraFlags to match shader layout");
     SUCCEED();
@@ -111,6 +113,30 @@ TEST(UBO, MaterialUBOHasTextureCanBeSet)
     MaterialUBO ubo{};
     ubo.textureFlags[0] = 1;
     EXPECT_EQ(ubo.textureFlags[0], 1);
+}
+
+TEST(UBO, MaterialUBOTexCoordIndicesDefaultToZero)
+{
+    MaterialUBO ubo{};
+    for (int i = 0; i < 4; ++i)
+    {
+        EXPECT_EQ(ubo.texCoordIndices[i], 0);
+    }
+    // Occlusion's UV-set index also lives in extraFlags.y.
+    EXPECT_EQ(ubo.extraFlags[1], 0);
+}
+
+TEST(UBO, MaterialUBOTexCoordIndicesRoundTrip)
+{
+    MaterialUBO ubo{};
+    ubo.texCoordIndices[0] = 1; // baseColor on TEXCOORD_1
+    ubo.texCoordIndices[1] = 0;
+    ubo.texCoordIndices[2] = 1; // normal on TEXCOORD_1
+    ubo.texCoordIndices[3] = 0;
+    ubo.extraFlags[1] = 1;       // occlusion on TEXCOORD_1
+    EXPECT_EQ(ubo.texCoordIndices[0], 1);
+    EXPECT_EQ(ubo.texCoordIndices[2], 1);
+    EXPECT_EQ(ubo.extraFlags[1], 1);
 }
 
 TEST(UBO, MaterialUBOHasEmissiveTextureCanBeSet)
