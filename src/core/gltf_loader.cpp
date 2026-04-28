@@ -18,6 +18,8 @@
 
 #include <fire_engine/animation/animation.hpp>
 #include <fire_engine/graphics/assets.hpp>
+#include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/object.hpp>
@@ -104,6 +106,98 @@ void GltfLoader::ensureSupportedExtensions(std::span<const std::string_view> req
         msg.append(ext);
     }
     throw std::runtime_error(msg);
+}
+
+// ---------------------------------------------------------------------------
+// Camera adoption (KHR_lights_punctual is a separate milestone — D2 only
+// surfaces the first node-attached camera so the engine starts framed where
+// the artist intended.)
+// ---------------------------------------------------------------------------
+
+namespace
+{
+Mat4 nodeLocalMatrix(const fastgltf::Node& node)
+{
+    if (auto* trs = std::get_if<fastgltf::TRS>(&node.transform))
+    {
+        Vec3 t{trs->translation.x(), trs->translation.y(), trs->translation.z()};
+        Quaternion r{trs->rotation.x(), trs->rotation.y(), trs->rotation.z(),
+                     trs->rotation.w()};
+        Vec3 s{trs->scale.x(), trs->scale.y(), trs->scale.z()};
+        return Mat4::translate(t) * r.toMat4() * Mat4::scale(s);
+    }
+    if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&node.transform))
+    {
+        Mat4 result;
+        for (int c = 0; c < 4; ++c)
+        {
+            for (int r = 0; r < 4; ++r)
+            {
+                result[r, c] = (*mat)[c][r];
+            }
+        }
+        return result;
+    }
+    return Mat4::identity();
+}
+
+bool walkForCamera(const fastgltf::Asset& asset, std::size_t nodeIndex,
+                   const Mat4& parentWorld, std::optional<GltfLoader::CameraView>& out)
+{
+    const auto& node = asset.nodes[nodeIndex];
+    Mat4 world = parentWorld * nodeLocalMatrix(node);
+    if (node.cameraIndex.has_value())
+    {
+        out = GltfLoader::cameraViewFromMatrix(world);
+        return true;
+    }
+    for (auto childIndex : node.children)
+    {
+        if (walkForCamera(asset, childIndex, world, out))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
+
+GltfLoader::CameraView GltfLoader::cameraViewFromMatrix(const Mat4& world) noexcept
+{
+    Vec3 position{world[0, 3], world[1, 3], world[2, 3]};
+    Vec3 forward{-world[0, 2], -world[1, 2], -world[2, 2]};
+    if (forward.magnitudeSquared() < float_epsilon)
+    {
+        forward = Vec3{0.0f, 0.0f, -1.0f};
+    }
+    else
+    {
+        forward.normalise();
+    }
+    return CameraView{position, position + forward};
+}
+
+std::optional<GltfLoader::CameraView> GltfLoader::findFirstCamera(const fastgltf::Asset& asset)
+{
+    if (asset.scenes.empty() || asset.cameras.empty())
+    {
+        return std::nullopt;
+    }
+    std::size_t sceneIndex = asset.defaultScene.has_value() ? asset.defaultScene.value() : 0;
+    if (sceneIndex >= asset.scenes.size())
+    {
+        return std::nullopt;
+    }
+    const auto& scene = asset.scenes[sceneIndex];
+    std::optional<CameraView> result;
+    for (auto nodeIndex : scene.nodeIndices)
+    {
+        if (walkForCamera(asset, nodeIndex, Mat4::identity(), result))
+        {
+            break;
+        }
+    }
+    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -420,8 +514,9 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
 // Scene and node loading
 // ---------------------------------------------------------------------------
 
-void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
-                           Assets& assets)
+std::optional<GltfLoader::CameraView>
+GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
+                      Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
     auto result = parseAsset(gltfPath);
@@ -470,6 +565,8 @@ void GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources
 
     // Resolve skins after the full scene graph is built
     applySkins(asset, nodeMap, meshMap, assets);
+
+    return findFirstCamera(asset);
 }
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,

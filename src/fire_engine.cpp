@@ -1,3 +1,4 @@
+#include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -51,7 +52,20 @@ void FireEngine::loadScene(std::string_view scene_path)
     // Load glTF scene (CLI arg overrides default)
     constexpr std::string_view default_scene = "RiggedSimple/RiggedSimple.gltf";
     std::string_view path = scene_path.empty() ? default_scene : scene_path;
-    GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_);
+    auto authoredCamera =
+        GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_);
+
+    if (authoredCamera.has_value())
+    {
+        Vec3 forward = authoredCamera->target - authoredCamera->position;
+        if (forward.magnitudeSquared() > float_epsilon)
+        {
+            forward.normalise();
+            camera.localPosition(authoredCamera->position);
+            camera.localYaw(std::atan2(forward.z(), forward.x()));
+            camera.localPitch(std::asin(forward.y()));
+        }
+    }
 
     std::print("{}\n", scene_);
 }

@@ -3,6 +3,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <unordered_map>
@@ -13,6 +14,7 @@
 #include <fire_engine/animation/animation.hpp>
 #include <fire_engine/core/tangent_generator.hpp>
 #include <fire_engine/graphics/image.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 
 namespace fire_engine
@@ -36,8 +38,20 @@ class GltfLoader
 public:
     GltfLoader() = delete;
 
-    static void loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
-                          Assets& assets);
+    // glTF camera adoption. CameraView is the resolved viewpoint extracted
+    // from a node carrying a `camera` index — position in world space and a
+    // target point one unit ahead along the camera's forward (-Z in local).
+    struct CameraView
+    {
+        Vec3 position;
+        Vec3 target;
+    };
+
+    // Returns the first authored camera's view (if any) so callers can frame
+    // the engine's runtime camera to match. Nullopt for assets without an
+    // attached camera node.
+    static std::optional<CameraView>
+    loadScene(const std::string& path, SceneGraph& scene, Resources& resources, Assets& assets);
 
     // Synthesises per-vertex normals from a triangle mesh when the source
     // glTF lacks the NORMAL attribute. Smooth (area-weighted accumulate-and-
@@ -59,6 +73,18 @@ public:
     // *_FAN) would need different vertex layout and index handling — we skip
     // the primitive with a warning rather than render garbage.
     [[nodiscard]] static bool isSupportedPrimitiveType(fastgltf::PrimitiveType type) noexcept;
+
+    // Pure: derive the view from a node's accumulated world transform.
+    // glTF cameras look down -Z in local space, so position is the
+    // translation column and forward is the negated upper-3x3 third column,
+    // re-normalised to wash out any node scale.
+    [[nodiscard]] static CameraView cameraViewFromMatrix(const Mat4& world) noexcept;
+
+    // DFS over the asset's default scene; returns the first node bearing a
+    // camera index, or nullopt if none. Accumulates world transforms so the
+    // returned view matches the artist's intent regardless of nesting.
+    [[nodiscard]] static std::optional<CameraView>
+    findFirstCamera(const fastgltf::Asset& asset);
 
     struct TexturePaths
     {
