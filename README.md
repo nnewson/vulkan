@@ -9,18 +9,21 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 
 ## Features
 
-- **glTF 2.0 model loading** via [fastgltf](https://github.com/spnda/fastgltf) — geometry, full PBR material set (base-colour, metallic-roughness, normal, occlusion, emissive), per-texture sampler settings, skeletal skins, morph targets, and alpha-mode state (OPAQUE / MASK / BLEND, `alphaCutoff`, `doubleSided`)
-- **Tangent-space normal mapping** — tangents generated on load when a material uses a normal texture (per-triangle UV derivatives, Gram-Schmidt orthogonalisation, handedness preserved in `tangent.w`)
+- **glTF 2.0 model loading** via [fastgltf](https://github.com/spnda/fastgltf) — geometry, full PBR material set (base-colour, metallic-roughness, normal, occlusion + `occlusionStrength`, emissive), per-texture sampler settings, **per-slot UV-set selection (TEXCOORD_0 / TEXCOORD_1)**, skeletal skins, morph targets (POSITION + NORMAL + TANGENT deltas), keyframe animations, and alpha-mode state (OPAQUE / MASK / BLEND, `alphaCutoff`, `doubleSided`). Supported extensions: `KHR_materials_emissive_strength`, `KHR_texture_transform`, `KHR_materials_unlit`. Unsupported `extensionsRequired` rejected with a clear error; non-Triangles primitives skipped with a warning
+- **Tangent-space normal mapping** — tangents generated on load when a material uses a normal texture (per-triangle UV derivatives, Gram-Schmidt orthogonalisation, handedness preserved in `tangent.w`). **Smooth-normal fallback** synthesises per-vertex normals when the source mesh omits NORMAL (e.g. Fox.gltf)
 - **Physically based shading with split-sum IBL + multi-scatter compensation** — equirectangular HDR skybox is converted to an environment cubemap (1024², 11 mip levels), a diffuse irradiance cubemap (32²), a GGX prefiltered specular cubemap (128², 8 mips, importance-sampled with 256 Hammersley samples and Filament-style mip-LOD weighting against the source cubemap's mip chain), and a BRDF integration LUT (256²) at startup. Forward fragment shader uses Fdez-Aguera multi-scatter compensation so rough conductors stay energy-conserving across the roughness range
-- **Directional light with cascaded shadow maps** — 4 cascades, 2048×2048 per cascade in a 2D-array depth image, log-uniform splits over 0.1m–50m, `sampler2DArrayShadow` with hardware 3×3 PCF, per-cascade bias scaling, 10% blend bands at boundaries to hide cascade seams. Optional debug tint (`renderer.cpp::cascadeDebugTint_`) colour-codes cascade regions for verification
-- **HDR offscreen forward pass + ACES post-process** — forward renders into an R32G32B32A32 target, then a fullscreen post-process pass applies ACES tonemapping + gamma 2.2 before presenting to the swapchain
+- **PCSS shadows on a 4-cascade CSM** — 4 cascades, 2048×2048 per cascade in a 2D-array depth image, log-uniform splits over 0.1m–50m. **Per-fragment PCSS**: 16-tap Poisson-disk **blocker search** (raw-depth read via a non-comparison sampler at binding 15) → contact-hardening **penumbra** = `(receiverDepth − avgBlocker) / avgBlocker × lightSize` → 16-tap Poisson-disk **variable-radius PCF** via `sampler2DArrayShadow` hardware comparison, with per-pixel rotation hash to break up moiré. Per-cascade bias scaling, 10% blend bands at boundaries
+- **KHR_materials_unlit** — flagged materials skip BRDF/IBL/shadow entirely and output the textured base colour directly. Used for skybox cards, foliage, decals, UI quads
+- **KHR_texture_transform** — per-slot UV offset/scale/rotation from the extension is applied to each texture sample. Identity by default
+- **HDR offscreen forward pass + bloom + ACES post-process** — forward writes into an R16G16B16A16 target. **Dual-filter bloom** (6-mip RGBA16F chain at half-screen res, 13-tap CoD downsample with Karis-average on the first pass to suppress fireflies, 9-tap tent upsample with additive blend) produces a low-pass HDR contribution. Post-process mixes the HDR target with bloom mip 0 (`bloomStrength = 0.04` default; `0` is bit-identical to a no-bloom path), then ACES tonemap + gamma 2.2 before presenting
 - **Keyframe animation** with per-channel interpolation (LINEAR with SLERP for quaternions, STEP, CUBICSPLINE with in/out tangents) across rotation, translation, scale, and morph weight channels; looping playback; runtime animation selection via `AnimationState`
 - **Skeletal skinning** — GPU joint matrix blending, up to 64 joints per skin
-- **Morph target animation** — vertex position/normal deltas uploaded as an SSBO, blended by weights in the vertex shader (up to 8 targets per mesh)
+- **Morph target animation** — vertex POSITION + NORMAL + TANGENT deltas uploaded as a single packed SSBO, blended by weights in the vertex shader (up to 8 targets per mesh). Tangent morphs feed the TBN reconstruction so facial-rig normal mapping stays correct mid-blend
 - **Alpha blending and masking** — three forward pipeline variants (opaque, double-sided opaque, blend) dispatched per draw from the material's `AlphaMode`/`doubleSided` flags. MASK handled via a fragment-shader discard test; BLEND uses straight-alpha blending with depth-write disabled and back-to-front sort of translucent draws
 - **Scenegraph architecture** — tree of Nodes with Component variants (Camera, Animator, Mesh, Empty) that propagate transforms, an `InputState` bundle, and draw commands. Node transforms store rotation as a quaternion so orientations from glTF round-trip exactly
-- **Backend-decoupled graphics layer** — graphics classes use opaque handles (`BufferHandle`, `TextureHandle`, `DescriptorSetHandle`, `PipelineHandle`) and emit `DrawCommand` structs with no Vulkan dependencies. IBL cubemaps, BRDF LUT, and shadow map are all owned by the render layer and referenced through the same handle types
-- **Vulkan rendering** via vulkan.hpp C++ bindings with a 15-binding forward descriptor set, plus separate descriptor layouts for skybox, shadow, and post-process passes
+- **Backend-decoupled graphics layer** — graphics classes use opaque handles (`BufferHandle`, `TextureHandle`, `DescriptorSetHandle`, `PipelineHandle`) and emit `DrawCommand` structs with no Vulkan dependencies. IBL cubemaps, BRDF LUT, shadow map, bloom chain are all owned by the render layer and referenced through the same handle types
+- **Vulkan rendering** via vulkan.hpp C++ bindings with a 16-binding forward descriptor set, plus separate descriptor layouts for skybox, shadow, post-process, and bloom passes
+- **Single source of truth for tunables** — every rendering knob (light intensity, IBL strengths, shadow biases, bloom strength, cascade count, PCSS light size, IBL extents, camera FOV) lives in `include/fire_engine/render/constants.hpp`
 - **Texture mapping** via [stb_image](https://github.com/nothings/stb), including HDR equirectangular loading for the skybox; uploaded to GPU through staging buffers
 - **First-person camera** with keyboard (WASD + E/F for vertical) and mouse controls
 - **GLSL shaders** compiled to SPIR-V at build time via `glslc`
@@ -52,9 +55,12 @@ The `graphics/` layer is fully decoupled from Vulkan:
 - If the node has an animation channel, it creates a three-level hierarchy: root Node (with the node's TRS transform) -> Animator Node (with keyframe data, preserving each channel's interpolation mode) -> Mesh Node.
 - Otherwise, the node maps directly with its transform and mesh data.
 - Skin data (joint references and inverse bind matrices) is loaded and attached to the relevant Mesh nodes.
-- Morph target deltas (position and normal) are stored per-geometry and uploaded as an SSBO.
-- Materials gather up to five textures (base-colour, emissive, normal, metallic-roughness, occlusion), each with its own `SamplerSettings` and a `TextureEncoding` (Srgb or Linear) extracted from the glTF sampler definition.
+- Morph target deltas (position, normal, **and tangent**) are stored per-geometry and uploaded as a single packed SSBO.
+- Materials gather up to five textures (base-colour, emissive, normal, metallic-roughness, occlusion), each with its own `SamplerSettings`, a `TextureEncoding` (Srgb or Linear), a per-slot UV-set index (TEXCOORD_0 or TEXCOORD_1), and a per-slot `UvTransform` from KHR_texture_transform (offset / scale / rotation; identity by default).
+- **Smooth-normal fallback** runs when the source mesh omits the `NORMAL` attribute (Fox.gltf and similar). A static `GltfLoader::generateSmoothNormals` builds per-vertex normals from positions + indices via area-weighted accumulate-and-normalize, with an up-pointing fallback for unreferenced vertices.
 - **Tangent generation** runs automatically when a material has a normal texture and the glTF did not already supply TANGENT data. A custom per-triangle routine computes T and B from UV derivatives, Gram-Schmidts T against the vertex normal, and writes handedness into `tangent.w`. Degenerate UVs fall back to a normal-derived tangent so the mesh still shades reasonably.
+- **Material extensions** — `KHR_materials_emissive_strength` is multiplied into emissive at load time so HDR emissives reach the bloom chain at the authored magnitude. `KHR_materials_unlit` flips a flag on the Material that the fragment shader uses to skip BRDF/IBL/shadow. `KHR_texture_transform` is read per slot and applied in shader before each sample.
+- **Safety checks** — `GltfLoader::ensureSupportedExtensions` walks `asset.extensionsRequired` and throws if any aren't in our supported set (so e.g. draco-compressed assets fail fast instead of producing corrupt geometry). Non-triangle primitives are skipped with a `std::clog` warning rather than rendered as garbage.
 
 Animation keyframes (input times and output quaternions/vectors/weights, plus CUBICSPLINE tangents) are read from glTF accessor data and set on the Animator's `Animation`.
 
@@ -73,52 +79,56 @@ The transient pipelines are destroyed once the bake completes; only the resultin
 
 1. `FireEngine::mainLoop()` polls GLFW, calls `input_.update(window, dt)` to produce an `InputState`, then `scene_.update(inputState)`
 2. `SceneGraph::update()` propagates `InputState` and transforms down the node tree; each Node caches its `composedWorld` matrix for skin joint lookups
-3. `Renderer::drawFrame()` acquires a swapchain image and records three sub-passes:
+3. `Renderer::drawFrame()` acquires a swapchain image and records **five sub-passes**:
    - **Shadow pass** — looped 4 times, once per cascade. Each iteration begins a depth-only pass on its own framebuffer (one shadow-map array layer), pushes the cascade index as a push constant, and replays all collected shadow `DrawCommand`s. `shadow.vert` projects with `lightViewProj[cascadeIndex]` from the per-draw `ShadowUBO`. Skin and morph still apply
    - **Forward pass** — begin the HDR offscreen pass, draw the skybox (LEQUAL depth, no write), then call `scene.render(ctx)`; Mesh/Object emit `DrawCommand`s that the Renderer buckets into opaque vs blend, sorts the blend bucket back-to-front by `sortDepth`, and replays through the same bind/draw loop resolving handles via `Resources`
-   - **Post-process pass** — begin the swapchain-format pass, draw a fullscreen triangle that samples the HDR target and applies ACES + gamma 2.2
+   - **Bloom downsample chain** — 6 fullscreen-triangle passes. Pass 0 reads the HDR target with the Karis-average 13-tap kernel (firefly suppression), writing mip 0 of the bloom chain. Passes 1..5 read the previous bloom mip and write the next, plain CoD weights
+   - **Bloom upsample chain** — 5 fullscreen-triangle passes back up the chain (mip 5 → mip 4 → … → mip 0). Each samples its source mip with a 9-tap tent kernel and **additively blends** onto the destination mip (preserved by `loadOp=eLoad`). The final write to mip 0 carries the summed contribution from every coarser mip
+   - **Post-process pass** — begin the swapchain-format pass, draw a fullscreen triangle that samples both the HDR target and bloom mip 0, mixes them by `bloomStrength`, and applies ACES + gamma 2.2
 4. Renderer submits the command buffer and presents
 
 ### Rendering Pipeline
 
-- Forward descriptor set with 15 bindings:
+- Forward descriptor set with **16 bindings**:
   - 0 model/view/projection + camera position UBO
-  - 1 Material UBO (`diffuseAlpha`, `emissiveRoughness`, `materialParams` for `normalScale` etc., `textureFlags`, `extraFlags`)
+  - 1 Material UBO — `diffuseAlpha`, `emissiveRoughness`, `materialParams` (metallic, normalScale, alphaCutoff, occlusionStrength), `textureFlags` (base/emissive/normal/MR present), `extraFlags` (occlusion present, occlusion's UV-set, **unlit flag**), `texCoordIndices` (per-slot UV-set), `uvBaseColor / uvEmissive / uvNormal / uvMetallicRoughness / uvOcclusion` (KHR_texture_transform offset+scale per slot), `uvRotations` + `uvRotationsExtra` (per-slot rotations)
   - 2 base-colour sampler
   - 3 skin UBO (joint matrices, `mat4[64]`)
   - 4 morph UBO (metadata + weights)
-  - 5 morph targets SSBO (position/normal deltas as `vec4[]`)
+  - 5 morph targets SSBO — `[positions, normals, tangents]` per target as `vec4[]`
   - 6 emissive sampler
   - 7 normal sampler
   - 8 metallic-roughness sampler
   - 9 occlusion sampler
   - 10 cascaded shadow map (`sampler2DArrayShadow`, 4 layers, hardware PCF comparison)
-  - 11 Light UBO (direction, colour, `cascadeViewProj[4]`, `cascadeSplits`, IBL params, shadow params, environment params with CSM debug-tint flag in `.w`)
+  - 11 Light UBO (direction, colour, `cascadeViewProj[4]`, `cascadeSplits`, IBL params, shadow params with PCSS light size, environment params with CSM debug-tint flag in `.w`)
   - 12 irradiance cubemap
   - 13 prefiltered environment cubemap
   - 14 BRDF integration LUT (2D)
-- Separate descriptor layouts for the skybox (SkyboxUBO + samplerCube + LightUBO), shadow (ShadowUBO with `lightViewProj[4]` + SkinUBO + MorphUBO + MorphTargets SSBO, plus a `ShadowPushConstants { int cascadeIndex }` push-constant range on the vertex stage), and post-process (single combined image sampler on the HDR target) passes
+  - **15 cascaded shadow map again, but with a non-comparison sampler so PCSS can read raw depths during the blocker search**
+- Separate descriptor layouts for the skybox (SkyboxUBO + samplerCube + LightUBO), shadow (ShadowUBO with `lightViewProj[4]` + SkinUBO + MorphUBO + MorphTargets SSBO, plus `ShadowPushConstants { int cascadeIndex }` on the vertex stage), post-process (HDR sampler at 0 + bloom mip 0 sampler at 1, plus `PostProcessPushConstants { float bloomStrength }`), and bloom-down / bloom-up (single input mip sampler + `BloomPushConstants` on the fragment stage)
 - Three forward pipeline variants share the shader + binding layout but differ in cull mode, blend, and depth-write state:
   - **opaque** (cull back, no blend, depth write) — OPAQUE and MASK materials with `doubleSided=false`
   - **opaque-double-sided** (cull none, no blend, depth write) — OPAQUE and MASK with `doubleSided=true`
   - **blend** (cull none, `SRC_ALPHA / ONE_MINUS_SRC_ALPHA` blend, no depth write) — BLEND materials
-- Additional persistent pipelines: **skybox** (fullscreen triangle, LEQUAL depth, no write), **shadow** (front-face cull, depth bias enabled, color write off), **post-process** (ACES + gamma 2.2, no depth)
+- Additional persistent pipelines: **skybox** (fullscreen triangle, LEQUAL depth, no write), **shadow** (front-face cull, depth bias enabled, color write off), **post-process** (bloom mix + ACES + gamma, no depth), **bloom-down** (no blend, no depth, fullscreen triangle), **bloom-up** (additive eOne/eOne blend, no depth, fullscreen triangle)
 - Transient IBL pipelines (`environment_convert`, `irradiance_convolution`, `prefilter_environment`, `brdf_integration`) exist only during the startup precompute
 - MASK is implemented via a fragment-shader `discard` when `alpha < alphaCutoff`; OPAQUE/BLEND write `alphaCutoff = 0.0` so the discard is inert
-- Resources class owns all GPU resources and exposes opaque handles (including a pipeline registry, IBL cubemaps, BRDF LUT, and the shadow map)
+- Resources class owns all GPU resources and exposes opaque handles (pipeline registry, IBL cubemaps, BRDF LUT, shadow map with both compare + linear samplers, **bloom chain**)
 - Each Object creates its own descriptor pool and sets via Resources
-- Depth buffering and swapchain recreation on window resize (HDR framebuffers and post-process input samplers are rebuilt too)
+- Depth buffering and swapchain recreation on window resize (HDR framebuffer, bloom chain, post-process descriptors all rebuilt at new extent)
 
 ### Vertex Shader Pipeline
 
-1. **Morph targets** (if enabled): accumulates weighted position/normal deltas from the SSBO
+1. **Morph targets** (if enabled): accumulates weighted **position / normal / tangent** deltas from the packed SSBO (layout `[positions, normals, tangents]` per target)
 2. **Skinning** (if enabled): blends joint matrices using per-vertex joint indices and weights
 3. **Transform**: applies either the blended skin matrix or the model matrix to produce world-space position
-4. **TBN construction**: transforms the per-vertex normal and tangent by the normal matrix, orthogonalises T against N, builds B via `cross(N, T) * tangent.w`, and passes `mat3(T, B, N)` to the fragment shader for tangent-space normal mapping
+4. **TBN construction**: transforms the morph-blended normal and tangent by the normal matrix, orthogonalises T against N, builds B via `cross(N, T) * tangent.w`, and passes `mat3(T, B, N)` to the fragment shader for tangent-space normal mapping
+5. **Second UV set + view-space depth**: forwards `fragTexCoord1 = inTexCoord1` (location 8) and `fragViewDepth = -(view * worldPos).z` (location 7) for cascade selection
 
 ### Fragment Shader
 
-The forward fragment shader implements a PBR Cook-Torrance BRDF (GGX + Schlick Fresnel + Smith G) for the directional light, adds diffuse IBL from the irradiance cubemap and specular IBL via the prefiltered cubemap + BRDF LUT split-sum **with Fdez-Aguera multi-scatter compensation** for energy-conserving rough conductors, samples normal / metallic-roughness / occlusion / emissive textures if bound (gated by `textureFlags`/`extraFlags`), and modulates the direct-light contribution by a 3×3 PCF shadow term that picks one of 4 cascades per fragment based on view-space depth and softens cascade boundaries with a 10% blend band.
+The forward fragment shader picks a UV stream per sample (`pickUv(material.texCoordIndices.X)` returns TEXCOORD_0 or TEXCOORD_1), applies KHR_texture_transform (`applyUvTransform` does scale → CCW rotate → translate) and samples the right texture. If `material.extraFlags.z == 1` (KHR_materials_unlit) it writes `vec4(baseColor, alpha)` and returns immediately, skipping all lighting. Otherwise it implements a PBR Cook-Torrance BRDF (GGX + Schlick Fresnel + Smith G) for the directional light, adds diffuse IBL from the irradiance cubemap and specular IBL via the prefiltered cubemap + BRDF LUT split-sum **with Fdez-Aguera multi-scatter compensation** for energy-conserving rough conductors, samples normal / metallic-roughness / occlusion / emissive textures if bound, and modulates the direct-light contribution by a **PCSS shadow term**: 16-tap Poisson-disk blocker search (raw depths via the binding-15 sampler) → contact-hardening penumbra → 16-tap variable-radius Poisson-disk PCF rotated per pixel, picking one of 4 cascades per fragment with a 10% blend band at boundaries.
 
 ## Setup
 
@@ -139,7 +149,7 @@ Build:
 cmake --build build
 ```
 
-Run the tests (766 tests):
+Run the tests (795 tests):
 
 ```bash
 ./build/test_fire_engine
