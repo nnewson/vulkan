@@ -18,14 +18,14 @@
 
 #include <fire_engine/animation/animation.hpp>
 #include <fire_engine/graphics/assets.hpp>
-#include <fire_engine/math/constants.hpp>
-#include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/object.hpp>
 #include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
+#include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/empty.hpp>
 #include <fire_engine/scene/light.hpp>
@@ -125,8 +125,7 @@ Mat4 nodeLocalMatrix(const fastgltf::Node& node)
     if (auto* trs = std::get_if<fastgltf::TRS>(&node.transform))
     {
         Vec3 t{trs->translation.x(), trs->translation.y(), trs->translation.z()};
-        Quaternion r{trs->rotation.x(), trs->rotation.y(), trs->rotation.z(),
-                     trs->rotation.w()};
+        Quaternion r{trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()};
         Vec3 s{trs->scale.x(), trs->scale.y(), trs->scale.z()};
         return Mat4::translate(t) * r.toMat4() * Mat4::scale(s);
     }
@@ -145,8 +144,8 @@ Mat4 nodeLocalMatrix(const fastgltf::Node& node)
     return Mat4::identity();
 }
 
-bool walkForCamera(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                   const Mat4& parentWorld, std::optional<GltfLoader::CameraView>& out)
+bool walkForCamera(const fastgltf::Asset& asset, std::size_t nodeIndex, const Mat4& parentWorld,
+                   std::optional<GltfLoader::CameraView>& out)
 {
     const auto& node = asset.nodes[nodeIndex];
     Mat4 world = parentWorld * nodeLocalMatrix(node);
@@ -512,8 +511,7 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
         fastgltf::Extensions::KHR_materials_emissive_strength |
-        fastgltf::Extensions::KHR_texture_transform |
-        fastgltf::Extensions::KHR_materials_unlit |
+        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission;
     fastgltf::Parser parser(enabledExtensions);
@@ -570,9 +568,9 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
 // Scene and node loading
 // ---------------------------------------------------------------------------
 
-std::optional<GltfLoader::CameraView>
-GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
-                      Assets& assets)
+std::optional<GltfLoader::CameraView> GltfLoader::loadScene(const std::string& path,
+                                                            SceneGraph& scene, Resources& resources,
+                                                            Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
     auto result = parseAsset(gltfPath);
@@ -979,14 +977,15 @@ const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
 }
 
 const Texture* GltfLoader::resolveTransmissionTexture(const fastgltf::Asset& asset,
-                                                     const fastgltf::Primitive& primitive,
-                                                     const std::string& baseDir,
-                                                     Resources& resources, Assets& assets)
+                                                      const fastgltf::Primitive& primitive,
+                                                      const std::string& baseDir,
+                                                      Resources& resources, Assets& assets)
 {
     if (primitive.materialIndex.has_value())
     {
         const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
-        if (gltfMat.transmission != nullptr && gltfMat.transmission->transmissionTexture.has_value())
+        if (gltfMat.transmission != nullptr &&
+            gltfMat.transmission->transmissionTexture.has_value())
         {
             auto texIndex = gltfMat.transmission->transmissionTexture.value().textureIndex;
             auto& tex = assets.texture(texIndex);
@@ -1524,7 +1523,8 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         // null when the extension isn't present on the asset.
         if (gltfMat.transmission != nullptr)
         {
-            material.transmissionFactor(static_cast<float>(gltfMat.transmission->transmissionFactor));
+            material.transmissionFactor(
+                static_cast<float>(gltfMat.transmission->transmissionFactor));
             if (gltfMat.transmission->transmissionTexture.has_value())
             {
                 const auto& info = gltfMat.transmission->transmissionTexture.value();

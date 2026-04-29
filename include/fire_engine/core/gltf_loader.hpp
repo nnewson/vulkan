@@ -50,8 +50,8 @@ public:
     // Returns the first authored camera's view (if any) so callers can frame
     // the engine's runtime camera to match. Nullopt for assets without an
     // attached camera node.
-    static std::optional<CameraView>
-    loadScene(const std::string& path, SceneGraph& scene, Resources& resources, Assets& assets);
+    static std::optional<CameraView> loadScene(const std::string& path, SceneGraph& scene,
+                                               Resources& resources, Assets& assets);
 
     // Synthesises per-vertex normals from a triangle mesh when the source
     // glTF lacks the NORMAL attribute. Smooth (area-weighted accumulate-and-
@@ -83,8 +83,7 @@ public:
     // DFS over the asset's default scene; returns the first node bearing a
     // camera index, or nullopt if none. Accumulates world transforms so the
     // returned view matches the artist's intent regardless of nesting.
-    [[nodiscard]] static std::optional<CameraView>
-    findFirstCamera(const fastgltf::Asset& asset);
+    [[nodiscard]] static std::optional<CameraView> findFirstCamera(const fastgltf::Asset& asset);
 
     struct TexturePaths
     {

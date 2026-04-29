@@ -422,20 +422,22 @@ void main() {
 
     vec3 transmittedLight = vec3(0.0);
     if (transmission > 0.0) {
-        // ior fixed at 1.5 for first cut. Refracted direction sampled at the
-        // same LOD selection used by specular so frosted-glass blur falls
-        // out for free.
+        // Thin-surface transmission approximation. We pass the basecolor
+        // through as the "transmitted" contribution at unit scale, then mix
+        // in a small fraction of the hemispherical env irradiance for
+        // ambient tint. Multiplying by raw HDR env (irradiance or prefilter)
+        // pushes paper into ACES saturation and collapses text-vs-paper
+        // contrast — the basecolor's 0.05–0.95 range is exactly what ACES
+        // tonemaps cleanly. Proper scene-behind-glass refraction would be F3.
         const float ior = 1.5;
         vec3 refractDir = refract(-V, N, 1.0 / ior);
         if (dot(refractDir, refractDir) < 1e-6) {
-            // Total internal reflection at grazing angles → fall back to R.
             refractDir = R;
         }
-        vec3 transmissionSample =
-            textureLod(prefilteredMap, refractDir, roughness * maxReflectionLod).rgb;
-        // Match the specular IBL brightness budget so dark base-colour texels
-        // (e.g. newspaper text) retain visible contrast against bright env.
-        transmittedLight = transmission * baseColor * transmissionSample * light.iblParams.z;
+        const float kEnvTint = 0.2;
+        vec3 envTint = texture(irradianceMap, refractDir).rgb * light.iblParams.y;
+        vec3 surface = vec3(1.0) + kEnvTint * envTint;
+        transmittedLight = transmission * baseColor * surface;
     }
 
     // Diffuse lobes are scaled — NOT replaced — by (1 - transmission). Specular
