@@ -39,10 +39,15 @@ struct MaterialUBO
     alignas(16) float uvNormal[4]{0.0f, 0.0f, 1.0f, 1.0f};
     alignas(16) float uvMetallicRoughness[4]{0.0f, 0.0f, 1.0f, 1.0f};
     alignas(16) float uvOcclusion[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvTransmission[4]{0.0f, 0.0f, 1.0f, 1.0f};
     // x=base, y=emissive, z=normal, w=metallicRoughness rotation (radians,
-    // CCW). Occlusion's rotation lives separately in uvRotationsExtra.x.
+    // CCW). Occlusion's rotation in uvRotationsExtra.x; transmission's in .y.
     alignas(16) float uvRotations[4]{};
     alignas(16) float uvRotationsExtra[4]{};
+    // KHR_materials_transmission. .x = transmissionFactor; .y = transmission
+    // texture present (0 / 1); .z = transmission texCoord index (0 / 1); .w
+    // reserved (will carry IOR or thickness in a later milestone).
+    alignas(16) float transmissionParams[4]{};
 };
 
 struct SkinUBO
@@ -75,18 +80,42 @@ struct EnvironmentCaptureUBO
     int _pad2{0};
 };
 
+// Per-light std140 entry packed into LightUBO::lights[]. Field semantics:
+//   position.xyz  — world-space position (point/spot)
+//   position.w    — type tag (0 = directional, 1 = point, 2 = spot)
+//   direction.xyz — world-space forward (directional/spot)
+//   direction.w   — range (0 = infinite; point/spot only)
+//   colour.rgb    — RGB
+//   colour.a      — intensity (scalar multiplier)
+//   cone.x        — cos(innerCone)
+//   cone.y        — cos(outerCone)
+struct LightData
+{
+    alignas(16) float position[4]{};
+    alignas(16) float direction[4]{};
+    alignas(16) float colour[4]{};
+    alignas(16) float cone[4]{1.0f, 0.0f, 0.0f, 0.0f};
+};
+
 struct LightUBO
 {
-    alignas(16) float direction[4]{}; // xyz normalised, w unused
-    alignas(16) float colour[4]{};    // rgb, a = intensity
-    // Per-cascade light-space view-projection matrices. cascadeViewProj[0]
-    // matches the pre-CSM single lightViewProj when CSM is disabled.
+    // Per-cascade light-space view-projection matrices. Computed against the
+    // first directional light in `lights[]` if any; otherwise against a
+    // default direction so the matrices stay valid for the shadow pass.
     alignas(16) Mat4 cascadeViewProj[4]{};
     // View-space far-plane distances for each cascade (x..w = cascades 0..3).
     alignas(16) float cascadeSplits[4]{};
     alignas(16) float iblParams[4]{};         // x = maxReflectionLod, y/z = IBL strengths
     alignas(16) float shadowParams[4]{};      // x = minBias, y = slopeBias, z = filterRadius
-    alignas(16) float environmentParams[4]{}; // x = skyboxIntensity
+    alignas(16) float environmentParams[4]{}; // x = skyboxIntensity, w = CSM debug tint
+    // Active light count and the packed light array. Convention: lights[0] is
+    // the primary directional (CSM source) when one exists. The shader loops
+    // 0..lightCount-1 and only applies CSM shadow at i==0 with type==0.
+    alignas(16) int lightCount{0};
+    int _pad0{0};
+    int _pad1{0};
+    int _pad2{0};
+    LightData lights[MAX_LIGHTS]{};
 };
 
 struct EnvironmentPrefilterPushConstants

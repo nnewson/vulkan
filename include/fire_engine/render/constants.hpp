@@ -20,6 +20,10 @@ namespace fire_engine
 inline constexpr int MAX_FRAMES_IN_FLIGHT = 2;
 inline constexpr std::size_t MAX_JOINTS = 64;
 inline constexpr int MAX_MORPH_TARGETS = 8;
+// Cap on lights consumed by the forward shader's main lighting loop. Sized so
+// the LightUBO array fits comfortably under any sane Vulkan UBO limit. Bump
+// when scenes routinely exceed this; or swap to an SSBO at that point.
+inline constexpr int MAX_LIGHTS = 8;
 
 // ---------------------------------------------------------------------------
 // Camera projection — shared between Object::render (perspective matrix)

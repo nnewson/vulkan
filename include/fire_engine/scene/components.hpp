@@ -6,12 +6,13 @@
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/camera.hpp>
 #include <fire_engine/scene/empty.hpp>
+#include <fire_engine/scene/light.hpp>
 #include <fire_engine/scene/mesh.hpp>
 
 namespace fire_engine
 {
 
-using Components = std::variant<Empty, Animator, Camera, Mesh>;
+using Components = std::variant<Empty, Animator, Camera, Mesh, Light>;
 
 [[nodiscard]] inline std::string_view componentName(const Components& component) noexcept
 {
@@ -34,6 +35,10 @@ using Components = std::variant<Empty, Animator, Camera, Mesh>;
             else if constexpr (std::is_same_v<T, Mesh>)
             {
                 return "Mesh";
+            }
+            else if constexpr (std::is_same_v<T, Light>)
+            {
+                return "Light";
             }
         },
         component);

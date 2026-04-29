@@ -22,10 +22,14 @@ layout(binding = 1) uniform MaterialUBO {
     vec4 uvNormal;
     vec4 uvMetallicRoughness;
     vec4 uvOcclusion;
+    vec4 uvTransmission;
     // Rotations (radians, CCW) packed: x=base, y=emissive, z=normal, w=mr.
     vec4 uvRotations;
-    // .x = occlusion rotation; rest reserved.
+    // .x = occlusion rotation, .y = transmission rotation; rest reserved.
     vec4 uvRotationsExtra;
+    // KHR_materials_transmission. .x = transmissionFactor, .y = texture-present
+    // flag, .z = transmission texCoord index. .w reserved (IOR / thickness).
+    vec4 transmissionParams;
 } material;
 
 layout(binding = 2) uniform sampler2D texSampler;
@@ -34,6 +38,7 @@ layout(binding = 6) uniform sampler2D emissiveMap;
 layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
+layout(binding = 16) uniform sampler2D transmissionMap;
 layout(binding = 10) uniform sampler2DArrayShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
 layout(binding = 13) uniform samplerCube prefilteredMap;
@@ -42,14 +47,30 @@ layout(binding = 14) uniform sampler2D brdfLut;
 // non-comparison sampler. Binding 10 is for the hardware-PCF compare path.
 layout(binding = 15) uniform sampler2DArray shadowMapDepth;
 
-layout(binding = 11) uniform LightUBO {
+struct LightData {
+    // .xyz = world position (point/spot), .w = type (0=dir, 1=point, 2=spot)
+    vec4 position;
+    // .xyz = world forward, .w = range (point/spot; 0 = infinite)
     vec4 direction;
+    // .rgb = colour, .a = intensity
     vec4 colour;
+    // .x = cos(innerCone), .y = cos(outerCone)
+    vec4 cone;
+};
+
+const int MAX_LIGHTS = 8;
+
+layout(binding = 11) uniform LightUBO {
     mat4 cascadeViewProj[4];
     vec4 cascadeSplits;
     vec4 iblParams;
     vec4 shadowParams;
     vec4 environmentParams;
+    int  lightCount;
+    int  _pad0;
+    int  _pad1;
+    int  _pad2;
+    LightData lights[MAX_LIGHTS];
 } light;
 
 layout(location = 0) in vec3 fragColor;
@@ -233,15 +254,8 @@ void main() {
         N = normalize(fragNormal);
     }
 
-    vec3 lightDir = normalize(light.direction.xyz);
-    vec3 lightColor = light.colour.rgb * light.colour.a;
     vec3 V = normalize(ubo.cameraPos.xyz - fragWorldPos);
-    vec3 H = normalize(lightDir + V);
-
-    float NdotL = max(dot(N, lightDir), 0.0);
     float NdotV = max(dot(N, V), 0.001);
-    float NdotH = max(dot(N, H), 0.0);
-    float VdotH = max(dot(V, H), 0.0);
 
     // Sample base colour texture once
     vec4 texColor = vec4(1.0);
@@ -280,16 +294,76 @@ void main() {
 
     vec3 F0 = mix(vec3(0.04), baseColor, metallic);
     float a = roughness * roughness;
-    float D = distributionGGX(NdotH, a);
-    float G = geometrySmith(NdotV, NdotL, roughness);
-    vec3 F = fresnelSchlick(VdotH, F0);
 
-    vec3 numerator = D * G * F;
-    float denominator = 4.0 * NdotV * NdotL + 0.0001;
-    vec3 specularTerm = (numerator / denominator) * lightColor * NdotL;
+    // Direct lighting loop — accumulate contributions from every light in
+    // LightUBO::lights[]. Only the first directional (i==0, type==0) gets CSM
+    // shadow; everything else is unshadowed.
+    vec3 directDiffuse = vec3(0.0);
+    vec3 directSpecular = vec3(0.0);
+    for (int i = 0; i < light.lightCount && i < MAX_LIGHTS; ++i) {
+        LightData L = light.lights[i];
+        int type = int(L.position.w);
 
-    vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
-    vec3 diffuseTerm = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
+        // KHR_lights_punctual stores forward (light-to-target). Negate to get
+        // the surface-to-light vector the BRDF wants.
+        vec3 lightVec;
+        float attenuation = 1.0;
+        if (type == 0) {
+            lightVec = normalize(-L.direction.xyz);
+        } else {
+            // Point/spot share the inverse-square + range-windowed falloff
+            // from KHR_lights_punctual:
+            //   windowing = clamp(1 - (d/range)^4, 0, 1)
+            //   attenuation = windowing^2 / max(d^2, 0.01)
+            // Range == 0 means "no range cutoff" — windowing collapses to 1.
+            vec3 toLight = L.position.xyz - fragWorldPos;
+            float dist = length(toLight);
+            lightVec = toLight / max(dist, 1e-4);
+            float range = L.direction.w;
+            float windowing = (range > 0.0)
+                ? clamp(1.0 - pow(dist / range, 4.0), 0.0, 1.0)
+                : 1.0;
+            attenuation = (windowing * windowing) / max(dist * dist, 0.01);
+
+            if (type == 2) {
+                // KHR_lights_punctual spot: cosTheta is the angle between
+                // the spot's forward (light-to-target) and the light-to-frag
+                // vector. lightVec points surface-to-light, so the
+                // light-to-frag vector is -lightVec.
+                float cosTheta = -dot(normalize(L.direction.xyz), lightVec);
+                float spotFactor = clamp((cosTheta - L.cone.y)
+                                         / max(L.cone.x - L.cone.y, 1e-4),
+                                         0.0, 1.0);
+                attenuation *= spotFactor * spotFactor;
+            }
+        }
+
+        vec3 lightColor = L.colour.rgb * L.colour.a * attenuation;
+        vec3 H = normalize(lightVec + V);
+        float NdotL = max(dot(N, lightVec), 0.0);
+        float NdotH = max(dot(N, H), 0.0);
+        float VdotH = max(dot(V, H), 0.0);
+
+        float D = distributionGGX(NdotH, a);
+        float G = geometrySmith(NdotV, NdotL, roughness);
+        vec3 F = fresnelSchlick(VdotH, F0);
+
+        vec3 numerator = D * G * F;
+        float denominator = 4.0 * NdotV * NdotL + 0.0001;
+        vec3 specularContrib = (numerator / denominator) * lightColor * NdotL;
+        vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
+        vec3 diffuseContrib = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
+
+        if (i == 0 && type == 0) {
+            int cascade = selectCascade(fragViewDepth);
+            float shadow = computeShadow(fragWorldPos, N, lightVec, cascade, fragViewDepth);
+            diffuseContrib *= shadow;
+            specularContrib *= shadow;
+        }
+
+        directDiffuse += diffuseContrib;
+        directSpecular += specularContrib;
+    }
 
     vec3 irradiance = texture(irradianceMap, N).rgb;
     vec3 R = reflect(-V, N);
@@ -334,21 +408,53 @@ void main() {
         emissiveTerm *= texture(emissiveMap, uvEm).rgb;
     }
 
-    int cascade = selectCascade(fragViewDepth);
-    float shadow = computeShadow(fragWorldPos, N, lightDir, cascade, fragViewDepth);
-    diffuseTerm *= shadow;
-    specularTerm *= shadow;
+    // KHR_materials_transmission (F2 — IBL-faked refraction). Per glTF spec,
+    // the diffuse lobe is *attenuated* by (1 - transmission) and a separate
+    // transmission lobe is added on top — specular is left intact. For glass
+    // against the environment this is sufficient; proper scene-behind-glass
+    // refraction (F3) would copy the HDR target into a sceneColor mip chain.
+    float transmission = material.transmissionParams.x;
+    if (material.transmissionParams.y > 0.5) {
+        vec2 uvTrans = applyUvTransform(pickUv(int(material.transmissionParams.z)),
+                                        material.uvTransmission, material.uvRotationsExtra.y);
+        transmission *= texture(transmissionMap, uvTrans).r;
+    }
 
-    vec3 color = ambientTerm + diffuseTerm + specularTerm + emissiveTerm;
+    vec3 transmittedLight = vec3(0.0);
+    if (transmission > 0.0) {
+        // ior fixed at 1.5 for first cut. Refracted direction sampled at the
+        // same LOD selection used by specular so frosted-glass blur falls
+        // out for free.
+        const float ior = 1.5;
+        vec3 refractDir = refract(-V, N, 1.0 / ior);
+        if (dot(refractDir, refractDir) < 1e-6) {
+            // Total internal reflection at grazing angles → fall back to R.
+            refractDir = R;
+        }
+        vec3 transmissionSample =
+            textureLod(prefilteredMap, refractDir, roughness * maxReflectionLod).rgb;
+        // Match the specular IBL brightness budget so dark base-colour texels
+        // (e.g. newspaper text) retain visible contrast against bright env.
+        transmittedLight = transmission * baseColor * transmissionSample * light.iblParams.z;
+    }
+
+    // Diffuse lobes are scaled — NOT replaced — by (1 - transmission). Specular
+    // and emissive paths are unchanged.
+    directDiffuse      *= (1.0 - transmission);
+    diffuseAmbientTerm *= (1.0 - transmission);
+
+    vec3 color = diffuseAmbientTerm + specularAmbientTerm
+               + directDiffuse + directSpecular
+               + transmittedLight + emissiveTerm;
 
     if (light.environmentParams.w > 0.5) {
+        int cascade = selectCascade(fragViewDepth);
         vec3 cascadeTints[4] = vec3[4](
             vec3(1.0, 0.4, 0.4),  // cascade 0 — red, closest
             vec3(0.4, 1.0, 0.4),  // cascade 1 — green
             vec3(0.4, 0.4, 1.0),  // cascade 2 — blue
             vec3(1.0, 1.0, 0.4)   // cascade 3 — yellow, furthest
         );
-        // Mirror the shadow blend so seams visibly soften when tint is on.
         vec3 currentTint = cascadeTints[cascade];
         float t = cascadeBlendFactor(cascade, fragViewDepth);
         vec3 nextTint = cascadeTints[min(cascade + 1, 3)];

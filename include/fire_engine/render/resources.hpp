@@ -93,6 +93,7 @@ public:
         TextureHandle normalTexture{NullTexture};
         TextureHandle metallicRoughnessTexture{NullTexture};
         TextureHandle occlusionTexture{NullTexture};
+        TextureHandle transmissionTexture{NullTexture};
     };
 
     struct ObjectDescriptorRequest

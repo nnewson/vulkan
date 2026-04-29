@@ -4,6 +4,7 @@
 #include <memory>
 #include <vector>
 
+#include <fire_engine/graphics/lighting.hpp>
 #include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/render/render_context.hpp>
@@ -41,6 +42,18 @@ public:
 
     void update(const InputState& input_state);
     void render(const RenderContext& ctx);
+
+    // Walk the scene tree and resolve every Light component into a world-space
+    // Lighting. Composed world matrices are taken from each Node's cached
+    // composedWorld_ (populated by the most recent update() call). Cheap —
+    // light counts are tiny compared to draw counts.
+    [[nodiscard]] std::vector<Lighting> gatherLights() const;
+
+    // True when at least one node in the tree carries a directional Light.
+    // Used so FireEngine can avoid seeding its default Sun when a glTF asset
+    // has already authored one (KHR_lights_punctual). Cheap; walks the tree
+    // and short-circuits on first hit.
+    [[nodiscard]] bool hasDirectionalLight() const;
 
 private:
     std::vector<std::unique_ptr<Node>> nodes_;

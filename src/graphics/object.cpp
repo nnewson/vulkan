@@ -183,6 +183,19 @@ void Object::load(Resources& resources)
                 resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
         }
 
+        // Transmission texture (KHR_materials_transmission). 1x1 white dummy
+        // when absent so the shader's sample is harmless when the factor is 0.
+        if (binding.geometry->material().hasTransmissionTexture())
+        {
+            geoInfo.transmissionTexture =
+                binding.geometry->material().transmissionTexture().handle();
+        }
+        else
+        {
+            geoInfo.transmissionTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
+        }
+
         req.geometries.push_back(geoInfo);
     }
 
@@ -269,11 +282,19 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     packUv(ubo.uvNormal, mat.normalUvTransform());
     packUv(ubo.uvMetallicRoughness, mat.metallicRoughnessUvTransform());
     packUv(ubo.uvOcclusion, mat.occlusionUvTransform());
+    packUv(ubo.uvTransmission, mat.transmissionUvTransform());
     ubo.uvRotations[0] = mat.baseColorUvTransform().rotation;
     ubo.uvRotations[1] = mat.emissiveUvTransform().rotation;
     ubo.uvRotations[2] = mat.normalUvTransform().rotation;
     ubo.uvRotations[3] = mat.metallicRoughnessUvTransform().rotation;
     ubo.uvRotationsExtra[0] = mat.occlusionUvTransform().rotation;
+    ubo.uvRotationsExtra[1] = mat.transmissionUvTransform().rotation;
+
+    // KHR_materials_transmission. .x = factor, .y = texture-present flag,
+    // .z = texCoord index. .w reserved.
+    ubo.transmissionParams[0] = mat.transmissionFactor();
+    ubo.transmissionParams[1] = mat.hasTransmissionTexture() ? 1.0f : 0.0f;
+    ubo.transmissionParams[2] = static_cast<float>(mat.transmissionTexCoord());
     return ubo;
 }
 

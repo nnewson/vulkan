@@ -963,9 +963,10 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
 
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        // 10 samplers per set: baseColor, emissive, normal, mr, occlusion,
-        // shadowMap (compare), irradiance, prefiltered, brdfLut, shadowMapDepth.
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 10},
+        // 11 samplers per set: baseColor, emissive, normal, mr, occlusion,
+        // shadowMap (compare), irradiance, prefiltered, brdfLut, shadowMapDepth,
+        // transmission.
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 11},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
@@ -1024,6 +1025,11 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 makeDescriptorImageInfo(*textures_[occTexIdx].sampler, *textures_[occTexIdx].view,
                                         vk::ImageLayout::eShaderReadOnlyOptimal);
 
+            auto transTexIdx = static_cast<uint32_t>(geo.transmissionTexture);
+            vk::DescriptorImageInfo transTexInfo = makeDescriptorImageInfo(
+                *textures_[transTexIdx].sampler, *textures_[transTexIdx].view,
+                vk::ImageLayout::eShaderReadOnlyOptimal);
+
             vk::DescriptorBufferInfo lightBufInfo = makeDescriptorBufferInfo(
                 *buffers_[static_cast<uint32_t>(req.lightBufs[i])].buffer, sizeof(LightUBO));
 
@@ -1052,7 +1058,7 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                 *textures_[brdfLutTexIdx].sampler, *textures_[brdfLutTexIdx].view,
                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 16> writes = {{
+            std::array<vk::WriteDescriptorSet, 17> writes = {{
                 vk::WriteDescriptorSet{.dstSet = *sets[i],
                                        .dstBinding = 0,
                                        .descriptorCount = 1,
@@ -1133,6 +1139,11 @@ Resources::createObjectDescriptors(const ObjectDescriptorRequest& req)
                                        .descriptorCount = 1,
                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
                                        .pImageInfo = &shadowDepthTexInfo},
+                vk::WriteDescriptorSet{.dstSet = *sets[i],
+                                       .dstBinding = 16,
+                                       .descriptorCount = 1,
+                                       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                       .pImageInfo = &transTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 

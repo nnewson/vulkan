@@ -206,22 +206,26 @@ TEST(UBO, EnvironmentCaptureUBODefaultFaceIndexIsZero)
 TEST(UBO, LightUBODefaults)
 {
     LightUBO ubo{};
+    EXPECT_EQ(ubo.lightCount, 0);
     for (int i = 0; i < 4; ++i)
     {
-        EXPECT_FLOAT_EQ(ubo.direction[i], 0.0f);
-        EXPECT_FLOAT_EQ(ubo.colour[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.iblParams[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.shadowParams[i], 0.0f);
         EXPECT_FLOAT_EQ(ubo.environmentParams[i], 0.0f);
+    }
+    for (int i = 0; i < fire_engine::MAX_LIGHTS; ++i)
+    {
+        for (int j = 0; j < 4; ++j)
+        {
+            EXPECT_FLOAT_EQ(ubo.lights[i].position[j], 0.0f);
+            EXPECT_FLOAT_EQ(ubo.lights[i].direction[j], 0.0f);
+            EXPECT_FLOAT_EQ(ubo.lights[i].colour[j], 0.0f);
+        }
     }
 }
 
 TEST(UBO, LightUBOFieldOrder)
 {
-    static_assert(offsetof(LightUBO, direction) < offsetof(LightUBO, colour),
-                  "direction must precede colour to match shader layout");
-    static_assert(offsetof(LightUBO, colour) < offsetof(LightUBO, cascadeViewProj),
-                  "colour must precede cascadeViewProj to match shader layout");
     static_assert(offsetof(LightUBO, cascadeViewProj) < offsetof(LightUBO, cascadeSplits),
                   "cascadeViewProj must precede cascadeSplits to match shader layout");
     static_assert(offsetof(LightUBO, cascadeSplits) < offsetof(LightUBO, iblParams),
@@ -230,15 +234,15 @@ TEST(UBO, LightUBOFieldOrder)
                   "iblParams must precede shadowParams to match shader layout");
     static_assert(offsetof(LightUBO, shadowParams) < offsetof(LightUBO, environmentParams),
                   "shadowParams must precede environmentParams to match shader layout");
+    static_assert(offsetof(LightUBO, environmentParams) < offsetof(LightUBO, lightCount),
+                  "environmentParams must precede lightCount to match shader layout");
+    static_assert(offsetof(LightUBO, lightCount) < offsetof(LightUBO, lights),
+                  "lightCount must precede lights[] to match shader layout");
     SUCCEED();
 }
 
-TEST(UBO, LightUBODirectionAligned16)
+TEST(UBO, LightUBOFieldsAligned16)
 {
-    static_assert(offsetof(LightUBO, direction) % 16 == 0,
-                  "direction must be 16-byte aligned for std140 vec4");
-    static_assert(offsetof(LightUBO, colour) % 16 == 0,
-                  "colour must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, cascadeViewProj) % 16 == 0,
                   "cascadeViewProj must be 16-byte aligned for std140 mat4[]");
     static_assert(offsetof(LightUBO, cascadeSplits) % 16 == 0,
@@ -249,7 +253,17 @@ TEST(UBO, LightUBODirectionAligned16)
                   "shadowParams must be 16-byte aligned for std140 vec4");
     static_assert(offsetof(LightUBO, environmentParams) % 16 == 0,
                   "environmentParams must be 16-byte aligned for std140 vec4");
+    static_assert(offsetof(LightUBO, lightCount) % 16 == 0,
+                  "lightCount must be 16-byte aligned for std140 int + padding");
+    static_assert(offsetof(LightUBO, lights) % 16 == 0,
+                  "lights[] must be 16-byte aligned for std140 LightData[]");
     SUCCEED();
+}
+
+TEST(UBO, LightDataSizeAligned)
+{
+    EXPECT_EQ(sizeof(fire_engine::LightData) % 16, 0u);
+    EXPECT_EQ(sizeof(fire_engine::LightData), 64u);
 }
 
 // ---------------------------------------------------------------------------

@@ -717,9 +717,27 @@ void Renderer::createBrdfLut()
     }
 }
 
-void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect)
+void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect,
+                               std::span<const Lighting> lights)
 {
-    const Vec3 lightDir = Vec3::normalise({-1.0f, 1.0f, -1.0f});
+    // Pick a primary directional for CSM. First directional in the gather
+    // order wins. If no directional is in the scene, the cascade fit still
+    // runs against a sane default direction (light contributes nothing
+    // because lightCount == 0 unless there are non-directionals).
+    const Lighting* primaryDirectional = nullptr;
+    for (const auto& l : lights)
+    {
+        if (l.type == 0)
+        {
+            primaryDirectional = &l;
+            break;
+        }
+    }
+    const Vec3 lightDir = primaryDirectional != nullptr
+                              ? Vec3::normalise(Vec3{-primaryDirectional->worldDirection.x(),
+                                                     -primaryDirectional->worldDirection.y(),
+                                                     -primaryDirectional->worldDirection.z()})
+                              : Vec3::normalise(Vec3{-1.0f, 1.0f, -1.0f});
 
     // Camera basis + light basis (shared by every cascade fit).
     const float tanHalfFov = std::tan(cameraFovRadians * 0.5f);
@@ -812,19 +830,50 @@ void Renderer::updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float asp
     }
 
     LightUBO lightData{};
-    lightData.direction[0] = lightDir.x();
-    lightData.direction[1] = lightDir.y();
-    lightData.direction[2] = lightDir.z();
-    lightData.direction[3] = 0.0f;
-    lightData.colour[0] = 1.0f;
-    lightData.colour[1] = 1.0f;
-    lightData.colour[2] = 1.0f;
-    lightData.colour[3] = directionalLightIntensity;
     for (uint32_t i = 0; i < shadowCascadeCount; ++i)
     {
         lightData.cascadeViewProj[i] = cascadeViewProj[i];
         lightData.cascadeSplits[i] = splits[i];
     }
+
+    // Pack lights into the UBO array. The primary directional (CSM source)
+    // goes first so the shader can branch on i==0 for the shadow lookup.
+    int slot = 0;
+    auto pack = [&](const Lighting& L)
+    {
+        if (slot >= MAX_LIGHTS)
+        {
+            return;
+        }
+        LightData& dst = lightData.lights[slot++];
+        dst.position[0] = L.worldPosition.x();
+        dst.position[1] = L.worldPosition.y();
+        dst.position[2] = L.worldPosition.z();
+        dst.position[3] = static_cast<float>(L.type);
+        dst.direction[0] = L.worldDirection.x();
+        dst.direction[1] = L.worldDirection.y();
+        dst.direction[2] = L.worldDirection.z();
+        dst.direction[3] = L.range;
+        dst.colour[0] = L.colour.r();
+        dst.colour[1] = L.colour.g();
+        dst.colour[2] = L.colour.b();
+        dst.colour[3] = L.intensity;
+        dst.cone[0] = L.innerConeCos;
+        dst.cone[1] = L.outerConeCos;
+    };
+    if (primaryDirectional != nullptr)
+    {
+        pack(*primaryDirectional);
+    }
+    for (const auto& L : lights)
+    {
+        if (&L == primaryDirectional)
+        {
+            continue;
+        }
+        pack(L);
+    }
+    lightData.lightCount = slot;
     uint32_t mipLevels = prefilteredCubemapHandle_ != NullTexture
                              ? resources_.textureMipLevels(prefilteredCubemapHandle_)
                              : 1u;
@@ -1175,7 +1224,9 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
 
     const auto extent = swapchain_.extent();
     const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-    updateLightData(cameraPosition, cameraTarget, aspect);
+
+    auto lights = scene.gatherLights();
+    updateLightData(cameraPosition, cameraTarget, aspect, lights);
 
     std::vector<DrawCommand> drawCommands;
     recordSkybox(cameraPosition, cameraTarget, drawCommands);

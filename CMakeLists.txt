@@ -41,6 +41,7 @@ add_library(fireengine SHARED
     src/scene/animator.cpp
     src/scene/camera.cpp
     src/scene/empty.cpp
+    src/scene/light.cpp
     src/scene/mesh.cpp
     src/scene/node.cpp
     src/scene/scene_graph.cpp
@@ -152,6 +153,7 @@ add_executable(test_fire_engine
     tests/input/test_input_state.cpp
     tests/scene/test_animator.cpp
     tests/scene/test_camera.cpp
+    tests/scene/test_light.cpp
     tests/scene/test_node.cpp
     tests/scene/test_scene_graph.cpp
     tests/scene/test_formatter.cpp

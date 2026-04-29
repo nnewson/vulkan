@@ -40,6 +40,8 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         // 15: shadow map again, but with a non-comparison sampler so PCSS can
         // read raw depths during the blocker search.
         {15, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 16: KHR_materials_transmission texture (red channel).
+        {16, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
     return config;

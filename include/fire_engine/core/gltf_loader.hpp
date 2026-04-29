@@ -164,6 +164,11 @@ private:
                             const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
+    static const Texture*
+    resolveTransmissionTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                               const std::string& baseDir, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
     static Material* resolveMaterial(Material materialData, Assets& assets);
 
     [[nodiscard]]

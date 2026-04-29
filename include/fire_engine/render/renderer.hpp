@@ -2,11 +2,13 @@
 
 #include <array>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
 #include <fire_engine/graphics/draw_command.hpp>
 #include <fire_engine/graphics/gpu_handle.hpp>
+#include <fire_engine/graphics/lighting.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
 #include <fire_engine/render/constants.hpp>
@@ -89,7 +91,8 @@ private:
         std::vector<DrawCommand> blend;
     };
 
-    void updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect);
+    void updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect,
+                         std::span<const Lighting> lights);
     [[nodiscard]] DrawBuckets buildDrawBuckets(const std::vector<DrawCommand>& drawCommands) const;
     void recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
                           PipelineHandle& lastBoundPipeline) const;

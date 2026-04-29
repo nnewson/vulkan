@@ -1,7 +1,44 @@
+#include <variant>
+
+#include <fire_engine/scene/light.hpp>
 #include <fire_engine/scene/scene_graph.hpp>
 
 namespace fire_engine
 {
+
+namespace
+{
+void gatherLightsRecursive(const Node& node, std::vector<Lighting>& out)
+{
+    if (auto* light = std::get_if<Light>(&node.component()))
+    {
+        out.push_back(Light::toLighting(*light, node.composedWorld()));
+    }
+    for (const auto& child : node.children())
+    {
+        gatherLightsRecursive(*child, out);
+    }
+}
+
+bool hasDirectionalLightRecursive(const Node& node)
+{
+    if (auto* light = std::get_if<Light>(&node.component()))
+    {
+        if (light->type() == Light::Type::Directional)
+        {
+            return true;
+        }
+    }
+    for (const auto& child : node.children())
+    {
+        if (hasDirectionalLightRecursive(*child))
+        {
+            return true;
+        }
+    }
+    return false;
+}
+} // namespace
 
 Node& SceneGraph::addNode(std::unique_ptr<Node> node)
 {
@@ -23,6 +60,28 @@ void SceneGraph::render(const RenderContext& ctx)
     {
         node->render(ctx, rootTransform_);
     }
+}
+
+std::vector<Lighting> SceneGraph::gatherLights() const
+{
+    std::vector<Lighting> out;
+    for (const auto& node : nodes_)
+    {
+        gatherLightsRecursive(*node, out);
+    }
+    return out;
+}
+
+bool SceneGraph::hasDirectionalLight() const
+{
+    for (const auto& node : nodes_)
+    {
+        if (hasDirectionalLightRecursive(*node))
+        {
+            return true;
+        }
+    }
+    return false;
 }
 
 } // namespace fire_engine

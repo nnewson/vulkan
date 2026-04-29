@@ -68,18 +68,47 @@ TEST(Material, TexturePointersRoundTrip)
     Texture normal;
     Texture mr;
     Texture occlusion;
+    Texture transmission;
 
     mat.texture(&base);
     mat.emissiveTexture(&emissive);
     mat.normalTexture(&normal);
     mat.metallicRoughnessTexture(&mr);
     mat.occlusionTexture(&occlusion);
+    mat.transmissionTexture(&transmission);
 
     EXPECT_TRUE(mat.hasTexture());
     EXPECT_TRUE(mat.hasEmissiveTexture());
     EXPECT_TRUE(mat.hasNormalTexture());
     EXPECT_TRUE(mat.hasMetallicRoughnessTexture());
     EXPECT_TRUE(mat.hasOcclusionTexture());
+    EXPECT_TRUE(mat.hasTransmissionTexture());
+}
+
+TEST(Material, TransmissionFactorRoundTrip)
+{
+    Material mat;
+    EXPECT_FLOAT_EQ(mat.transmissionFactor(), 0.0f);
+    mat.transmissionFactor(0.65f);
+    EXPECT_FLOAT_EQ(mat.transmissionFactor(), 0.65f);
+}
+
+TEST(Material, TransmissionTexCoordRoundTrip)
+{
+    Material mat;
+    EXPECT_EQ(mat.transmissionTexCoord(), 0);
+    mat.transmissionTexCoord(1);
+    EXPECT_EQ(mat.transmissionTexCoord(), 1);
+}
+
+TEST(Material, TransmissionUvTransformRoundTrip)
+{
+    Material mat;
+    UvTransform t{0.5f, 0.25f, 2.0f, 3.0f, 0.4f};
+    mat.transmissionUvTransform(t);
+    EXPECT_FLOAT_EQ(mat.transmissionUvTransform().offsetX, 0.5f);
+    EXPECT_FLOAT_EQ(mat.transmissionUvTransform().scaleY, 3.0f);
+    EXPECT_FLOAT_EQ(mat.transmissionUvTransform().rotation, 0.4f);
 }
 
 TEST(Material, MoveConstructionPreservesCoreFields)

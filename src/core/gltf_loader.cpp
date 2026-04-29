@@ -27,6 +27,8 @@
 #include <fire_engine/graphics/skin.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/scene/animator.hpp>
+#include <fire_engine/scene/empty.hpp>
+#include <fire_engine/scene/light.hpp>
 #include <fire_engine/scene/mesh.hpp>
 #include <fire_engine/scene/node.hpp>
 #include <fire_engine/scene/scene_graph.hpp>
@@ -39,10 +41,12 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 3> kSupportedExtensions = {
+constexpr std::array<std::string_view, 5> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
     std::string_view{"KHR_texture_transform"},
     std::string_view{"KHR_materials_unlit"},
+    std::string_view{"KHR_lights_punctual"},
+    std::string_view{"KHR_materials_transmission"},
 };
 } // namespace
 
@@ -355,6 +359,55 @@ static std::vector<float> initialMorphWeights(const fastgltf::Mesh& mesh,
     return weights;
 }
 
+static Light::Type toLightType(fastgltf::LightType t) noexcept
+{
+    switch (t)
+    {
+    case fastgltf::LightType::Point:
+        return Light::Type::Point;
+    case fastgltf::LightType::Spot:
+        return Light::Type::Spot;
+    case fastgltf::LightType::Directional:
+    default:
+        return Light::Type::Directional;
+    }
+}
+
+// KHR_lights_punctual: attach a Light component to `node` if the glTF node
+// references a light. Only fires when the variant is still Empty — Light has
+// to share the Components variant slot, so a node already carrying a Mesh /
+// Animator / Camera skips with a warning. Cone angles only matter for Spot.
+static void applyLight(const fastgltf::Asset& asset, const fastgltf::Node& gltfNode, Node& node)
+{
+    if (!gltfNode.lightIndex.has_value())
+    {
+        return;
+    }
+    if (!std::holds_alternative<Empty>(node.component()))
+    {
+        std::clog << "glTF: skipping KHR_lights_punctual on node '" << node.name()
+                  << "' — node already has a non-Empty component (mesh/animator)\n";
+        return;
+    }
+    const auto& gl = asset.lights[gltfNode.lightIndex.value()];
+    auto& light = node.component().emplace<Light>();
+    light.type(toLightType(gl.type));
+    light.colour(Colour3{gl.color.x(), gl.color.y(), gl.color.z()});
+    light.intensity(static_cast<float>(gl.intensity));
+    if (gl.range.has_value())
+    {
+        light.range(static_cast<float>(gl.range.value()));
+    }
+    if (gl.outerConeAngle.has_value())
+    {
+        light.outerConeRad(static_cast<float>(gl.outerConeAngle.value()));
+    }
+    if (gl.innerConeAngle.has_value())
+    {
+        light.innerConeRad(static_cast<float>(gl.innerConeAngle.value()));
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Node helpers (formerly anonymous namespace)
 // ---------------------------------------------------------------------------
@@ -459,7 +512,10 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
         fastgltf::Extensions::KHR_materials_emissive_strength |
-        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit;
+        fastgltf::Extensions::KHR_texture_transform |
+        fastgltf::Extensions::KHR_materials_unlit |
+        fastgltf::Extensions::KHR_lights_punctual |
+        fastgltf::Extensions::KHR_materials_transmission;
     fastgltf::Parser parser(enabledExtensions);
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
@@ -616,6 +672,12 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         applyTRS(gltfNode, node);
     }
 
+    // KHR_lights_punctual on this node: only attaches if the node won't
+    // otherwise be holding a Mesh / Animator (helper guards via variant
+    // alternative check). Animated nodes lose the light with a warning —
+    // rare in practice and worth documenting once, not redesigning for.
+    applyLight(asset, gltfNode, node);
+
     // Load each glTF animation as a separate Animation object for this node
     std::vector<std::pair<std::size_t, Animation*>> nodeAnimations;
     for (std::size_t ai = 0; ai < asset.animations.size(); ++ai)
@@ -722,6 +784,8 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
+
+    applyLight(asset, gltfNode, node);
 
     if (gltfNode.meshIndex.has_value())
     {
@@ -900,6 +964,31 @@ const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
         if (gltfMat.occlusionTexture.has_value())
         {
             auto texIndex = gltfMat.occlusionTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                auto settings = extractSamplerSettings(asset, texIndex);
+                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
+                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
+            }
+            return &tex;
+        }
+    }
+
+    return nullptr;
+}
+
+const Texture* GltfLoader::resolveTransmissionTexture(const fastgltf::Asset& asset,
+                                                     const fastgltf::Primitive& primitive,
+                                                     const std::string& baseDir,
+                                                     Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.transmission != nullptr && gltfMat.transmission->transmissionTexture.has_value())
+        {
+            auto texIndex = gltfMat.transmission->transmissionTexture.value().textureIndex;
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
@@ -1275,6 +1364,8 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             resolveMetallicRoughnessTexture(asset, primitive, baseDir, resources, assets);
         const Texture* occTexPtr =
             resolveOcclusionTexture(asset, primitive, baseDir, resources, assets);
+        const Texture* transTexPtr =
+            resolveTransmissionTexture(asset, primitive, baseDir, resources, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
         auto tangentResult =
@@ -1295,6 +1386,10 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         if (occTexPtr != nullptr)
         {
             materialData.occlusionTexture(occTexPtr);
+        }
+        if (transTexPtr != nullptr)
+        {
+            materialData.transmissionTexture(transTexPtr);
         }
         if (normalTexPtr != nullptr)
         {
@@ -1422,6 +1517,20 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
         if (gltfMat.occlusionTexture.has_value())
         {
             material.occlusionUvTransform(readUvTransform(gltfMat.occlusionTexture.value()));
+        }
+
+        // KHR_materials_transmission: factor + optional texture (R channel).
+        // fastgltf surfaces transmission via a unique_ptr<MaterialTransmission>;
+        // null when the extension isn't present on the asset.
+        if (gltfMat.transmission != nullptr)
+        {
+            material.transmissionFactor(static_cast<float>(gltfMat.transmission->transmissionFactor));
+            if (gltfMat.transmission->transmissionTexture.has_value())
+            {
+                const auto& info = gltfMat.transmission->transmissionTexture.value();
+                material.transmissionTexCoord(static_cast<int>(info.texCoordIndex));
+                material.transmissionUvTransform(readUvTransform(info));
+            }
         }
 
         // KHR_materials_unlit. fastgltf surfaces this as a plain bool that

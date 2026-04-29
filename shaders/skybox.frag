@@ -10,8 +10,6 @@ layout(binding = 0) uniform SkyboxUBO {
 layout(binding = 1) uniform samplerCube skyboxMap;
 
 layout(binding = 2) uniform LightUBO {
-    vec4 direction;
-    vec4 colour;
     mat4 cascadeViewProj[4];
     vec4 cascadeSplits;
     vec4 iblParams;

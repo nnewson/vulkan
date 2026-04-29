@@ -105,6 +105,19 @@ public:
         return occlusionTexture_ != nullptr;
     }
 
+    [[nodiscard]] const Texture& transmissionTexture() const noexcept
+    {
+        return *transmissionTexture_;
+    }
+    void transmissionTexture(const Texture* t) noexcept
+    {
+        transmissionTexture_ = t;
+    }
+    [[nodiscard]] bool hasTransmissionTexture() const noexcept
+    {
+        return transmissionTexture_ != nullptr;
+    }
+
     [[nodiscard]] const std::string& name() const noexcept
     {
         return name_;
@@ -223,6 +236,14 @@ public:
     {
         occlusionTexCoord_ = v;
     }
+    [[nodiscard]] int transmissionTexCoord() const noexcept
+    {
+        return transmissionTexCoord_;
+    }
+    void transmissionTexCoord(int v) noexcept
+    {
+        transmissionTexCoord_ = v;
+    }
 
     // KHR_texture_transform per-slot UV transforms. Identity by default.
     [[nodiscard]] UvTransform baseColorUvTransform() const noexcept
@@ -264,6 +285,28 @@ public:
     void occlusionUvTransform(UvTransform t) noexcept
     {
         occlusionUvTransform_ = t;
+    }
+    [[nodiscard]] UvTransform transmissionUvTransform() const noexcept
+    {
+        return transmissionUvTransform_;
+    }
+    void transmissionUvTransform(UvTransform t) noexcept
+    {
+        transmissionUvTransform_ = t;
+    }
+
+    // KHR_materials_transmission. transmissionFactor scales the optional
+    // transmissionTexture (red channel). Default is 0 (no transmission) — when
+    // both factor and texture are absent the slot stays inert. Spec says the
+    // sampled R is gamma-encoded? No — the texture is linear. Encoding handled
+    // at load time by passing TextureEncoding::Linear.
+    [[nodiscard]] float transmissionFactor() const noexcept
+    {
+        return transmissionFactor_;
+    }
+    void transmissionFactor(float v) noexcept
+    {
+        transmissionFactor_ = v;
     }
 
     [[nodiscard]] AlphaMode alphaMode() const noexcept
@@ -319,13 +362,16 @@ private:
     int normalTexCoord_{0};
     int metallicRoughnessTexCoord_{0};
     int occlusionTexCoord_{0};
+    int transmissionTexCoord_{0};
     UvTransform baseColorUvTransform_{};
     UvTransform emissiveUvTransform_{};
     UvTransform normalUvTransform_{};
     UvTransform metallicRoughnessUvTransform_{};
     UvTransform occlusionUvTransform_{};
+    UvTransform transmissionUvTransform_{};
     AlphaMode alphaMode_{AlphaMode::Opaque};
     float alphaCutoff_{0.5f};
+    float transmissionFactor_{0.0f};
     bool doubleSided_{false};
     bool unlit_{false};
 
@@ -334,6 +380,7 @@ private:
     const Texture* normalTexture_{nullptr};
     const Texture* metallicRoughnessTexture_{nullptr};
     const Texture* occlusionTexture_{nullptr};
+    const Texture* transmissionTexture_{nullptr};
 };
 
 } // namespace fire_engine

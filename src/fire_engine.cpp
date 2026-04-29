@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
@@ -65,6 +66,32 @@ void FireEngine::loadScene(std::string_view scene_path)
             camera.localYaw(std::atan2(forward.z(), forward.x()));
             camera.localPitch(std::asin(forward.y()));
         }
+    }
+
+    // Seed default directional only when the asset didn't author its own
+    // (KHR_lights_punctual). Aim local -Z along (1, -1, 1).normalise() so
+    // the surface-to-light vector matches the previously-hardcoded sun.
+    if (!scene_.hasDirectionalLight())
+    {
+        auto sunNode = std::make_unique<Node>("Sun");
+        auto& sun = sunNode->component().emplace<Light>();
+        sun.type(Light::Type::Directional);
+        sun.colour(Colour3{1.0f, 1.0f, 1.0f});
+        sun.intensity(directionalLightIntensity);
+        Vec3 sunForward = Vec3::normalise(Vec3{1.0f, -1.0f, 1.0f});
+        Vec3 baseDir{0.0f, 0.0f, -1.0f};
+        Vec3 axis = Vec3::crossProduct(baseDir, sunForward);
+        float axisLen = axis.magnitude();
+        if (axisLen > float_epsilon)
+        {
+            axis = Vec3{axis.x() / axisLen, axis.y() / axisLen, axis.z() / axisLen};
+            float angle = std::acos(std::clamp(Vec3::dotProduct(baseDir, sunForward), -1.0f, 1.0f));
+            float h = angle * 0.5f;
+            float s = std::sin(h);
+            sunNode->transform().rotation(
+                Quaternion{axis.x() * s, axis.y() * s, axis.z() * s, std::cos(h)});
+        }
+        scene_.addNode(std::move(sunNode));
     }
 
     std::print("{}\n", scene_);
