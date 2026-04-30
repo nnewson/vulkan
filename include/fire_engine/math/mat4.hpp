@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include <fire_engine/math/vec3.hpp>
+#include <fire_engine/math/vec4.hpp>
 
 namespace fire_engine
 {
@@ -68,6 +69,15 @@ public:
     {
         *this = *this * rhs;
         return *this;
+    }
+
+    [[nodiscard]]
+    constexpr Vec4 operator*(const Vec4& rhs) const noexcept
+    {
+        return {m_[0] * rhs.x() + m_[4] * rhs.y() + m_[8] * rhs.z() + m_[12] * rhs.w(),
+                m_[1] * rhs.x() + m_[5] * rhs.y() + m_[9] * rhs.z() + m_[13] * rhs.w(),
+                m_[2] * rhs.x() + m_[6] * rhs.y() + m_[10] * rhs.z() + m_[14] * rhs.w(),
+                m_[3] * rhs.x() + m_[7] * rhs.y() + m_[11] * rhs.z() + m_[15] * rhs.w()};
     }
 
     [[nodiscard]]

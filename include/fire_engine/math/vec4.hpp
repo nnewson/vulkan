@@ -1,5 +1,6 @@
 #pragma once
 
+#include <fire_engine/math/vec3.hpp>
 #include <fire_engine/math/vec_base.hpp>
 
 namespace fire_engine
@@ -14,6 +15,13 @@ public:
         data_[1] = y;
         data_[2] = z;
         data_[3] = w;
+    }
+    constexpr Vec4(const Vec3& vec3) noexcept
+    {
+        data_[0] = vec3.x();
+        data_[1] = vec3.y();
+        data_[2] = vec3.z();
+        data_[3] = 1.0f;
     }
 
     ~Vec4() = default;
@@ -65,6 +73,11 @@ public:
     constexpr void w(float w) noexcept
     {
         data_[3] = w;
+    }
+
+    operator Vec3() const noexcept
+    {
+        return {data_[0], data_[1], data_[2]};
     }
 };
 

@@ -1,10 +1,12 @@
 #pragma once
 
+#include "fire_engine/collision/collider.hpp"
 #include <format>
 #include <memory>
 #include <string>
 #include <vector>
 
+#include <fire_engine/collision/collider.hpp>
 #include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/render/render_context.hpp>
@@ -77,6 +79,7 @@ private:
     std::string name_;
     Transform transform_;
     Components component_;
+    Collider collider_;
     Mat4 composedWorld_{Mat4::identity()};
     Node* parent_{nullptr};
     std::vector<std::unique_ptr<Node>> children_;

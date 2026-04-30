@@ -18,6 +18,8 @@ find_package(fastgltf CONFIG REQUIRED)
 
 add_library(fireengine SHARED
     src/animation/animation.cpp
+    src/collision/collider.cpp
+    src/collision/collisions.cpp
     src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
     src/core/system.cpp
@@ -124,6 +126,7 @@ add_custom_target(assets ALL
 enable_testing()
 
 add_executable(test_fire_engine
+    tests/collision/test_collisions.cpp
     tests/math/test_mat4.cpp
     tests/math/test_quaternion.cpp
     tests/math/test_vec2.cpp

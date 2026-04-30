@@ -8,6 +8,7 @@
 
 using fire_engine::Mat4;
 using fire_engine::Vec3;
+using fire_engine::Vec4;
 
 // ---- Helpers ----
 
@@ -51,6 +52,14 @@ static void expectNear(const Mat4& a, const Mat4& b, float eps = kEps)
             EXPECT_NEAR((a[row, col]), (b[row, col]), eps) << "row=" << row << " col=" << col;
         }
     }
+}
+
+static void expectNear(const Vec4& v, float x, float y, float z, float w, float eps = kEps)
+{
+    EXPECT_NEAR(v.x(), x, eps);
+    EXPECT_NEAR(v.y(), y, eps);
+    EXPECT_NEAR(v.z(), z, eps);
+    EXPECT_NEAR(v.w(), w, eps);
 }
 
 // ==========================================================================
@@ -272,6 +281,54 @@ TEST(Mat4Multiply, Associative)
     Mat4 ab_c = (a * b) * c;
     Mat4 a_bc = a * (b * c);
     expectNear(ab_c, a_bc);
+}
+
+TEST(Mat4MultiplyVec4, IdentityPreservesVector)
+{
+    Vec4 r = Mat4::identity() * Vec4{1.0f, 2.0f, 3.0f, 4.0f};
+    expectNear(r, 1.0f, 2.0f, 3.0f, 4.0f);
+}
+
+TEST(Mat4MultiplyVec4, TranslationTransformsPosition)
+{
+    Vec4 r = Mat4::translate({5.0f, 6.0f, 7.0f}) * Vec4{1.0f, 2.0f, 3.0f, 1.0f};
+    expectNear(r, 6.0f, 8.0f, 10.0f, 1.0f);
+}
+
+TEST(Mat4MultiplyVec4, TranslationDoesNotTransformDirection)
+{
+    Vec4 r = Mat4::translate({5.0f, 6.0f, 7.0f}) * Vec4{1.0f, 2.0f, 3.0f, 0.0f};
+    expectNear(r, 1.0f, 2.0f, 3.0f, 0.0f);
+}
+
+TEST(Mat4MultiplyVec4, ScaleTransformsVector)
+{
+    Vec4 r = Mat4::scale({2.0f, 3.0f, 4.0f}) * Vec4{1.0f, 2.0f, 3.0f, 5.0f};
+    expectNear(r, 2.0f, 6.0f, 12.0f, 5.0f);
+}
+
+TEST(Mat4MultiplyVec4, GeneralCaseUsesRowByColumnIndexing)
+{
+    Mat4 m;
+    m[0, 0] = 1.0f;
+    m[0, 1] = 2.0f;
+    m[0, 2] = 3.0f;
+    m[0, 3] = 4.0f;
+    m[1, 0] = 5.0f;
+    m[1, 1] = 6.0f;
+    m[1, 2] = 7.0f;
+    m[1, 3] = 8.0f;
+    m[2, 0] = 9.0f;
+    m[2, 1] = 10.0f;
+    m[2, 2] = 11.0f;
+    m[2, 3] = 12.0f;
+    m[3, 0] = 13.0f;
+    m[3, 1] = 14.0f;
+    m[3, 2] = 15.0f;
+    m[3, 3] = 16.0f;
+
+    Vec4 r = m * Vec4{1.0f, 2.0f, 3.0f, 4.0f};
+    expectNear(r, 30.0f, 70.0f, 110.0f, 150.0f);
 }
 
 // ==========================================================================
@@ -527,6 +584,15 @@ TEST(Mat4Constexpr, Multiply)
     static_assert((r[0, 1]) == 0.0f);
 }
 
+TEST(Mat4Constexpr, MultiplyVec4)
+{
+    constexpr Vec4 r = Mat4::identity() * Vec4{1.0f, 2.0f, 3.0f, 4.0f};
+    static_assert(r.x() == 1.0f);
+    static_assert(r.y() == 2.0f);
+    static_assert(r.z() == 3.0f);
+    static_assert(r.w() == 4.0f);
+}
+
 TEST(Mat4Constexpr, Equality)
 {
     constexpr Mat4 a = Mat4::identity();
@@ -552,6 +618,7 @@ TEST(Mat4Noexcept, AllOperationsAreNoexcept)
     static_assert(noexcept(a.data()));
     static_assert(noexcept(a * b));
     static_assert(noexcept(a *= b));
+    static_assert(noexcept(a * Vec4{}));
     static_assert(noexcept(a == b));
     static_assert(noexcept(Mat4::rotateX(0.0f)));
     static_assert(noexcept(Mat4::rotateY(0.0f)));
