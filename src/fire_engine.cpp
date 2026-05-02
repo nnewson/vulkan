@@ -4,6 +4,7 @@
 #include <cstring>
 #include <memory>
 #include <print>
+#include <variant>
 
 #include <fire_engine/fire_engine.hpp>
 
@@ -41,31 +42,26 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name,
 
 void FireEngine::loadScene(std::string_view scene_path)
 {
-    // Camera
-    auto cameraNode = std::make_unique<Node>("Camera");
-    auto& camera = cameraNode->component().emplace<Camera>();
-    camera.localPosition({2.0f, 2.0f, 2.0f});
-    camera.localPitch(-0.615f);
-    camera.localYaw(-2.356f);
-    scene_.addNode(std::move(cameraNode));
-    camera_ = &camera;
-
     // Load glTF scene (CLI arg overrides default)
     constexpr std::string_view default_scene = "RiggedSimple/RiggedSimple.gltf";
     std::string_view path = scene_path.empty() ? default_scene : scene_path;
-    auto authoredCamera =
+    Node* activeCamera =
         GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_);
 
-    if (authoredCamera.has_value())
+    if (activeCamera != nullptr)
     {
-        Vec3 forward = authoredCamera->target - authoredCamera->position;
-        if (forward.magnitudeSquared() > float_epsilon)
-        {
-            forward.normalise();
-            camera.localPosition(authoredCamera->position);
-            camera.localYaw(std::atan2(forward.z(), forward.x()));
-            camera.localPitch(std::asin(forward.y()));
-        }
+        camera_ = std::get_if<Camera>(&activeCamera->component());
+    }
+
+    if (camera_ == nullptr)
+    {
+        auto cameraNode = std::make_unique<Node>("Camera");
+        auto& camera = cameraNode->component().emplace<Camera>();
+        camera.localPosition({2.0f, 2.0f, 2.0f});
+        camera.localPitch(-0.615f);
+        camera.localYaw(-2.356f);
+        scene_.addNode(std::move(cameraNode));
+        camera_ = &camera;
     }
 
     // Seed default directional only when the asset didn't author its own

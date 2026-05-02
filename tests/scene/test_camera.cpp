@@ -8,6 +8,10 @@
 #include <gtest/gtest.h>
 
 using fire_engine::Camera;
+using fire_engine::InputState;
+using fire_engine::Mat4;
+using fire_engine::Quaternion;
+using fire_engine::Transform;
 using fire_engine::Vec3;
 
 // ==========================================================================
@@ -235,8 +239,69 @@ TEST(CameraMove, MoveAssignTransfersState)
 // ==========================================================================
 
 using fire_engine::CameraState;
-using fire_engine::InputState;
-using fire_engine::Transform;
+
+// ==========================================================================
+// World transform composition
+// ==========================================================================
+
+TEST(CameraWorldTransform, ImportedIdentityCameraLooksDownNegativeZ)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(-static_cast<float>(M_PI) / 2.0f);
+    cam.localPitch(0.0f);
+
+    Transform t;
+    t.position({0.0f, 24.0f, 60.0f});
+    t.update(Mat4::identity());
+
+    cam.update(InputState{}, t);
+
+    EXPECT_NEAR(cam.worldPosition().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldPosition().y(), 24.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldPosition().z(), 60.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().x(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().y(), 24.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().z(), 59.0f, 1e-5f);
+}
+
+TEST(CameraWorldTransform, ParentTransformContributesToWorldPosition)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(-static_cast<float>(M_PI) / 2.0f);
+    cam.localPitch(0.0f);
+
+    Transform t;
+    t.position({1.0f, 2.0f, 3.0f});
+    t.update(Mat4::translate(Vec3{10.0f, 20.0f, 30.0f}));
+
+    cam.update(InputState{}, t);
+
+    EXPECT_NEAR(cam.worldPosition().x(), 11.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldPosition().y(), 22.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldPosition().z(), 33.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().z(), 32.0f, 1e-5f);
+}
+
+TEST(CameraWorldTransform, NodeRotationRotatesImportedCameraForward)
+{
+    Camera cam;
+    cam.localPosition({0.0f, 0.0f, 0.0f});
+    cam.localYaw(-static_cast<float>(M_PI) / 2.0f);
+    cam.localPitch(0.0f);
+
+    const float halfAngle = static_cast<float>(M_PI) * 0.25f;
+    Transform t;
+    t.rotation(Quaternion{0.0f, std::sin(halfAngle), 0.0f, std::cos(halfAngle)});
+    t.update(Mat4::identity());
+
+    cam.update(InputState{}, t);
+
+    EXPECT_NEAR(cam.worldTarget().x(), -1.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().y(), 0.0f, 1e-5f);
+    EXPECT_NEAR(cam.worldTarget().z(), 0.0f, 1e-5f);
+}
 
 TEST(CameraMovement, ForwardMovesAlongYawDirection)
 {

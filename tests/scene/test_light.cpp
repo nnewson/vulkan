@@ -127,7 +127,7 @@ TEST(LightGather, TranslatedPointKeepsForwardSetsPosition)
 
 TEST(LightGather, RotatedNodeRotatesForward)
 {
-    // Yaw 90° → forward rotates from -Z to -X (matches CameraView convention).
+    // Yaw 90° → forward rotates from -Z to -X (matches glTF camera convention).
     Light l;
     l.type(Light::Type::Spot);
     auto world = Mat4::rotateY(fire_engine::pi * 0.5f);

@@ -29,6 +29,7 @@
 #include <fire_engine/math/constants.hpp>
 #include <fire_engine/math/quaternion.hpp>
 #include <fire_engine/scene/animator.hpp>
+#include <fire_engine/scene/camera.hpp>
 #include <fire_engine/scene/empty.hpp>
 #include <fire_engine/scene/light.hpp>
 #include <fire_engine/scene/mesh.hpp>
@@ -112,97 +113,6 @@ void GltfLoader::ensureSupportedExtensions(std::span<const std::string_view> req
         msg.append(ext);
     }
     throw std::runtime_error(msg);
-}
-
-// ---------------------------------------------------------------------------
-// Camera adoption (KHR_lights_punctual is a separate milestone — D2 only
-// surfaces the first node-attached camera so the engine starts framed where
-// the artist intended.)
-// ---------------------------------------------------------------------------
-
-namespace
-{
-Mat4 nodeLocalMatrix(const fastgltf::Node& node)
-{
-    if (auto* trs = std::get_if<fastgltf::TRS>(&node.transform))
-    {
-        Vec3 t{trs->translation.x(), trs->translation.y(), trs->translation.z()};
-        Quaternion r{trs->rotation.x(), trs->rotation.y(), trs->rotation.z(), trs->rotation.w()};
-        Vec3 s{trs->scale.x(), trs->scale.y(), trs->scale.z()};
-        return Mat4::translate(t) * r.toMat4() * Mat4::scale(s);
-    }
-    if (auto* mat = std::get_if<fastgltf::math::fmat4x4>(&node.transform))
-    {
-        Mat4 result;
-        for (int c = 0; c < 4; ++c)
-        {
-            for (int r = 0; r < 4; ++r)
-            {
-                result[r, c] = (*mat)[c][r];
-            }
-        }
-        return result;
-    }
-    return Mat4::identity();
-}
-
-bool walkForCamera(const fastgltf::Asset& asset, std::size_t nodeIndex, const Mat4& parentWorld,
-                   std::optional<GltfLoader::CameraView>& out)
-{
-    const auto& node = asset.nodes[nodeIndex];
-    Mat4 world = parentWorld * nodeLocalMatrix(node);
-    if (node.cameraIndex.has_value())
-    {
-        out = GltfLoader::cameraViewFromMatrix(world);
-        return true;
-    }
-    for (auto childIndex : node.children)
-    {
-        if (walkForCamera(asset, childIndex, world, out))
-        {
-            return true;
-        }
-    }
-    return false;
-}
-} // namespace
-
-GltfLoader::CameraView GltfLoader::cameraViewFromMatrix(const Mat4& world) noexcept
-{
-    Vec3 position{world[0, 3], world[1, 3], world[2, 3]};
-    Vec3 forward{-world[0, 2], -world[1, 2], -world[2, 2]};
-    if (forward.magnitudeSquared() < float_epsilon)
-    {
-        forward = Vec3{0.0f, 0.0f, -1.0f};
-    }
-    else
-    {
-        forward.normalise();
-    }
-    return CameraView{position, position + forward};
-}
-
-std::optional<GltfLoader::CameraView> GltfLoader::findFirstCamera(const fastgltf::Asset& asset)
-{
-    if (asset.scenes.empty() || asset.cameras.empty())
-    {
-        return std::nullopt;
-    }
-    std::size_t sceneIndex = asset.defaultScene.has_value() ? asset.defaultScene.value() : 0;
-    if (sceneIndex >= asset.scenes.size())
-    {
-        return std::nullopt;
-    }
-    const auto& scene = asset.scenes[sceneIndex];
-    std::optional<CameraView> result;
-    for (auto nodeIndex : scene.nodeIndices)
-    {
-        if (walkForCamera(asset, nodeIndex, Mat4::identity(), result))
-        {
-            break;
-        }
-    }
-    return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -503,6 +413,35 @@ std::string GltfLoader::nodeName(const fastgltf::Asset& asset, const fastgltf::N
     return "Node";
 }
 
+Node& GltfLoader::attachCamera(Node& node, Node*& activeCamera)
+{
+    auto configureCamera = [](Camera& camera)
+    {
+        camera.localPosition({0.0f, 0.0f, 0.0f});
+        camera.localYaw(-pi / 2.0f);
+        camera.localPitch(0.0f);
+    };
+
+    Node* cameraNode = &node;
+    if (std::holds_alternative<Empty>(node.component()))
+    {
+        configureCamera(node.component().emplace<Camera>());
+    }
+    else
+    {
+        auto child = std::make_unique<Node>(node.name() + "_Camera");
+        cameraNode = &node.addChild(std::move(child));
+        configureCamera(cameraNode->component().emplace<Camera>());
+    }
+
+    if (activeCamera == nullptr)
+    {
+        activeCamera = cameraNode;
+    }
+
+    return *cameraNode;
+}
+
 // ---------------------------------------------------------------------------
 // Asset parsing and setup
 // ---------------------------------------------------------------------------
@@ -570,9 +509,8 @@ void GltfLoader::presizeAssets(const fastgltf::Asset& asset, Assets& assets)
 // Scene and node loading
 // ---------------------------------------------------------------------------
 
-std::optional<GltfLoader::CameraView> GltfLoader::loadScene(const std::string& path,
-                                                            SceneGraph& scene, Resources& resources,
-                                                            Assets& assets)
+Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
+                            Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
     auto result = parseAsset(gltfPath);
@@ -601,6 +539,7 @@ std::optional<GltfLoader::CameraView> GltfLoader::loadScene(const std::string& p
     NodeMap nodeMap;
     MeshMap meshMap;
     std::size_t nextAnimSlot = 0;
+    Node* activeCamera = nullptr;
     for (auto nodeIndex : gltfScene.nodeIndices)
     {
         auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
@@ -610,25 +549,25 @@ std::optional<GltfLoader::CameraView> GltfLoader::loadScene(const std::string& p
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot);
+                                  meshMap, nextAnimSlot, activeCamera);
         }
         else
         {
             loadNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot);
+                     nextAnimSlot, activeCamera);
         }
     }
 
     // Resolve skins after the full scene graph is built
     applySkins(asset, nodeMap, meshMap, assets);
 
-    return findFirstCamera(asset);
+    return activeCamera;
 }
 
 void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
                                        Node& node, const std::string& baseDir, Resources& resources,
                                        Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
-                                       std::size_t& nextAnimSlot)
+                                       std::size_t& nextAnimSlot, Node*& activeCamera)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
@@ -761,6 +700,11 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         mesh.initialMorphWeights(initialMorphWeights(gltfMesh, numMorphTargets));
     }
 
+    if (gltfNode.cameraIndex.has_value())
+    {
+        attachCamera(node, activeCamera);
+    }
+
     for (auto childIndex : gltfNode.children)
     {
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
@@ -770,19 +714,20 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot);
+                                  meshMap, nextAnimSlot, activeCamera);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot);
+                     nextAnimSlot, activeCamera);
         }
     }
 }
 
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
                           const std::string& baseDir, Resources& resources, Assets& assets,
-                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot)
+                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
+                          Node*& activeCamera)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -809,6 +754,11 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         }
     }
 
+    if (gltfNode.cameraIndex.has_value())
+    {
+        attachCamera(node, activeCamera);
+    }
+
     for (auto childIndex : gltfNode.children)
     {
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
@@ -818,12 +768,12 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot);
+                                  meshMap, nextAnimSlot, activeCamera);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot);
+                     nextAnimSlot, activeCamera);
         }
     }
 }

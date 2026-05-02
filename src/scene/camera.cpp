@@ -1,5 +1,10 @@
 #include <fire_engine/scene/node.hpp>
 
+#include <algorithm>
+
+#include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/vec4.hpp>
+
 namespace fire_engine
 {
 
@@ -29,12 +34,22 @@ void Camera::update(const InputState& input_state, const Transform& transform)
     Vec3 forward3D{cosPitch * cosYaw, sinPitch, cosPitch * sinYaw};
     localPosition_ = localPosition_ + forward3D * cs.deltaZoom();
 
-    Vec3 tp = transform.position();
-    Vec3 tr = transform.rotation().toEulerXYZ();
+    const Mat4 world = transform.world();
+    const Vec3 localTarget = computeTarget(localPosition_, localYaw_, localPitch_);
+    worldPosition_ = world * Vec4{localPosition_};
 
-    worldPosition_ = localPosition_ + tp;
-    worldYaw_ = localYaw_ + tr.y();
-    worldPitch_ = clampPitch(localPitch_ + tr.x());
+    Vec3 worldForward = static_cast<Vec3>(world * Vec4{localTarget}) - worldPosition_;
+    if (worldForward.magnitudeSquared() < float_epsilon)
+    {
+        worldForward = computeTarget(Vec3{}, localYaw_, localPitch_);
+    }
+    else
+    {
+        worldForward.normalise();
+    }
+
+    worldYaw_ = std::atan2(worldForward.z(), worldForward.x());
+    worldPitch_ = clampPitch(std::asin(std::clamp(worldForward.y(), -1.0f, 1.0f)));
 }
 
 Mat4 Camera::render(const RenderContext& /*ctx*/, const Mat4& world)
