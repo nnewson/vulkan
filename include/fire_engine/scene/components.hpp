@@ -1,7 +1,7 @@
 #pragma once
 
-#include <type_traits>
 #include <string_view>
+#include <type_traits>
 #include <variant>
 
 #include <fire_engine/math/mat4.hpp>

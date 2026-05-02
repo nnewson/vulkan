@@ -1,10 +1,10 @@
 #pragma once
 
-#include <fire_engine/input/input_state.hpp>
-#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/graphics/colour3.hpp>
 #include <fire_engine/graphics/lighting.hpp>
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/constants.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
