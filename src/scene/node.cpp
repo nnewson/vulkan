@@ -41,8 +41,7 @@ void Node::update(const InputState& input_state, const Mat4& parentComposedWorld
                component_);
 
     // Composed world includes component effects (e.g. Animator's model matrix)
-    Mat4 componentMatrix = std::visit([](const auto& component) -> Mat4
-                                      { return component.modelMatrix(); }, component_);
+    Mat4 componentMatrix = componentModelMatrix(component_);
     composedWorld_ = parentComposedWorld * transform_.local() * componentMatrix;
     if (collider_)
     {
@@ -79,8 +78,7 @@ void Node::resolve(const Mat4& parentComposedWorld)
 {
     transform_.update(parentComposedWorld);
 
-    Mat4 componentMatrix = std::visit([](const auto& component) -> Mat4
-                                      { return component.modelMatrix(); }, component_);
+    Mat4 componentMatrix = componentModelMatrix(component_);
     composedWorld_ = parentComposedWorld * transform_.local() * componentMatrix;
     if (collider_)
     {

@@ -4,15 +4,18 @@
 #include <vector>
 
 #include <fire_engine/graphics/object.hpp>
-#include <fire_engine/scene/component.hpp>
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/math/mat4.hpp>
+#include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
 {
 
 class Animation;
+struct RenderContext;
 class Skin;
 
-class Mesh : public Component
+class Mesh
 {
 public:
     struct MorphAnimationEntry
@@ -22,7 +25,7 @@ public:
     };
 
     explicit Mesh(Object object);
-    ~Mesh() override = default;
+    ~Mesh() = default;
 
     Mesh(const Mesh&) = delete;
     Mesh& operator=(const Mesh&) = delete;
@@ -75,10 +78,10 @@ public:
         morphWeights_ = std::move(w);
     }
 
-    void update(const InputState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform);
 
     [[nodiscard]]
-    Mat4 render(const RenderContext& ctx, const Mat4& world) override;
+    Mat4 render(const RenderContext& ctx, const Mat4& world);
 
 private:
     [[nodiscard]] std::size_t findMorphAnimationIndex(std::size_t id) const noexcept;

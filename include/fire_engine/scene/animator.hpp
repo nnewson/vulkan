@@ -1,16 +1,19 @@
 #pragma once
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/math/mat4.hpp>
+#include <fire_engine/scene/transform.hpp>
+
 #include <cstddef>
 #include <vector>
-
-#include <fire_engine/scene/component.hpp>
 
 namespace fire_engine
 {
 
 class Animation;
+struct RenderContext;
 
-class Animator : public Component
+class Animator
 {
 public:
     struct AnimationEntry
@@ -20,20 +23,20 @@ public:
     };
 
     Animator() = default;
-    ~Animator() override = default;
+    ~Animator() = default;
 
     Animator(const Animator&) = default;
     Animator& operator=(const Animator&) = default;
     Animator(Animator&&) noexcept = default;
     Animator& operator=(Animator&&) noexcept = default;
 
-    void update(const InputState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform);
 
     [[nodiscard]]
-    Mat4 render(const RenderContext& ctx, const Mat4& world) override;
+    Mat4 render(const RenderContext& ctx, const Mat4& world);
 
     [[nodiscard]]
-    Mat4 modelMatrix() const noexcept override
+    Mat4 modelMatrix() const noexcept
     {
         return modelMatrix_;
     }

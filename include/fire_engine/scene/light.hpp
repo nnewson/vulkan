@@ -1,14 +1,18 @@
 #pragma once
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/graphics/colour3.hpp>
 #include <fire_engine/graphics/lighting.hpp>
 #include <fire_engine/math/constants.hpp>
-#include <fire_engine/scene/component.hpp>
+#include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
 {
 
-class Light : public Component
+struct RenderContext;
+
+class Light
 {
 public:
     enum class Type
@@ -25,17 +29,17 @@ public:
     [[nodiscard]] static Lighting toLighting(const Light& light, const Mat4& world) noexcept;
 
     Light() = default;
-    ~Light() override = default;
+    ~Light() = default;
 
     Light(const Light&) = default;
     Light& operator=(const Light&) = default;
     Light(Light&&) noexcept = default;
     Light& operator=(Light&&) noexcept = default;
 
-    void update(const InputState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform);
 
     [[nodiscard]]
-    Mat4 render(const RenderContext& ctx, const Mat4& world) override;
+    Mat4 render(const RenderContext& ctx, const Mat4& world);
 
     [[nodiscard]]
     Type type() const noexcept

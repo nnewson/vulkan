@@ -1,8 +1,10 @@
 #pragma once
 
+#include <type_traits>
 #include <string_view>
 #include <variant>
 
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/scene/animator.hpp>
 #include <fire_engine/scene/camera.hpp>
 #include <fire_engine/scene/empty.hpp>
@@ -39,6 +41,23 @@ using Components = std::variant<Empty, Animator, Camera, Mesh, Light>;
             else if constexpr (std::is_same_v<T, Light>)
             {
                 return "Light";
+            }
+        },
+        component);
+}
+
+[[nodiscard]] inline Mat4 componentModelMatrix(const Components& component) noexcept
+{
+    return std::visit(
+        [](const auto& c) -> Mat4
+        {
+            if constexpr (requires { c.modelMatrix(); })
+            {
+                return c.modelMatrix();
+            }
+            else
+            {
+                return Mat4::identity();
             }
         },
         component);

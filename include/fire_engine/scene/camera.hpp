@@ -2,27 +2,31 @@
 
 #include <cmath>
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
-#include <fire_engine/scene/component.hpp>
+#include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
 {
 
-class Camera : public Component
+struct RenderContext;
+
+class Camera
 {
 public:
     Camera() = default;
-    ~Camera() override = default;
+    ~Camera() = default;
 
     Camera(const Camera&) = default;
     Camera& operator=(const Camera&) = default;
     Camera(Camera&&) noexcept = default;
     Camera& operator=(Camera&&) noexcept = default;
 
-    void update(const InputState& input_state, const Transform& transform) override;
+    void update(const InputState& input_state, const Transform& transform);
 
     [[nodiscard]]
-    Mat4 render(const RenderContext& ctx, const Mat4& world) override;
+    Mat4 render(const RenderContext& ctx, const Mat4& world);
 
     [[nodiscard]]
     Vec3 localPosition() const noexcept

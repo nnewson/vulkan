@@ -1,7 +1,9 @@
 #include <cmath>
 
+#include <fire_engine/input/input_state.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/light.hpp>
+#include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
 {

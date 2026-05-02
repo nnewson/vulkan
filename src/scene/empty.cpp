@@ -1,5 +1,8 @@
 #include <fire_engine/scene/empty.hpp>
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/scene/transform.hpp>
+
 namespace fire_engine
 {
 
