@@ -3,7 +3,10 @@
 #include <gtest/gtest.h>
 
 using fire_engine::Camera;
+using fire_engine::InputState;
+using fire_engine::Mat4;
 using fire_engine::Node;
+using fire_engine::Vec3;
 
 // ==========================================================================
 // Construction
@@ -64,6 +67,29 @@ TEST(NodeAccessors, ConstTransform)
     n.transform().position({5.0f, 0.0f, 0.0f});
     const Node& cn = n;
     EXPECT_FLOAT_EQ(cn.transform().position().x(), 5.0f);
+}
+
+TEST(NodeAccessors, ColliderIsMutable)
+{
+    Node n("ColliderNode");
+    n.collider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
+
+    const auto bounds = n.collider().localBounds();
+    EXPECT_EQ(bounds.min, Vec3(-1.0f, -2.0f, -3.0f));
+    EXPECT_EQ(bounds.max, Vec3(1.0f, 2.0f, 3.0f));
+}
+
+TEST(NodeUpdate, UpdatesColliderWorldBounds)
+{
+    Node n("ColliderNode");
+    n.transform().position({10.0f, 20.0f, 30.0f});
+    n.collider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
+
+    n.update(InputState{}, Mat4::identity());
+
+    const auto bounds = n.collider().worldBounds();
+    EXPECT_EQ(bounds.min, Vec3(9.0f, 18.0f, 27.0f));
+    EXPECT_EQ(bounds.max, Vec3(11.0f, 22.0f, 33.0f));
 }
 
 // ==========================================================================

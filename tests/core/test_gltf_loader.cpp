@@ -361,6 +361,66 @@ TEST(GltfFixture, MinimalTriangleFixtureParses)
     EXPECT_EQ(asset.accessors[0].count, 3u);
 }
 
+TEST(GltfMeshBounds, UsesPositionAccessorMinMax)
+{
+    auto gltfPath = std::filesystem::path("test_assets/minimal_triangle.gltf");
+
+    fastgltf::Parser parser;
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
+    ASSERT_EQ(dataResult.error(), fastgltf::Error::None);
+
+    auto result =
+        parser.loadGltf(dataResult.get(), gltfPath.parent_path(), fastgltf::Options::None);
+    ASSERT_EQ(result.error(), fastgltf::Error::None);
+
+    const auto& asset = result.get();
+    auto bounds = GltfLoader::meshBounds(asset, asset.meshes[0]);
+    ASSERT_TRUE(bounds.has_value());
+    EXPECT_EQ(bounds->min, Vec3(0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(bounds->max, Vec3(1.0f, 1.0f, 0.0f));
+}
+
+TEST(GltfMeshBounds, FallsBackToScanningPositionsWhenAccessorBoundsAreAbsent)
+{
+    auto gltfPath = std::filesystem::path("test_assets/minimal_triangle.gltf");
+
+    fastgltf::Parser parser;
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
+    ASSERT_EQ(dataResult.error(), fastgltf::Error::None);
+
+    auto result = parser.loadGltf(dataResult.get(), gltfPath.parent_path(),
+                                  fastgltf::Options::LoadExternalBuffers);
+    ASSERT_EQ(result.error(), fastgltf::Error::None);
+
+    auto& asset = result.get();
+    asset.accessors[0].min.reset();
+    asset.accessors[0].max.reset();
+
+    auto bounds = GltfLoader::meshBounds(asset, asset.meshes[0]);
+    ASSERT_TRUE(bounds.has_value());
+    EXPECT_EQ(bounds->min, Vec3(0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(bounds->max, Vec3(1.0f, 1.0f, 0.0f));
+}
+
+TEST(GltfMeshBounds, UnsupportedPrimitiveDoesNotCreateBounds)
+{
+    auto gltfPath = std::filesystem::path("test_assets/minimal_triangle.gltf");
+
+    fastgltf::Parser parser;
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
+    ASSERT_EQ(dataResult.error(), fastgltf::Error::None);
+
+    auto result =
+        parser.loadGltf(dataResult.get(), gltfPath.parent_path(), fastgltf::Options::None);
+    ASSERT_EQ(result.error(), fastgltf::Error::None);
+
+    auto& asset = result.get();
+    asset.meshes[0].primitives[0].type = fastgltf::PrimitiveType::Lines;
+
+    auto bounds = GltfLoader::meshBounds(asset, asset.meshes[0]);
+    EXPECT_FALSE(bounds.has_value());
+}
+
 // ==========================================================================
 // Smooth-normal generation — runs in the loader when a glTF primitive omits
 // the NORMAL attribute (Fox.gltf, etc.). Verifies the algorithm directly so

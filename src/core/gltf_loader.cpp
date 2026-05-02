@@ -2,7 +2,9 @@
 
 #include <fire_engine/render/resources.hpp>
 
+#include <algorithm>
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -722,6 +724,7 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
             auto object =
                 loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
             meshRef.component().emplace<Mesh>(std::move(object));
+            applyMeshColliderBounds(asset, gltfMesh, meshRef);
             meshMap[nodeIndex] = &std::get<Mesh>(meshRef.component());
 
             if (hasWeightAnim)
@@ -742,6 +745,7 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         auto object =
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
+        applyMeshColliderBounds(asset, gltfMesh, node);
         auto& mesh = std::get<Mesh>(node.component());
         meshMap[nodeIndex] = &mesh;
 
@@ -791,6 +795,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         auto object =
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
+        applyMeshColliderBounds(asset, gltfMesh, node);
         meshMap[nodeIndex] = &std::get<Mesh>(node.component());
 
         // Static meshes with morph targets still honour mesh.weights (e.g.
@@ -826,6 +831,120 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
 // ---------------------------------------------------------------------------
 // Mesh loading helpers
 // ---------------------------------------------------------------------------
+
+namespace
+{
+[[nodiscard]]
+std::optional<Vec3> boundsArrayVec3(const fastgltf::AccessorBoundsArray& bounds)
+{
+    if (bounds.size() < 3)
+    {
+        return std::nullopt;
+    }
+
+    if (bounds.isType<double>())
+    {
+        return Vec3{static_cast<float>(bounds.get<double>(0)),
+                    static_cast<float>(bounds.get<double>(1)),
+                    static_cast<float>(bounds.get<double>(2))};
+    }
+    if (bounds.isType<std::int64_t>())
+    {
+        return Vec3{static_cast<float>(bounds.get<std::int64_t>(0)),
+                    static_cast<float>(bounds.get<std::int64_t>(1)),
+                    static_cast<float>(bounds.get<std::int64_t>(2))};
+    }
+
+    return std::nullopt;
+}
+
+[[nodiscard]]
+AABB mergeBounds(const AABB& lhs, const AABB& rhs) noexcept
+{
+    return AABB{
+        Vec3{std::min(lhs.min.x(), rhs.min.x()), std::min(lhs.min.y(), rhs.min.y()),
+             std::min(lhs.min.z(), rhs.min.z())},
+        Vec3{std::max(lhs.max.x(), rhs.max.x()), std::max(lhs.max.y(), rhs.max.y()),
+             std::max(lhs.max.z(), rhs.max.z())},
+    };
+}
+} // namespace
+
+std::optional<AABB> GltfLoader::primitiveBounds(const fastgltf::Asset& asset,
+                                                const fastgltf::Primitive& primitive)
+{
+    if (!isSupportedPrimitiveType(primitive.type))
+    {
+        return std::nullopt;
+    }
+
+    const auto* posAttr = primitive.findAttribute("POSITION");
+    if (posAttr == primitive.attributes.end())
+    {
+        return std::nullopt;
+    }
+
+    const auto& posAccessor = asset.accessors[posAttr->accessorIndex];
+    if (posAccessor.min.has_value() && posAccessor.max.has_value())
+    {
+        auto min = boundsArrayVec3(posAccessor.min.value());
+        auto max = boundsArrayVec3(posAccessor.max.value());
+        if (min.has_value() && max.has_value())
+        {
+            return AABB{min.value(), max.value()};
+        }
+    }
+
+    std::optional<AABB> bounds;
+    fastgltf::iterateAccessorWithIndex<fastgltf::math::fvec3>(
+        asset, posAccessor,
+        [&bounds](fastgltf::math::fvec3 pos, std::size_t)
+        {
+            const Vec3 point{pos.x(), pos.y(), pos.z()};
+            if (!bounds.has_value())
+            {
+                bounds = AABB{point, point};
+                return;
+            }
+
+            bounds->min.x(std::min(bounds->min.x(), point.x()));
+            bounds->min.y(std::min(bounds->min.y(), point.y()));
+            bounds->min.z(std::min(bounds->min.z(), point.z()));
+            bounds->max.x(std::max(bounds->max.x(), point.x()));
+            bounds->max.y(std::max(bounds->max.y(), point.y()));
+            bounds->max.z(std::max(bounds->max.z(), point.z()));
+        });
+
+    return bounds;
+}
+
+std::optional<AABB> GltfLoader::meshBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh)
+{
+    std::optional<AABB> bounds;
+    for (const auto& primitive : mesh.primitives)
+    {
+        auto primitiveBox = primitiveBounds(asset, primitive);
+        if (!primitiveBox.has_value())
+        {
+            continue;
+        }
+
+        bounds =
+            bounds.has_value() ? mergeBounds(bounds.value(), primitiveBox.value()) : primitiveBox;
+    }
+
+    return bounds;
+}
+
+void GltfLoader::applyMeshColliderBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
+                                         Node& node)
+{
+    auto bounds = meshBounds(asset, mesh);
+    if (bounds.has_value())
+    {
+        node.collider().localBounds(bounds.value());
+    }
+}
 
 Image GltfLoader::loadImage(const fastgltf::Asset& asset, std::size_t imageIndex,
                             const std::string& baseDir)

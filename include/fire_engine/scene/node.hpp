@@ -1,6 +1,5 @@
 #pragma once
 
-#include "fire_engine/collision/collider.hpp"
 #include <format>
 #include <memory>
 #include <string>
@@ -53,6 +52,15 @@ public:
     [[nodiscard]] const Components& component() const noexcept
     {
         return component_;
+    }
+
+    [[nodiscard]] Collider& collider() noexcept
+    {
+        return collider_;
+    }
+    [[nodiscard]] const Collider& collider() const noexcept
+    {
+        return collider_;
     }
 
     [[nodiscard]] Node* parent() const noexcept

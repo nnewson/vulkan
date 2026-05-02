@@ -12,6 +12,7 @@
 #include <fastgltf/core.hpp>
 
 #include <fire_engine/animation/animation.hpp>
+#include <fire_engine/collision/collider.hpp>
 #include <fire_engine/core/tangent_generator.hpp>
 #include <fire_engine/graphics/image.hpp>
 #include <fire_engine/math/mat4.hpp>
@@ -97,6 +98,11 @@ public:
     using NodeMap = std::unordered_map<std::size_t, Node*>;
     using MeshMap = std::unordered_map<std::size_t, Mesh*>;
 
+    // CPU-only mesh bounds for collision setup. Prefers POSITION accessor
+    // min/max when present, falling back to scanning POSITION data.
+    [[nodiscard]]
+    static std::optional<AABB> meshBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh);
+
 private:
     // Asset parsing and setup
     [[nodiscard]]
@@ -131,6 +137,13 @@ private:
                            const MeshMap& meshMap, Assets& assets);
 
     // Mesh loading
+    [[nodiscard]]
+    static std::optional<AABB> primitiveBounds(const fastgltf::Asset& asset,
+                                               const fastgltf::Primitive& primitive);
+
+    static void applyMeshColliderBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
+                                        Node& node);
+
     [[nodiscard]]
     static Object loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
                            const std::string& baseDir, Resources& resources, Assets& assets,
