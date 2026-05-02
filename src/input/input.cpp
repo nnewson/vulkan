@@ -76,6 +76,7 @@ InputState Input::update(const Window& window, float deltaTime)
     }
 
     InputState state;
+    state.deltaTime(deltaTime);
     state.cameraState(cameraState);
     state.controllerState(controllerState);
 

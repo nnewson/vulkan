@@ -20,6 +20,7 @@ add_library(fireengine SHARED
     src/animation/animation.cpp
     src/collision/collider.cpp
     src/collision/collisions.cpp
+    src/collision/narrow_phase.cpp
     src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
     src/core/system.cpp
@@ -47,6 +48,7 @@ add_library(fireengine SHARED
     src/scene/light.cpp
     src/scene/mesh.cpp
     src/scene/node.cpp
+    src/scene/physics_body.cpp
     src/scene/scene_graph.cpp
     src/scene/transform.cpp
 )
@@ -128,6 +130,7 @@ enable_testing()
 
 add_executable(test_fire_engine
     tests/collision/test_collisions.cpp
+    tests/collision/test_narrow_phase.cpp
     tests/math/test_mat4.cpp
     tests/math/test_quaternion.cpp
     tests/math/test_vec2.cpp

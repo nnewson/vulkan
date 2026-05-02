@@ -3,6 +3,11 @@
 #include <algorithm>
 #include <limits>
 
+#include <fire_engine/input/input_state.hpp>
+#include <fire_engine/math/constants.hpp>
+#include <fire_engine/scene/node.hpp>
+#include <fire_engine/scene/scene_graph.hpp>
+
 namespace fire_engine
 {
 
@@ -41,6 +46,24 @@ float axisMax(const AABB& bounds, CollisionAxis axis) noexcept
     }
 
     return bounds.max.x();
+}
+
+[[nodiscard]]
+bool isMovable(const Node& node) noexcept
+{
+    return node.hasPhysicsBody() || node.hasControllable();
+}
+
+[[nodiscard]]
+bool movedThisFrame(const Node& node) noexcept
+{
+    return node.frameDelta().magnitudeSquared() > float_epsilon * float_epsilon;
+}
+
+[[nodiscard]]
+Vec3 relativeFrameDelta(const Node& moving, const Node& target) noexcept
+{
+    return moving.frameDelta() - target.frameDelta();
 }
 
 } // namespace
@@ -99,6 +122,16 @@ bool Collisions::removeCollider(Collider& collider)
     return removeCollider(id);
 }
 
+void Collisions::setup(SceneGraph& scene)
+{
+    clear();
+    scene.update(InputState{});
+    for (auto& node : scene.nodes())
+    {
+        addCollidersRecursive(*node);
+    }
+}
+
 void Collisions::clear()
 {
     resetIndices(xEndPoints_);
@@ -115,6 +148,7 @@ void Collisions::clear()
     zEndPoints_.clear();
     pairStates_.clear();
     possiblePairs_.clear();
+    colliderNodes_.clear();
 }
 
 void Collisions::update()
@@ -125,6 +159,17 @@ void Collisions::update()
         {
             updateEndPoint(*endPoint, false);
         }
+    }
+}
+
+void Collisions::update(SceneGraph& scene)
+{
+    update();
+    auto frameContacts = contacts();
+    if (applyResponses(frameContacts))
+    {
+        scene.resolve();
+        rebuild();
     }
 }
 
@@ -243,6 +288,143 @@ bool Collisions::validate() const
     }
 
     return possiblePairs_.size() == expectedPossibleCount;
+}
+
+void Collisions::addCollidersRecursive(Node& node)
+{
+    if (auto* collider = node.collider())
+    {
+        const ColliderId id = addCollider(*collider);
+        colliderNodes_[id.value()] = &node;
+    }
+
+    for (const auto& child : node.children())
+    {
+        addCollidersRecursive(*child);
+    }
+}
+
+std::vector<Collisions::Contact> Collisions::contacts() const
+{
+    std::vector<Contact> result;
+    result.reserve(possiblePairs_.size());
+    for (const CollisionPair& pair : possiblePairs_)
+    {
+        auto contact = contactForPair(pair);
+        if (contact.has_value())
+        {
+            result.push_back(contact.value());
+        }
+    }
+    return result;
+}
+
+std::optional<Collisions::Contact> Collisions::contactForPair(const CollisionPair& pair) const
+{
+    auto firstIt = colliderNodes_.find(pair.firstId.value());
+    auto secondIt = colliderNodes_.find(pair.secondId.value());
+    if (firstIt == colliderNodes_.end() || secondIt == colliderNodes_.end())
+    {
+        return std::nullopt;
+    }
+
+    Node* firstNode = firstIt->second;
+    Node* secondNode = secondIt->second;
+    if (firstNode == nullptr || secondNode == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    Node* moving = nullptr;
+    Node* target = nullptr;
+    const Collider* movingCollider = nullptr;
+    const Collider* targetCollider = nullptr;
+
+    if (firstNode->hasPhysicsBody())
+    {
+        moving = firstNode;
+        target = secondNode;
+        movingCollider = pair.first;
+        targetCollider = pair.second;
+    }
+    else if (secondNode->hasPhysicsBody())
+    {
+        moving = secondNode;
+        target = firstNode;
+        movingCollider = pair.second;
+        targetCollider = pair.first;
+    }
+    else if (firstNode->hasControllable())
+    {
+        moving = firstNode;
+        target = secondNode;
+        movingCollider = pair.first;
+        targetCollider = pair.second;
+    }
+    else if (secondNode->hasControllable())
+    {
+        moving = secondNode;
+        target = firstNode;
+        movingCollider = pair.second;
+        targetCollider = pair.first;
+    }
+
+    if (moving == nullptr || target == nullptr || !isMovable(*moving))
+    {
+        return std::nullopt;
+    }
+
+    auto contact = narrowPhase_.sweptAabb(*movingCollider, *targetCollider);
+    if (!contact.has_value())
+    {
+        return std::nullopt;
+    }
+
+    const Vec3 relativeDelta = relativeFrameDelta(*moving, *target);
+    if (Vec3::dotProduct(relativeDelta, contact->normal) >= 0.0f)
+    {
+        return std::nullopt;
+    }
+
+    return Contact{contact->toi, contact->normal, moving, target};
+}
+
+bool Collisions::applyResponses(std::vector<Contact>& contacts)
+{
+    std::ranges::sort(contacts,
+                      [](const Contact& lhs, const Contact& rhs) { return lhs.toi < rhs.toi; });
+
+    bool resolved = false;
+    for (const Contact& contact : contacts)
+    {
+        const bool movingHadFrameDelta =
+            contact.moving != nullptr && movedThisFrame(*contact.moving);
+        if (movingHadFrameDelta)
+        {
+            if (contact.moving->hasControllable())
+            {
+                contact.moving->slideFrameMovement(contact.toi, contact.normal);
+            }
+            else
+            {
+                contact.moving->moveToFrameTime(contact.toi);
+            }
+            resolved = true;
+        }
+        if (contact.target != nullptr && contact.target->hasControllable() &&
+            movedThisFrame(*contact.target))
+        {
+            contact.target->slideFrameMovement(contact.toi, contact.normal * -1.0f);
+            resolved = true;
+        }
+
+        if (movingHadFrameDelta && contact.moving->hasPhysicsBody())
+        {
+            contact.moving->physicsBody()->reflect(contact.normal);
+        }
+    }
+
+    return resolved;
 }
 
 void Collisions::addEndPointsSorted(Collider& collider)
@@ -630,8 +812,8 @@ bool Collisions::lessThan(const EndPoint& lhs, const EndPoint& rhs) noexcept
 bool Collisions::overlapsOnAxis(const Collider& lhs, const Collider& rhs,
                                 CollisionAxis axis) noexcept
 {
-    const AABB lhsBounds = lhs.worldBounds();
-    const AABB rhsBounds = rhs.worldBounds();
+    const AABB lhsBounds = lhs.sweptWorldBounds();
+    const AABB rhsBounds = rhs.sweptWorldBounds();
     return axisMin(lhsBounds, axis) <= axisMax(rhsBounds, axis) &&
            axisMax(lhsBounds, axis) >= axisMin(rhsBounds, axis);
 }

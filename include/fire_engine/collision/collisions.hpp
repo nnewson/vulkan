@@ -1,14 +1,20 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
 #include <fire_engine/collision/collider.hpp>
+#include <fire_engine/collision/narrow_phase.hpp>
 
 namespace fire_engine
 {
+
+class Node;
+class SceneGraph;
 
 struct CollisionPair
 {
@@ -39,8 +45,10 @@ public:
     [[nodiscard]]
     bool removeCollider(Collider& collider);
 
+    void setup(SceneGraph& scene);
     void clear();
     void update();
+    void update(SceneGraph& scene);
     void updateCollider(Collider& collider);
     void updateEndPoint(EndPoint& endPoint);
     void rebuild();
@@ -97,6 +105,14 @@ private:
         bool possible{false};
     };
 
+    struct Contact
+    {
+        float toi{0.0f};
+        Vec3 normal{};
+        Node* moving{nullptr};
+        Node* target{nullptr};
+    };
+
     ColliderId nextColliderId_{ColliderId{1U}};
     std::vector<ColliderEntry> colliders_;
     std::vector<EndPoint*> xEndPoints_;
@@ -104,6 +120,16 @@ private:
     std::vector<EndPoint*> zEndPoints_;
     std::unordered_map<PairKey, PairState, PairKeyHash> pairStates_;
     std::vector<CollisionPair> possiblePairs_;
+    std::unordered_map<std::uint32_t, Node*> colliderNodes_;
+    NarrowPhase narrowPhase_;
+
+    void addCollidersRecursive(Node& node);
+    [[nodiscard]]
+    std::vector<Contact> contacts() const;
+    [[nodiscard]]
+    std::optional<Contact> contactForPair(const CollisionPair& pair) const;
+    [[nodiscard]]
+    bool applyResponses(std::vector<Contact>& contacts);
 
     // Bulk-add the new collider's six endpoints to the axis vectors and
     // sort them in place via binary insertion. Used by addCollider so a new

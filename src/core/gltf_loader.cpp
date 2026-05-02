@@ -59,6 +59,7 @@ struct ExtrasParseState
 {
     std::unordered_set<std::size_t>* controllableNodeIndices{nullptr};
     std::unordered_map<std::size_t, GltfLoader::CollisionConfig>* collisionNodeConfigs{nullptr};
+    std::unordered_map<std::size_t, GltfLoader::DynamicConfig>* dynamicNodeConfigs{nullptr};
 };
 } // namespace
 
@@ -315,6 +316,15 @@ void parseNodeExtras(simdjson::dom::object* extras, std::size_t objectIndex,
             state->collisionNodeConfigs->insert_or_assign(objectIndex, collision.value());
         }
     }
+
+    if (state->dynamicNodeConfigs != nullptr)
+    {
+        auto dynamic = GltfLoader::nodeExtrasDynamic(extras);
+        if (dynamic.has_value())
+        {
+            state->dynamicNodeConfigs->insert_or_assign(objectIndex, dynamic.value());
+        }
+    }
 }
 
 void applyControllable(std::size_t nodeIndex,
@@ -347,6 +357,20 @@ void applyCollisionConfig(
     }
 }
 
+void applyDynamicConfig(
+    std::size_t nodeIndex,
+    const std::unordered_map<std::size_t, GltfLoader::DynamicConfig>& dynamicNodeConfigs,
+    Node& node)
+{
+    auto it = dynamicNodeConfigs.find(nodeIndex);
+    if (it == dynamicNodeConfigs.end())
+    {
+        return;
+    }
+
+    node.emplacePhysicsBody().velocity(it->second.velocity);
+}
+
 void validateCollisionTarget(
     std::size_t nodeIndex,
     const std::unordered_map<std::size_t, GltfLoader::CollisionConfig>& collisionNodeConfigs,
@@ -356,6 +380,33 @@ void validateCollisionTarget(
     {
         throw std::runtime_error("glTF node '" + std::string(gltfNode.name) +
                                  "' has collision extras but no mesh");
+    }
+}
+
+void validateDynamicTarget(
+    std::size_t nodeIndex, const std::unordered_set<std::size_t>& controllableNodeIndices,
+    const std::unordered_map<std::size_t, GltfLoader::CollisionConfig>& collisionNodeConfigs,
+    const std::unordered_map<std::size_t, GltfLoader::DynamicConfig>& dynamicNodeConfigs,
+    const fastgltf::Node& gltfNode)
+{
+    if (!dynamicNodeConfigs.contains(nodeIndex))
+    {
+        return;
+    }
+    if (!collisionNodeConfigs.contains(nodeIndex))
+    {
+        throw std::runtime_error("glTF node '" + std::string(gltfNode.name) +
+                                 "' has Dynamic extras but no collision extras");
+    }
+    if (controllableNodeIndices.contains(nodeIndex))
+    {
+        throw std::runtime_error("glTF node '" + std::string(gltfNode.name) +
+                                 "' cannot be both Dynamic and Controllable");
+    }
+    if (!gltfNode.meshIndex.has_value())
+    {
+        throw std::runtime_error("glTF node '" + std::string(gltfNode.name) +
+                                 "' has Dynamic extras but no mesh");
     }
 }
 
@@ -570,10 +621,96 @@ GltfLoader::nodeExtrasCollision(simdjson::dom::object* extras)
     return CollisionConfig{static_cast<std::uint32_t>(layer), static_cast<std::uint32_t>(mask)};
 }
 
+std::optional<GltfLoader::DynamicConfig>
+GltfLoader::nodeExtrasDynamic(simdjson::dom::object* extras)
+{
+    if (extras == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    auto dynamicElement = extras->at_key("Dynamic");
+    auto velocityElement = extras->at_key("Velocity");
+    const bool hasDynamic = dynamicElement.error() != simdjson::NO_SUCH_FIELD;
+    const bool hasVelocity = velocityElement.error() != simdjson::NO_SUCH_FIELD;
+
+    if (!hasDynamic && !hasVelocity)
+    {
+        return std::nullopt;
+    }
+    if (!hasDynamic)
+    {
+        throw std::runtime_error("glTF node extras must provide Dynamic when Velocity is present");
+    }
+
+    bool dynamic = false;
+    if (dynamicElement.get(dynamic) != simdjson::SUCCESS)
+    {
+        throw std::runtime_error("glTF Dynamic must be a boolean");
+    }
+    if (!dynamic)
+    {
+        if (hasVelocity)
+        {
+            throw std::runtime_error("glTF Velocity requires Dynamic to be true");
+        }
+        return std::nullopt;
+    }
+    if (!hasVelocity)
+    {
+        throw std::runtime_error("glTF Dynamic nodes must provide Velocity");
+    }
+
+    simdjson::dom::array velocityArray;
+    if (velocityElement.get_array().get(velocityArray) != simdjson::SUCCESS)
+    {
+        throw std::runtime_error("glTF Velocity must be an array of three numbers");
+    }
+
+    std::array<float, 3> values{};
+    std::size_t i = 0;
+    for (auto valueElement : velocityArray)
+    {
+        if (i >= values.size())
+        {
+            throw std::runtime_error("glTF Velocity must contain exactly three numbers");
+        }
+
+        double value = 0.0;
+        if (valueElement.get(value) != simdjson::SUCCESS)
+        {
+            std::int64_t signedValue = 0;
+            std::uint64_t unsignedValue = 0;
+            if (valueElement.get(signedValue) == simdjson::SUCCESS)
+            {
+                value = static_cast<double>(signedValue);
+            }
+            else if (valueElement.get(unsignedValue) == simdjson::SUCCESS)
+            {
+                value = static_cast<double>(unsignedValue);
+            }
+            else
+            {
+                throw std::runtime_error("glTF Velocity must contain only numbers");
+            }
+        }
+        values[i] = static_cast<float>(value);
+        ++i;
+    }
+
+    if (i != values.size())
+    {
+        throw std::runtime_error("glTF Velocity must contain exactly three numbers");
+    }
+
+    return DynamicConfig{Vec3{values[0], values[1], values[2]}};
+}
+
 fastgltf::Expected<fastgltf::Asset>
 GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
                        std::unordered_set<std::size_t>* controllableNodeIndices,
-                       std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs)
+                       std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs,
+                       std::unordered_map<std::size_t, DynamicConfig>* dynamicNodeConfigs)
 {
     // fastgltf only parses extension data when the extension is enabled here.
     // Without the opt-in, extension fields silently stay at their defaults.
@@ -583,8 +720,9 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission;
     fastgltf::Parser parser(enabledExtensions);
-    ExtrasParseState extrasState{controllableNodeIndices, collisionNodeConfigs};
-    if (controllableNodeIndices != nullptr || collisionNodeConfigs != nullptr)
+    ExtrasParseState extrasState{controllableNodeIndices, collisionNodeConfigs, dynamicNodeConfigs};
+    if (controllableNodeIndices != nullptr || collisionNodeConfigs != nullptr ||
+        dynamicNodeConfigs != nullptr)
     {
         if (controllableNodeIndices != nullptr)
         {
@@ -593,6 +731,10 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
         if (collisionNodeConfigs != nullptr)
         {
             collisionNodeConfigs->clear();
+        }
+        if (dynamicNodeConfigs != nullptr)
+        {
+            dynamicNodeConfigs->clear();
         }
         parser.setUserPointer(&extrasState);
         parser.setExtrasParseCallback(&parseNodeExtras);
@@ -657,7 +799,9 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
     auto gltfPath = std::filesystem::path(path);
     std::unordered_set<std::size_t> controllableNodeIndices;
     std::unordered_map<std::size_t, CollisionConfig> collisionNodeConfigs;
-    auto result = parseAsset(gltfPath, &controllableNodeIndices, &collisionNodeConfigs);
+    std::unordered_map<std::size_t, DynamicConfig> dynamicNodeConfigs;
+    auto result =
+        parseAsset(gltfPath, &controllableNodeIndices, &collisionNodeConfigs, &dynamicNodeConfigs);
     auto& asset = result.get();
 
     // fastgltf stores extensionsRequired in a pmr-allocated string vector.
@@ -695,12 +839,13 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap,
                                   meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
-                                  collisionNodeConfigs);
+                                  collisionNodeConfigs, dynamicNodeConfigs);
         }
         else
         {
             loadNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs,
+                     dynamicNodeConfigs);
         }
     }
 
@@ -715,10 +860,13 @@ void GltfLoader::configureAnimatedNode(
     Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
     std::size_t& nextAnimSlot, Node*& activeCamera,
     const std::unordered_set<std::size_t>& controllableNodeIndices,
-    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs)
+    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
+    const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     validateCollisionTarget(nodeIndex, collisionNodeConfigs, gltfNode);
+    validateDynamicTarget(nodeIndex, controllableNodeIndices, collisionNodeConfigs,
+                          dynamicNodeConfigs, gltfNode);
 
     // Determine morph target count from the mesh (if any)
     std::size_t numMorphTargets = 0;
@@ -813,6 +961,7 @@ void GltfLoader::configureAnimatedNode(
                 loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
             meshRef.component().emplace<Mesh>(std::move(object));
             applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
+            applyDynamicConfig(nodeIndex, dynamicNodeConfigs, node);
             meshMap[nodeIndex] = &std::get<Mesh>(meshRef.component());
 
             if (hasWeightAnim)
@@ -834,6 +983,7 @@ void GltfLoader::configureAnimatedNode(
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
         applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
+        applyDynamicConfig(nodeIndex, dynamicNodeConfigs, node);
         auto& mesh = std::get<Mesh>(node.component());
         meshMap[nodeIndex] = &mesh;
 
@@ -865,12 +1015,13 @@ void GltfLoader::configureAnimatedNode(
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
                                   meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
-                                  collisionNodeConfigs);
+                                  collisionNodeConfigs, dynamicNodeConfigs);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs,
+                     dynamicNodeConfigs);
         }
     }
 }
@@ -880,10 +1031,13 @@ void GltfLoader::loadNode(
     Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
     std::size_t& nextAnimSlot, Node*& activeCamera,
     const std::unordered_set<std::size_t>& controllableNodeIndices,
-    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs)
+    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
+    const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     validateCollisionTarget(nodeIndex, collisionNodeConfigs, gltfNode);
+    validateDynamicTarget(nodeIndex, controllableNodeIndices, collisionNodeConfigs,
+                          dynamicNodeConfigs, gltfNode);
     applyTRS(gltfNode, node);
 
     applyLight(asset, gltfNode, node);
@@ -895,6 +1049,7 @@ void GltfLoader::loadNode(
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
         applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
+        applyDynamicConfig(nodeIndex, dynamicNodeConfigs, node);
         meshMap[nodeIndex] = &std::get<Mesh>(node.component());
 
         // Static meshes with morph targets still honour mesh.weights (e.g.
@@ -924,12 +1079,13 @@ void GltfLoader::loadNode(
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
                                   meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
-                                  collisionNodeConfigs);
+                                  collisionNodeConfigs, dynamicNodeConfigs);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs,
+                     dynamicNodeConfigs);
         }
     }
 }

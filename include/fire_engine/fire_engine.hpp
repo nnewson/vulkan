@@ -1,6 +1,5 @@
 #pragma once
 
-#include "fire_engine/collision/collisions.hpp"
 #include <cstddef>
 #include <memory>
 
@@ -37,7 +36,6 @@ private:
     Camera* camera_{nullptr};
 
     void loadScene(std::string_view scene_path);
-    void setupColliders();
     void mainLoop();
 };
 

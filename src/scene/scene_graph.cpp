@@ -54,6 +54,14 @@ void SceneGraph::update(const InputState& input_state)
     }
 }
 
+void SceneGraph::resolve()
+{
+    for (auto& node : nodes_)
+    {
+        node->resolve(rootTransform_);
+    }
+}
+
 void SceneGraph::render(const RenderContext& ctx)
 {
     for (auto& node : nodes_)

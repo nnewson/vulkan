@@ -89,6 +89,11 @@ public:
         std::uint32_t mask{0U};
     };
 
+    struct DynamicConfig
+    {
+        Vec3 velocity{};
+    };
+
     // CPU-only mesh bounds for collision setup. Prefers POSITION accessor
     // min/max when present, falling back to scanning POSITION data.
     [[nodiscard]]
@@ -100,13 +105,17 @@ public:
     [[nodiscard]]
     static std::optional<CollisionConfig> nodeExtrasCollision(simdjson::dom::object* extras);
 
+    [[nodiscard]]
+    static std::optional<DynamicConfig> nodeExtrasDynamic(simdjson::dom::object* extras);
+
 private:
     // Asset parsing and setup
     [[nodiscard]]
     static fastgltf::Expected<fastgltf::Asset>
     parseAsset(const std::filesystem::path& gltfPath,
                std::unordered_set<std::size_t>* controllableNodeIndices = nullptr,
-               std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs = nullptr);
+               std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs = nullptr,
+               std::unordered_map<std::size_t, DynamicConfig>* dynamicNodeConfigs = nullptr);
 
     static void presizeAssets(const fastgltf::Asset& asset, Assets& assets);
 
@@ -127,14 +136,16 @@ private:
         Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
         std::size_t& nextAnimSlot, Node*& activeCamera,
         const std::unordered_set<std::size_t>& controllableNodeIndices,
-        const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs);
+        const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
+        const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs);
 
     static void
     loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
              const std::string& baseDir, Resources& resources, Assets& assets, NodeMap& nodeMap,
              MeshMap& meshMap, std::size_t& nextAnimSlot, Node*& activeCamera,
              const std::unordered_set<std::size_t>& controllableNodeIndices,
-             const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs);
+             const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
+             const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,

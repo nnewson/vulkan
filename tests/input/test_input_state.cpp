@@ -33,6 +33,12 @@ TEST(InputStateConstruction, DefaultControllerStateIsZero)
     EXPECT_DOUBLE_EQ(s.controllerState().time(), 0.0);
 }
 
+TEST(InputStateConstruction, DefaultDeltaTimeIsZero)
+{
+    InputState s;
+    EXPECT_FLOAT_EQ(s.deltaTime(), 0.0f);
+}
+
 // ==========================================================================
 // Accessors
 // ==========================================================================
@@ -71,6 +77,13 @@ TEST(InputStateAccessors, TimeConvenienceAccessor)
     EXPECT_DOUBLE_EQ(s.time(), 42.0);
     EXPECT_DOUBLE_EQ(s.cameraState().time(), 42.0);
     EXPECT_DOUBLE_EQ(s.controllerState().time(), 42.0);
+}
+
+TEST(InputStateAccessors, SetDeltaTime)
+{
+    InputState s;
+    s.deltaTime(1.25f);
+    EXPECT_FLOAT_EQ(s.deltaTime(), 1.25f);
 }
 
 TEST(InputStateAccessors, MutableCameraStateRef)
@@ -147,6 +160,8 @@ TEST(InputStateNoexcept, AllOperationsAreNoexcept)
     static_assert(noexcept(s.cameraState()));
     static_assert(noexcept(s.animationState()));
     static_assert(noexcept(s.controllerState()));
+    static_assert(noexcept(s.deltaTime()));
+    static_assert(noexcept(s.deltaTime(0.0f)));
     static_assert(noexcept(s.time()));
     static_assert(noexcept(s.time(0.0)));
     static_assert(std::is_nothrow_move_constructible_v<InputState>);

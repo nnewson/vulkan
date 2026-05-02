@@ -44,55 +44,22 @@ float axisMax(const AABB& bounds, CollisionAxis axis) noexcept
     return bounds.max.x();
 }
 
-} // namespace
-
-Collider::Collider() noexcept
+[[nodiscard]]
+AABB mergeBounds(const AABB& lhs, const AABB& rhs) noexcept
 {
-    initialiseEndPoints();
-    updateEndPointValues();
+    return AABB{
+        Vec3{std::min(lhs.min.x(), rhs.min.x()), std::min(lhs.min.y(), rhs.min.y()),
+             std::min(lhs.min.z(), rhs.min.z())},
+        Vec3{std::max(lhs.max.x(), rhs.max.x()), std::max(lhs.max.y(), rhs.max.y()),
+             std::max(lhs.max.z(), rhs.max.z())},
+    };
 }
 
-Collider::Collider(Collider&& rhs) noexcept
-    : localBounds_{rhs.localBounds_},
-      worldBounds_{rhs.worldBounds_},
-      collisionLayer_{rhs.collisionLayer_},
-      collisionMask_{rhs.collisionMask_}
+[[nodiscard]]
+AABB transformBounds(const AABB& localBounds, Mat4 world)
 {
-    assert(!rhs.colliderId_.valid() &&
-           "Cannot move a Collider that is currently registered with a "
-           "Collisions instance — its endpoints are tracked by address. "
-           "Call Collisions::removeCollider(rhs) first.");
-    initialiseEndPoints();
-    updateEndPointValues();
-    rhs.colliderId_ = ColliderId{};
-}
-
-Collider& Collider::operator=(Collider&& rhs) noexcept
-{
-    if (this == &rhs)
-    {
-        return *this;
-    }
-
-    assert(!rhs.colliderId_.valid() &&
-           "Cannot move-assign from a registered Collider — see move-ctor.");
-    assert(!colliderId_.valid() &&
-           "Cannot move-assign into a registered Collider — see move-ctor.");
-
-    localBounds_ = rhs.localBounds_;
-    worldBounds_ = rhs.worldBounds_;
-    collisionLayer_ = rhs.collisionLayer_;
-    collisionMask_ = rhs.collisionMask_;
-    initialiseEndPoints();
-    updateEndPointValues();
-    rhs.colliderId_ = ColliderId{};
-    return *this;
-}
-
-void Collider::update(Mat4 world)
-{
-    const Vec3 localMin = localBounds_.min;
-    const Vec3 localMax = localBounds_.max;
+    const Vec3 localMin = localBounds.min;
+    const Vec3 localMax = localBounds.max;
     const std::array<Vec3, 8> corners{
         Vec3{localMin.x(), localMin.y(), localMin.z()},
         Vec3{localMax.x(), localMin.y(), localMin.z()},
@@ -119,8 +86,85 @@ void Collider::update(Mat4 world)
         max.z(std::max(max.z(), transformed.z()));
     }
 
-    worldBounds_.min = min;
-    worldBounds_.max = max;
+    return AABB{min, max};
+}
+
+} // namespace
+
+Collider::Collider() noexcept
+{
+    initialiseEndPoints();
+    updateEndPointValues();
+}
+
+Collider::Collider(Collider&& rhs) noexcept
+    : localBounds_{rhs.localBounds_},
+      previousWorldBounds_{rhs.previousWorldBounds_},
+      worldBounds_{rhs.worldBounds_},
+      sweptWorldBounds_{rhs.sweptWorldBounds_},
+      hasWorldBounds_{rhs.hasWorldBounds_},
+      collisionLayer_{rhs.collisionLayer_},
+      collisionMask_{rhs.collisionMask_}
+{
+    assert(!rhs.colliderId_.valid() &&
+           "Cannot move a Collider that is currently registered with a "
+           "Collisions instance — its endpoints are tracked by address. "
+           "Call Collisions::removeCollider(rhs) first.");
+    initialiseEndPoints();
+    updateEndPointValues();
+    rhs.colliderId_ = ColliderId{};
+}
+
+Collider& Collider::operator=(Collider&& rhs) noexcept
+{
+    if (this == &rhs)
+    {
+        return *this;
+    }
+
+    assert(!rhs.colliderId_.valid() &&
+           "Cannot move-assign from a registered Collider — see move-ctor.");
+    assert(!colliderId_.valid() &&
+           "Cannot move-assign into a registered Collider — see move-ctor.");
+
+    localBounds_ = rhs.localBounds_;
+    previousWorldBounds_ = rhs.previousWorldBounds_;
+    worldBounds_ = rhs.worldBounds_;
+    sweptWorldBounds_ = rhs.sweptWorldBounds_;
+    hasWorldBounds_ = rhs.hasWorldBounds_;
+    collisionLayer_ = rhs.collisionLayer_;
+    collisionMask_ = rhs.collisionMask_;
+    initialiseEndPoints();
+    updateEndPointValues();
+    rhs.colliderId_ = ColliderId{};
+    return *this;
+}
+
+void Collider::update(Mat4 world)
+{
+    const AABB nextBounds = transformBounds(localBounds_, world);
+    if (!hasWorldBounds_)
+    {
+        previousWorldBounds_ = nextBounds;
+    }
+    else
+    {
+        previousWorldBounds_ = worldBounds_;
+    }
+
+    worldBounds_ = nextBounds;
+    sweptWorldBounds_ = mergeBounds(previousWorldBounds_, worldBounds_);
+    hasWorldBounds_ = true;
+    updateEndPointValues();
+}
+
+void Collider::resetFrame(Mat4 world)
+{
+    const AABB bounds = transformBounds(localBounds_, world);
+    previousWorldBounds_ = bounds;
+    worldBounds_ = bounds;
+    sweptWorldBounds_ = bounds;
+    hasWorldBounds_ = true;
     updateEndPointValues();
 }
 
@@ -234,11 +278,11 @@ void Collider::updateEndPointValues() noexcept
     {
         if (endPoint->isMin())
         {
-            endPoint->value(axisMin(worldBounds_, endPoint->axis()));
+            endPoint->value(axisMin(sweptWorldBounds_, endPoint->axis()));
         }
         else
         {
-            endPoint->value(axisMax(worldBounds_, endPoint->axis()));
+            endPoint->value(axisMax(sweptWorldBounds_, endPoint->axis()));
         }
     }
 }

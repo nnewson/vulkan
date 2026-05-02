@@ -49,6 +49,16 @@ public:
         return worldBounds_;
     }
 
+    [[nodiscard]] AABB previousWorldBounds() const noexcept
+    {
+        return previousWorldBounds_;
+    }
+
+    [[nodiscard]] AABB sweptWorldBounds() const noexcept
+    {
+        return sweptWorldBounds_;
+    }
+
     [[nodiscard]]
     ColliderId colliderId() const noexcept
     {
@@ -78,6 +88,7 @@ public:
     }
 
     void update(Mat4 world);
+    void resetFrame(Mat4 world);
 
     [[nodiscard]]
     EndPoint& minEndPoint(CollisionAxis axis) noexcept;
@@ -101,7 +112,10 @@ private:
     static constexpr std::uint32_t defaultCollisionMask = ~0U;
 
     AABB localBounds_;
+    AABB previousWorldBounds_;
     AABB worldBounds_;
+    AABB sweptWorldBounds_;
+    bool hasWorldBounds_{false};
     ColliderId colliderId_;
     std::uint32_t collisionLayer_{defaultCollisionLayer};
     std::uint32_t collisionMask_{defaultCollisionMask};

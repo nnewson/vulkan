@@ -12,6 +12,7 @@
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
 #include <fire_engine/scene/controllable.hpp>
+#include <fire_engine/scene/physics_body.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
@@ -90,6 +91,34 @@ public:
         return controllable_.emplace();
     }
 
+    [[nodiscard]] bool hasPhysicsBody() const noexcept
+    {
+        return physicsBody_.has_value();
+    }
+    [[nodiscard]] PhysicsBody* physicsBody() noexcept
+    {
+        return physicsBody_ ? &physicsBody_.value() : nullptr;
+    }
+    [[nodiscard]] const PhysicsBody* physicsBody() const noexcept
+    {
+        return physicsBody_ ? &physicsBody_.value() : nullptr;
+    }
+    PhysicsBody& emplacePhysicsBody()
+    {
+        return physicsBody_.emplace();
+    }
+
+    [[nodiscard]] Vec3 frameStartPosition() const noexcept
+    {
+        return frameStartPosition_;
+    }
+    [[nodiscard]] Vec3 frameDelta() const noexcept
+    {
+        return frameDelta_;
+    }
+    void moveToFrameTime(float toi) noexcept;
+    void slideFrameMovement(float toi, Vec3 normal) noexcept;
+
     [[nodiscard]] Node* parent() const noexcept
     {
         return parent_;
@@ -108,6 +137,7 @@ public:
     Node& addChild(std::unique_ptr<Node> child);
 
     void update(const InputState& input_state, const Mat4& parentComposedWorld);
+    void resolve(const Mat4& parentComposedWorld);
     void render(const RenderContext& ctx, const Mat4& parentWorld);
 
 private:
@@ -116,7 +146,10 @@ private:
     Components component_;
     std::optional<Collider> collider_;
     std::optional<Controllable> controllable_;
+    std::optional<PhysicsBody> physicsBody_;
     Mat4 composedWorld_{Mat4::identity()};
+    Vec3 frameStartPosition_{};
+    Vec3 frameDelta_{};
     Node* parent_{nullptr};
     std::vector<std::unique_ptr<Node>> children_;
 };

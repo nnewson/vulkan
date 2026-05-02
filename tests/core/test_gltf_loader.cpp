@@ -133,6 +133,16 @@ static std::optional<GltfLoader::CollisionConfig> nodeExtrasCollisionFromJson(st
     return GltfLoader::nodeExtrasCollision(&extras);
 }
 
+static std::optional<GltfLoader::DynamicConfig> nodeExtrasDynamicFromJson(std::string_view json)
+{
+    simdjson::dom::parser parser;
+    simdjson::padded_string padded{std::string{json}};
+    auto doc = parser.parse(padded);
+    simdjson::dom::object extras;
+    EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
+    return GltfLoader::nodeExtrasDynamic(&extras);
+}
+
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
 // mirroring the logic in GltfLoader::applyTRS for the matrix branch.
 static void applyMatrix(const fastgltf::math::fmat4x4& mat, Node& node)
@@ -447,6 +457,70 @@ TEST(GltfNodeExtras, NonIntegerCollisionLayerThrows)
 TEST(GltfNodeExtras, OutOfRangeCollisionMaskThrows)
 {
     EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":1,"CollisionMask":4294967296})"),
+                 std::runtime_error);
+}
+
+TEST(GltfNodeExtras, DynamicVelocityIsParsed)
+{
+    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.5,-2.0]})");
+
+    ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(config->velocity, Vec3(1.0f, 0.5f, -2.0f));
+}
+
+TEST(GltfNodeExtras, DynamicVelocityAcceptsIntegers)
+{
+    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1,0,-2]})");
+
+    ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(config->velocity, Vec3(1.0f, 0.0f, -2.0f));
+}
+
+TEST(GltfNodeExtras, MissingDynamicAndVelocityAreIgnored)
+{
+    auto config = nodeExtrasDynamicFromJson(R"({"CollisionLayer":1,"CollisionMask":2})");
+    EXPECT_FALSE(config.has_value());
+}
+
+TEST(GltfNodeExtras, DynamicFalseWithoutVelocityIsIgnored)
+{
+    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":false})");
+    EXPECT_FALSE(config.has_value());
+}
+
+TEST(GltfNodeExtras, VelocityWithoutDynamicThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Velocity":[1.0,0.0,0.0]})"), std::runtime_error);
+}
+
+TEST(GltfNodeExtras, DynamicTrueWithoutVelocityThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true})"), std::runtime_error);
+}
+
+TEST(GltfNodeExtras, DynamicFalseWithVelocityThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":false,"Velocity":[1.0,0.0,0.0]})"),
+                 std::runtime_error);
+}
+
+TEST(GltfNodeExtras, NonBooleanDynamicThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":"true","Velocity":[1.0,0.0,0.0]})"),
+                 std::runtime_error);
+}
+
+TEST(GltfNodeExtras, VelocityWithWrongCountThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.0]})"),
+                 std::runtime_error);
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.0,0.0,0.0]})"),
+                 std::runtime_error);
+}
+
+TEST(GltfNodeExtras, NonNumericVelocityThrows)
+{
+    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,"0",0.0]})"),
                  std::runtime_error);
 }
 

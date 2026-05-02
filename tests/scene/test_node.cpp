@@ -112,6 +112,22 @@ TEST(NodeAccessors, EmplaceControllable)
     EXPECT_EQ(n.controllable(), &controllable);
 }
 
+TEST(NodeAccessors, DefaultHasNoPhysicsBody)
+{
+    Node n("DynamicNode");
+    EXPECT_FALSE(n.hasPhysicsBody());
+    EXPECT_EQ(n.physicsBody(), nullptr);
+}
+
+TEST(NodeAccessors, EmplacePhysicsBody)
+{
+    Node n("DynamicNode");
+    auto& body = n.emplacePhysicsBody();
+
+    EXPECT_TRUE(n.hasPhysicsBody());
+    EXPECT_EQ(n.physicsBody(), &body);
+}
+
 TEST(NodeUpdate, UpdatesColliderWorldBounds)
 {
     Node n("ColliderNode");
@@ -162,6 +178,67 @@ TEST(NodeUpdate, NonControllableIgnoresControllerState)
 
     EXPECT_FLOAT_EQ(n.transform().position().x(), 1.0f);
     EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 1.0f);
+}
+
+TEST(NodeUpdate, PhysicsBodyMovesByVelocityAndDeltaTime)
+{
+    Node n("DynamicNode");
+    n.emplacePhysicsBody().velocity({2.0f, 0.0f, -1.0f});
+
+    InputState state;
+    state.deltaTime(0.5f);
+    n.update(state, Mat4::identity());
+
+    EXPECT_EQ(n.frameStartPosition(), Vec3(0.0f, 0.0f, 0.0f));
+    EXPECT_EQ(n.frameDelta(), Vec3(1.0f, 0.0f, -0.5f));
+    EXPECT_EQ(n.transform().position(), Vec3(1.0f, 0.0f, -0.5f));
+}
+
+TEST(NodeUpdate, MoveToFrameTimeAppliesPartialFrameMotionAndZerosDelta)
+{
+    Node n("DynamicNode");
+    n.emplacePhysicsBody().velocity({4.0f, 0.0f, 0.0f});
+
+    InputState state;
+    state.deltaTime(1.0f);
+    n.update(state, Mat4::identity());
+
+    n.moveToFrameTime(0.25f);
+
+    EXPECT_EQ(n.transform().position(), Vec3(1.0f, 0.0f, 0.0f));
+    EXPECT_EQ(n.frameDelta(), Vec3(0.0f, 0.0f, 0.0f));
+}
+
+TEST(NodeUpdate, SlideFrameMovementKeepsTangentAndBlocksImpactDirection)
+{
+    Node n("DynamicNode");
+    n.transform().position({0.0f, 0.0f, 0.0f});
+    n.emplacePhysicsBody().velocity({10.0f, 10.0f, 0.0f});
+
+    InputState state;
+    state.deltaTime(1.0f);
+    n.update(state, Mat4::identity());
+
+    n.slideFrameMovement(0.5f, {-1.0f, 0.0f, 0.0f});
+
+    EXPECT_EQ(n.transform().position(), Vec3(5.0f, 10.0f, 0.0f));
+    EXPECT_EQ(n.frameDelta(), Vec3(5.0f, 10.0f, 0.0f));
+}
+
+TEST(NodeUpdate, SlideFrameMovementAllowsMovementAwayFromCollider)
+{
+    Node n("ControllableNode");
+    n.transform().position({0.0f, 0.0f, 0.0f});
+
+    InputState state;
+    state.controllerState().deltaPosition({-1.0f, 0.0f, 0.0f});
+    n.emplaceControllable();
+    n.update(state, Mat4::identity());
+
+    n.slideFrameMovement(0.0f, {-1.0f, 0.0f, 0.0f});
+
+    EXPECT_EQ(n.transform().position(), Vec3(-10.0f, 0.0f, 0.0f));
+    EXPECT_EQ(n.frameDelta(), Vec3(-10.0f, 0.0f, 0.0f));
 }
 
 // ==========================================================================

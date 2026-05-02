@@ -14,22 +14,6 @@
 namespace fire_engine
 {
 
-namespace
-{
-void addCollidersRecursive(Node& node, Collisions& collisions)
-{
-    if (auto* collider = node.collider())
-    {
-        collisions.addCollider(*collider);
-    }
-
-    for (const auto& child : node.children())
-    {
-        addCollidersRecursive(*child, collisions);
-    }
-}
-} // namespace
-
 // ---------------------------------------------------------------------------
 // FireEngine
 // ---------------------------------------------------------------------------
@@ -53,7 +37,7 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name,
     renderer_ = std::make_unique<Renderer>(*window_, std::string(skybox_path));
 
     loadScene(scene_path);
-    setupColliders();
+    collisions_.setup(scene_);
     mainLoop();
 }
 
@@ -110,15 +94,6 @@ void FireEngine::loadScene(std::string_view scene_path)
     std::print("{}\n", scene_);
 }
 
-void FireEngine::setupColliders()
-{
-    scene_.update(InputState{});
-    for (auto& node : scene_.nodes())
-    {
-        addCollidersRecursive(*node, collisions_);
-    }
-}
-
 void FireEngine::mainLoop()
 {
     double lastTime = System::getTime();
@@ -131,7 +106,7 @@ void FireEngine::mainLoop()
         auto input_state = input_.update(*window_, dt);
         input_state.time(now);
         scene_.update(input_state);
-        collisions_.update();
+        collisions_.update(scene_);
 
         renderer_->drawFrame(*window_, scene_, camera_->worldPosition(), camera_->worldTarget());
     }

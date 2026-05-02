@@ -67,10 +67,20 @@ public:
         controllerState_.time(t);
     }
 
+    [[nodiscard]] float deltaTime() const noexcept
+    {
+        return deltaTime_;
+    }
+    void deltaTime(float dt) noexcept
+    {
+        deltaTime_ = dt;
+    }
+
 private:
     CameraState cameraState_{};
     AnimationState animationState_{};
     ControllerState controllerState_{};
+    float deltaTime_{0.0f};
 };
 
 } // namespace fire_engine

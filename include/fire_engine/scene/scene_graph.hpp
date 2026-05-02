@@ -41,6 +41,7 @@ public:
     }
 
     void update(const InputState& input_state);
+    void resolve();
     void render(const RenderContext& ctx);
 
     // Walk the scene tree and resolve every Light component into a world-space
