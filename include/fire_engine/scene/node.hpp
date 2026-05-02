@@ -2,6 +2,7 @@
 
 #include <format>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -10,6 +11,7 @@
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
+#include <fire_engine/scene/controllable.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
@@ -63,6 +65,23 @@ public:
         return collider_;
     }
 
+    [[nodiscard]] bool hasControllable() const noexcept
+    {
+        return controllable_.has_value();
+    }
+    [[nodiscard]] Controllable* controllable() noexcept
+    {
+        return controllable_ ? &controllable_.value() : nullptr;
+    }
+    [[nodiscard]] const Controllable* controllable() const noexcept
+    {
+        return controllable_ ? &controllable_.value() : nullptr;
+    }
+    Controllable& emplaceControllable()
+    {
+        return controllable_.emplace();
+    }
+
     [[nodiscard]] Node* parent() const noexcept
     {
         return parent_;
@@ -88,6 +107,7 @@ private:
     Transform transform_;
     Components component_;
     Collider collider_;
+    std::optional<Controllable> controllable_;
     Mat4 composedWorld_{Mat4::identity()};
     Node* parent_{nullptr};
     std::vector<std::unique_ptr<Node>> children_;

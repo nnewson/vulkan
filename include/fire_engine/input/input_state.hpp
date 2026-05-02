@@ -2,6 +2,7 @@
 
 #include <fire_engine/input/animation_state.hpp>
 #include <fire_engine/input/camera_state.hpp>
+#include <fire_engine/input/controller_state.hpp>
 
 namespace fire_engine
 {
@@ -43,6 +44,19 @@ public:
         animationState_ = as;
     }
 
+    [[nodiscard]] const ControllerState& controllerState() const noexcept
+    {
+        return controllerState_;
+    }
+    [[nodiscard]] ControllerState& controllerState() noexcept
+    {
+        return controllerState_;
+    }
+    void controllerState(ControllerState cs) noexcept
+    {
+        controllerState_ = cs;
+    }
+
     [[nodiscard]] double time() const noexcept
     {
         return cameraState_.time();
@@ -50,11 +64,13 @@ public:
     void time(double t) noexcept
     {
         cameraState_.time(t);
+        controllerState_.time(t);
     }
 
 private:
     CameraState cameraState_{};
     AnimationState animationState_{};
+    ControllerState controllerState_{};
 };
 
 } // namespace fire_engine

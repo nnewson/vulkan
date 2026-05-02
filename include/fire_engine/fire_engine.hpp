@@ -1,8 +1,10 @@
 #pragma once
 
+#include "fire_engine/collision/collisions.hpp"
 #include <cstddef>
 #include <memory>
 
+#include <fire_engine/collision/collisions.hpp>
 #include <fire_engine/graphics/assets.hpp>
 #include <fire_engine/input/input.hpp>
 #include <fire_engine/platform/window.hpp>
@@ -31,9 +33,11 @@ private:
     Input input_;
     SceneGraph scene_;
     Assets assets_;
+    Collisions collisions_;
     Camera* camera_{nullptr};
 
     void loadScene(std::string_view scene_path);
+    void setupColliders();
     void mainLoop();
 };
 

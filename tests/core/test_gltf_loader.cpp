@@ -7,6 +7,7 @@
 #include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
+#include <simdjson.h>
 
 #include <fire_engine/core/gltf_loader.hpp>
 #include <fire_engine/graphics/material.hpp>
@@ -109,6 +110,16 @@ static void applyAlphaFields(const fastgltf::Material& gltfMat, Material& materi
     }
     material.alphaCutoff(static_cast<float>(gltfMat.alphaCutoff));
     material.doubleSided(gltfMat.doubleSided);
+}
+
+static bool nodeExtrasControllableFromJson(std::string_view json)
+{
+    simdjson::dom::parser parser;
+    simdjson::padded_string padded{std::string{json}};
+    auto doc = parser.parse(padded);
+    simdjson::dom::object extras;
+    EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
+    return GltfLoader::nodeExtrasControllable(&extras);
 }
 
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
@@ -359,6 +370,26 @@ TEST(GltfFixture, MinimalTriangleFixtureParses)
     EXPECT_EQ(asset.meshes[0].primitives[0].findAttribute("POSITION")->accessorIndex, 0u);
     ASSERT_EQ(asset.accessors.size(), 1u);
     EXPECT_EQ(asset.accessors[0].count, 3u);
+}
+
+TEST(GltfNodeExtras, ControllableTrueIsEnabled)
+{
+    EXPECT_TRUE(nodeExtrasControllableFromJson(R"({"Controllable":true})"));
+}
+
+TEST(GltfNodeExtras, ControllableFalseIsIgnored)
+{
+    EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"Controllable":false})"));
+}
+
+TEST(GltfNodeExtras, MissingControllableIsIgnored)
+{
+    EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"CollisionLayer":1})"));
+}
+
+TEST(GltfNodeExtras, NonBooleanControllableIsIgnored)
+{
+    EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"Controllable":"true"})"));
 }
 
 TEST(GltfMeshBounds, UsesPositionAccessorMinMax)

@@ -17,6 +17,7 @@
 #include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
+#include <simdjson.h>
 
 #include <fire_engine/animation/animation.hpp>
 #include <fire_engine/graphics/assets.hpp>
@@ -284,6 +285,28 @@ static Light::Type toLightType(fastgltf::LightType t) noexcept
     }
 }
 
+void parseNodeExtras(simdjson::dom::object* extras, std::size_t objectIndex,
+                     fastgltf::Category objectType, void* userPointer)
+{
+    if (objectType != fastgltf::Category::Nodes || userPointer == nullptr ||
+        !GltfLoader::nodeExtrasControllable(extras))
+    {
+        return;
+    }
+
+    auto* controllableNodeIndices = static_cast<std::unordered_set<std::size_t>*>(userPointer);
+    controllableNodeIndices->insert(objectIndex);
+}
+
+void applyControllable(std::size_t nodeIndex,
+                       const std::unordered_set<std::size_t>& controllableNodeIndices, Node& node)
+{
+    if (controllableNodeIndices.contains(nodeIndex))
+    {
+        node.emplaceControllable();
+    }
+}
+
 // KHR_lights_punctual: attach a Light component to `node` if the glTF node
 // references a light. Only fires when the variant is still Empty — Light has
 // to share the Components variant slot, so a node already carrying a Mesh /
@@ -446,7 +469,21 @@ Node& GltfLoader::attachCamera(Node& node, Node*& activeCamera)
 // Asset parsing and setup
 // ---------------------------------------------------------------------------
 
-fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem::path& gltfPath)
+bool GltfLoader::nodeExtrasControllable(simdjson::dom::object* extras) noexcept
+{
+    if (extras == nullptr)
+    {
+        return false;
+    }
+
+    auto controllable = extras->at_key("Controllable");
+    bool enabled = false;
+    return controllable.get(enabled) == simdjson::SUCCESS && enabled;
+}
+
+fastgltf::Expected<fastgltf::Asset>
+GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
+                       std::unordered_set<std::size_t>* controllableNodeIndices)
 {
     // fastgltf only parses extension data when the extension is enabled here.
     // Without the opt-in, extension fields silently stay at their defaults.
@@ -456,6 +493,13 @@ fastgltf::Expected<fastgltf::Asset> GltfLoader::parseAsset(const std::filesystem
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission;
     fastgltf::Parser parser(enabledExtensions);
+    if (controllableNodeIndices != nullptr)
+    {
+        controllableNodeIndices->clear();
+        parser.setUserPointer(controllableNodeIndices);
+        parser.setExtrasParseCallback(&parseNodeExtras);
+    }
+
     auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
     if (dataResult.error() != fastgltf::Error::None)
     {
@@ -513,7 +557,8 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
                             Assets& assets)
 {
     auto gltfPath = std::filesystem::path(path);
-    auto result = parseAsset(gltfPath);
+    std::unordered_set<std::size_t> controllableNodeIndices;
+    auto result = parseAsset(gltfPath, &controllableNodeIndices);
     auto& asset = result.get();
 
     // fastgltf stores extensionsRequired in a pmr-allocated string vector.
@@ -545,16 +590,17 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
         auto rootNode = std::make_unique<Node>(nodeName(asset, asset.nodes[nodeIndex]));
         auto& rootRef = scene.addNode(std::move(rootNode));
         nodeMap[nodeIndex] = &rootRef;
+        applyControllable(nodeIndex, controllableNodeIndices, rootRef);
 
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
         }
         else
         {
             loadNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera);
+                     nextAnimSlot, activeCamera, controllableNodeIndices);
         }
     }
 
@@ -564,10 +610,11 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
     return activeCamera;
 }
 
-void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                                       Node& node, const std::string& baseDir, Resources& resources,
-                                       Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
-                                       std::size_t& nextAnimSlot, Node*& activeCamera)
+void GltfLoader::configureAnimatedNode(
+    const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
+    Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
+    std::size_t& nextAnimSlot, Node*& activeCamera,
+    const std::unordered_set<std::size_t>& controllableNodeIndices)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
 
@@ -710,16 +757,17 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
         auto& childRef = node.addChild(std::move(childNode));
         nodeMap[childIndex] = &childRef;
+        applyControllable(childIndex, controllableNodeIndices, childRef);
 
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera);
+                     nextAnimSlot, activeCamera, controllableNodeIndices);
         }
     }
 }
@@ -727,7 +775,8 @@ void GltfLoader::configureAnimatedNode(const fastgltf::Asset& asset, std::size_t
 void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
                           const std::string& baseDir, Resources& resources, Assets& assets,
                           NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
-                          Node*& activeCamera)
+                          Node*& activeCamera,
+                          const std::unordered_set<std::size_t>& controllableNodeIndices)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     applyTRS(gltfNode, node);
@@ -764,16 +813,17 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         auto childNode = std::make_unique<Node>(nodeName(asset, asset.nodes[childIndex]));
         auto& childRef = node.addChild(std::move(childNode));
         nodeMap[childIndex] = &childRef;
+        applyControllable(childIndex, controllableNodeIndices, childRef);
 
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera);
+                     nextAnimSlot, activeCamera, controllableNodeIndices);
         }
     }
 }

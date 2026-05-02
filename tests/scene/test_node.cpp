@@ -79,6 +79,22 @@ TEST(NodeAccessors, ColliderIsMutable)
     EXPECT_EQ(bounds.max, Vec3(1.0f, 2.0f, 3.0f));
 }
 
+TEST(NodeAccessors, DefaultHasNoControllable)
+{
+    Node n("ControllableNode");
+    EXPECT_FALSE(n.hasControllable());
+    EXPECT_EQ(n.controllable(), nullptr);
+}
+
+TEST(NodeAccessors, EmplaceControllable)
+{
+    Node n("ControllableNode");
+    auto& controllable = n.emplaceControllable();
+
+    EXPECT_TRUE(n.hasControllable());
+    EXPECT_EQ(n.controllable(), &controllable);
+}
+
 TEST(NodeUpdate, UpdatesColliderWorldBounds)
 {
     Node n("ColliderNode");
@@ -90,6 +106,32 @@ TEST(NodeUpdate, UpdatesColliderWorldBounds)
     const auto bounds = n.collider().worldBounds();
     EXPECT_EQ(bounds.min, Vec3(9.0f, 18.0f, 27.0f));
     EXPECT_EQ(bounds.max, Vec3(11.0f, 22.0f, 33.0f));
+}
+
+TEST(NodeUpdate, ControllableMovesTransformFromControllerState)
+{
+    Node n("ControllableNode");
+    n.emplaceControllable();
+
+    InputState state;
+    state.controllerState().deltaPosition({0.5f, 0.0f, 0.0f});
+    n.update(state, Mat4::identity());
+
+    EXPECT_FLOAT_EQ(n.transform().position().x(), 5.0f);
+    EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 5.0f);
+}
+
+TEST(NodeUpdate, NonControllableIgnoresControllerState)
+{
+    Node n("StaticNode");
+    n.transform().position({1.0f, 2.0f, 3.0f});
+
+    InputState state;
+    state.controllerState().deltaPosition({0.5f, 0.0f, 0.0f});
+    n.update(state, Mat4::identity());
+
+    EXPECT_FLOAT_EQ(n.transform().position().x(), 1.0f);
+    EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 1.0f);
 }
 
 // ==========================================================================

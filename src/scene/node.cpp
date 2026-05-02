@@ -19,7 +19,14 @@ Node& Node::addChild(std::unique_ptr<Node> child)
 
 void Node::update(const InputState& input_state, const Mat4& parentComposedWorld)
 {
-    transform_.update(parentComposedWorld);
+    if (controllable_)
+    {
+        controllable_->update(input_state.controllerState(), transform_, parentComposedWorld);
+    }
+    else
+    {
+        transform_.update(parentComposedWorld);
+    }
 
     std::visit([&input_state, this](auto& component) { component.update(input_state, transform_); },
                component_);

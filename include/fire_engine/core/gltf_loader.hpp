@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <fastgltf/core.hpp>
@@ -17,6 +18,11 @@
 #include <fire_engine/graphics/image.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
+
+namespace simdjson::dom
+{
+class object;
+} // namespace simdjson::dom
 
 namespace fire_engine
 {
@@ -82,10 +88,15 @@ public:
     [[nodiscard]]
     static std::optional<AABB> meshBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh);
 
+    [[nodiscard]]
+    static bool nodeExtrasControllable(simdjson::dom::object* extras) noexcept;
+
 private:
     // Asset parsing and setup
     [[nodiscard]]
-    static fastgltf::Expected<fastgltf::Asset> parseAsset(const std::filesystem::path& gltfPath);
+    static fastgltf::Expected<fastgltf::Asset>
+    parseAsset(const std::filesystem::path& gltfPath,
+               std::unordered_set<std::size_t>* controllableNodeIndices = nullptr);
 
     static void presizeAssets(const fastgltf::Asset& asset, Assets& assets);
 
@@ -101,15 +112,18 @@ private:
 
     static Node& attachCamera(Node& node, Node*& activeCamera);
 
-    static void configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex,
-                                      Node& node, const std::string& baseDir, Resources& resources,
-                                      Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
-                                      std::size_t& nextAnimSlot, Node*& activeCamera);
+    static void
+    configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
+                          const std::string& baseDir, Resources& resources, Assets& assets,
+                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
+                          Node*& activeCamera,
+                          const std::unordered_set<std::size_t>& controllableNodeIndices);
 
     static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
                          const std::string& baseDir, Resources& resources, Assets& assets,
                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
-                         Node*& activeCamera);
+                         Node*& activeCamera,
+                         const std::unordered_set<std::size_t>& controllableNodeIndices);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,

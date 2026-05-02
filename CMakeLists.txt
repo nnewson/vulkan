@@ -41,6 +41,7 @@ add_library(fireengine SHARED
     src/render/resources.cpp
     src/render/swapchain.cpp
     src/scene/animator.cpp
+    src/scene/controllable.cpp
     src/scene/camera.cpp
     src/scene/empty.cpp
     src/scene/light.cpp
@@ -152,9 +153,11 @@ add_executable(test_fire_engine
     tests/core/test_gltf_loader.cpp
     tests/core/test_tangent_generator.cpp
     tests/input/test_camera_state.cpp
+    tests/input/test_controller_state.cpp
     tests/input/test_animation_state.cpp
     tests/input/test_input_state.cpp
     tests/scene/test_animator.cpp
+    tests/scene/test_controllable.cpp
     tests/scene/test_camera.cpp
     tests/scene/test_light.cpp
     tests/scene/test_node.cpp

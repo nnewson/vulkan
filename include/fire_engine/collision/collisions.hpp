@@ -3,7 +3,6 @@
 #include <cstddef>
 #include <limits>
 #include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include <fire_engine/collision/collider.hpp>

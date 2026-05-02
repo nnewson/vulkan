@@ -49,6 +49,18 @@ InputState Input::update(const Window& window, float deltaTime)
     CameraState cameraState;
     cameraState.deltaPosition(delta);
 
+    ControllerState controllerState;
+    Vec3 controllerDelta{};
+    if (keyboard_.left())
+    {
+        controllerDelta.x(controllerDelta.x() - deltaTime);
+    }
+    if (keyboard_.right())
+    {
+        controllerDelta.x(controllerDelta.x() + deltaTime);
+    }
+    controllerState.deltaPosition(controllerDelta);
+
     // Right mouse button drag = rotation (yaw/pitch)
     if (mouse_.rightButton())
     {
@@ -65,6 +77,7 @@ InputState Input::update(const Window& window, float deltaTime)
 
     InputState state;
     state.cameraState(cameraState);
+    state.controllerState(controllerState);
 
     if (keyboard_.one())
     {

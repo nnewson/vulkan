@@ -37,6 +37,7 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name,
     renderer_ = std::make_unique<Renderer>(*window_, std::string(skybox_path));
 
     loadScene(scene_path);
+    setupColliders();
     mainLoop();
 }
 
@@ -93,6 +94,43 @@ void FireEngine::loadScene(std::string_view scene_path)
     std::print("{}\n", scene_);
 }
 
+void FireEngine::setupColliders()
+{
+    scene_.update(InputState{});
+    for (auto& node : scene_.nodes())
+    {
+        if (std::get_if<Mesh>(&node->component()))
+        {
+            auto& collider = node->collider();
+            if (node->name() == "Paddle")
+            {
+                std::println("Setting up collider for Paddle");
+                collider.collisionLayer(0x01u);
+                collider.collisionMask(0xAu); // Ball and Background
+            }
+            else if (node->name() == "Ball")
+            {
+                std::println("Setting up collider for Ball");
+                collider.collisionLayer(0x2u);
+                collider.collisionMask(0xDu); // Paddle, Block, and Background
+            }
+            else if (node->name() == "Block")
+            {
+                std::println("Setting up collider for Block");
+                collider.collisionLayer(0x4u);
+                collider.collisionMask(0x2u); // Ball
+            }
+            else
+            {
+                std::println("Setting up collider for Background ({})", node->name());
+                collider.collisionLayer(0x8u);
+                collider.collisionMask(0x3u); // Paddle and Ball
+            }
+            collisions_.addCollider(node->collider());
+        }
+    }
+}
+
 void FireEngine::mainLoop()
 {
     double lastTime = System::getTime();
@@ -105,6 +143,7 @@ void FireEngine::mainLoop()
         auto input_state = input_.update(*window_, dt);
         input_state.time(now);
         scene_.update(input_state);
+        collisions_.update();
 
         renderer_->drawFrame(*window_, scene_, camera_->worldPosition(), camera_->worldTarget());
     }
