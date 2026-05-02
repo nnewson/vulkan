@@ -1,6 +1,7 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <vector>
 
 #include <fastgltf/core.hpp>
@@ -120,6 +121,16 @@ static bool nodeExtrasControllableFromJson(std::string_view json)
     simdjson::dom::object extras;
     EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
     return GltfLoader::nodeExtrasControllable(&extras);
+}
+
+static std::optional<GltfLoader::CollisionConfig> nodeExtrasCollisionFromJson(std::string_view json)
+{
+    simdjson::dom::parser parser;
+    simdjson::padded_string padded{std::string{json}};
+    auto doc = parser.parse(padded);
+    simdjson::dom::object extras;
+    EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
+    return GltfLoader::nodeExtrasCollision(&extras);
 }
 
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
@@ -390,6 +401,53 @@ TEST(GltfNodeExtras, MissingControllableIsIgnored)
 TEST(GltfNodeExtras, NonBooleanControllableIsIgnored)
 {
     EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"Controllable":"true"})"));
+}
+
+TEST(GltfNodeExtras, CollisionLayerAndMaskAreParsed)
+{
+    auto config = nodeExtrasCollisionFromJson(R"({"CollisionLayer":1,"CollisionMask":10})");
+
+    ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(config->layer, 1u);
+    EXPECT_EQ(config->mask, 10u);
+}
+
+TEST(GltfNodeExtras, MissingCollisionFieldsAreIgnored)
+{
+    auto config = nodeExtrasCollisionFromJson(R"({"Controllable":true})");
+
+    EXPECT_FALSE(config.has_value());
+}
+
+TEST(GltfNodeExtras, CollisionZeroValuesAreAccepted)
+{
+    auto config = nodeExtrasCollisionFromJson(R"({"CollisionLayer":0,"CollisionMask":0})");
+
+    ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(config->layer, 0u);
+    EXPECT_EQ(config->mask, 0u);
+}
+
+TEST(GltfNodeExtras, CollisionLayerWithoutMaskThrows)
+{
+    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":1})"), std::runtime_error);
+}
+
+TEST(GltfNodeExtras, CollisionMaskWithoutLayerThrows)
+{
+    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionMask":1})"), std::runtime_error);
+}
+
+TEST(GltfNodeExtras, NonIntegerCollisionLayerThrows)
+{
+    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":"1","CollisionMask":10})"),
+                 std::runtime_error);
+}
+
+TEST(GltfNodeExtras, OutOfRangeCollisionMaskThrows)
+{
+    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":1,"CollisionMask":4294967296})"),
+                 std::runtime_error);
 }
 
 TEST(GltfMeshBounds, UsesPositionAccessorMinMax)

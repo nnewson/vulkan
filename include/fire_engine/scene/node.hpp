@@ -56,13 +56,21 @@ public:
         return component_;
     }
 
-    [[nodiscard]] Collider& collider() noexcept
+    [[nodiscard]] bool hasCollider() const noexcept
     {
-        return collider_;
+        return collider_.has_value();
     }
-    [[nodiscard]] const Collider& collider() const noexcept
+    [[nodiscard]] Collider* collider() noexcept
     {
-        return collider_;
+        return collider_ ? &collider_.value() : nullptr;
+    }
+    [[nodiscard]] const Collider* collider() const noexcept
+    {
+        return collider_ ? &collider_.value() : nullptr;
+    }
+    Collider& emplaceCollider()
+    {
+        return collider_.emplace();
     }
 
     [[nodiscard]] bool hasControllable() const noexcept
@@ -106,7 +114,7 @@ private:
     std::string name_;
     Transform transform_;
     Components component_;
-    Collider collider_;
+    std::optional<Collider> collider_;
     std::optional<Controllable> controllable_;
     Mat4 composedWorld_{Mat4::identity()};
     Node* parent_{nullptr};

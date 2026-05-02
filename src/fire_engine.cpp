@@ -14,6 +14,22 @@
 namespace fire_engine
 {
 
+namespace
+{
+void addCollidersRecursive(Node& node, Collisions& collisions)
+{
+    if (auto* collider = node.collider())
+    {
+        collisions.addCollider(*collider);
+    }
+
+    for (const auto& child : node.children())
+    {
+        addCollidersRecursive(*child, collisions);
+    }
+}
+} // namespace
+
 // ---------------------------------------------------------------------------
 // FireEngine
 // ---------------------------------------------------------------------------
@@ -99,35 +115,7 @@ void FireEngine::setupColliders()
     scene_.update(InputState{});
     for (auto& node : scene_.nodes())
     {
-        if (std::get_if<Mesh>(&node->component()))
-        {
-            auto& collider = node->collider();
-            if (node->name() == "Paddle")
-            {
-                std::println("Setting up collider for Paddle");
-                collider.collisionLayer(0x01u);
-                collider.collisionMask(0xAu); // Ball and Background
-            }
-            else if (node->name() == "Ball")
-            {
-                std::println("Setting up collider for Ball");
-                collider.collisionLayer(0x2u);
-                collider.collisionMask(0xDu); // Paddle, Block, and Background
-            }
-            else if (node->name() == "Block")
-            {
-                std::println("Setting up collider for Block");
-                collider.collisionLayer(0x4u);
-                collider.collisionMask(0x2u); // Ball
-            }
-            else
-            {
-                std::println("Setting up collider for Background ({})", node->name());
-                collider.collisionLayer(0x8u);
-                collider.collisionMask(0x3u); // Paddle and Ball
-            }
-            collisions_.addCollider(node->collider());
-        }
+        addCollidersRecursive(*node, collisions_);
     }
 }
 

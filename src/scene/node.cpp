@@ -35,7 +35,10 @@ void Node::update(const InputState& input_state, const Mat4& parentComposedWorld
     Mat4 componentMatrix = std::visit([](const auto& component) -> Mat4
                                       { return component.modelMatrix(); }, component_);
     composedWorld_ = parentComposedWorld * transform_.local() * componentMatrix;
-    collider_.update(composedWorld_);
+    if (collider_)
+    {
+        collider_->update(composedWorld_);
+    }
 
     for (auto& child : children_)
     {

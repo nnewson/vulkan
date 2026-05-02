@@ -167,7 +167,8 @@
 		{
 			"extras":{
 				"CollisionLayer":2,
-				"CollisionMask":13
+				"CollisionMask":13,
+				"Dynamic":true
 			},
 			"mesh":7,
 			"name":"Ball",

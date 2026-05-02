@@ -83,6 +83,12 @@ public:
     using NodeMap = std::unordered_map<std::size_t, Node*>;
     using MeshMap = std::unordered_map<std::size_t, Mesh*>;
 
+    struct CollisionConfig
+    {
+        std::uint32_t layer{0U};
+        std::uint32_t mask{0U};
+    };
+
     // CPU-only mesh bounds for collision setup. Prefers POSITION accessor
     // min/max when present, falling back to scanning POSITION data.
     [[nodiscard]]
@@ -91,12 +97,16 @@ public:
     [[nodiscard]]
     static bool nodeExtrasControllable(simdjson::dom::object* extras) noexcept;
 
+    [[nodiscard]]
+    static std::optional<CollisionConfig> nodeExtrasCollision(simdjson::dom::object* extras);
+
 private:
     // Asset parsing and setup
     [[nodiscard]]
     static fastgltf::Expected<fastgltf::Asset>
     parseAsset(const std::filesystem::path& gltfPath,
-               std::unordered_set<std::size_t>* controllableNodeIndices = nullptr);
+               std::unordered_set<std::size_t>* controllableNodeIndices = nullptr,
+               std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs = nullptr);
 
     static void presizeAssets(const fastgltf::Asset& asset, Assets& assets);
 
@@ -112,18 +122,19 @@ private:
 
     static Node& attachCamera(Node& node, Node*& activeCamera);
 
-    static void
-    configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir, Resources& resources, Assets& assets,
-                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
-                          Node*& activeCamera,
-                          const std::unordered_set<std::size_t>& controllableNodeIndices);
+    static void configureAnimatedNode(
+        const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
+        Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
+        std::size_t& nextAnimSlot, Node*& activeCamera,
+        const std::unordered_set<std::size_t>& controllableNodeIndices,
+        const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs);
 
-    static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-                         const std::string& baseDir, Resources& resources, Assets& assets,
-                         NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
-                         Node*& activeCamera,
-                         const std::unordered_set<std::size_t>& controllableNodeIndices);
+    static void
+    loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
+             const std::string& baseDir, Resources& resources, Assets& assets, NodeMap& nodeMap,
+             MeshMap& meshMap, std::size_t& nextAnimSlot, Node*& activeCamera,
+             const std::unordered_set<std::size_t>& controllableNodeIndices,
+             const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
@@ -138,7 +149,7 @@ private:
                                                const fastgltf::Primitive& primitive);
 
     static void applyMeshColliderBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                                        Node& node);
+                                        Collider& collider);
 
     [[nodiscard]]
     static Object loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,

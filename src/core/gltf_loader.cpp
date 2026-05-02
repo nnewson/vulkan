@@ -8,8 +8,10 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 #include <variant>
 
@@ -51,6 +53,12 @@ constexpr std::array<std::string_view, 5> kSupportedExtensions = {
     std::string_view{"KHR_materials_unlit"},
     std::string_view{"KHR_lights_punctual"},
     std::string_view{"KHR_materials_transmission"},
+};
+
+struct ExtrasParseState
+{
+    std::unordered_set<std::size_t>* controllableNodeIndices{nullptr};
+    std::unordered_map<std::size_t, GltfLoader::CollisionConfig>* collisionNodeConfigs{nullptr};
 };
 } // namespace
 
@@ -288,14 +296,25 @@ static Light::Type toLightType(fastgltf::LightType t) noexcept
 void parseNodeExtras(simdjson::dom::object* extras, std::size_t objectIndex,
                      fastgltf::Category objectType, void* userPointer)
 {
-    if (objectType != fastgltf::Category::Nodes || userPointer == nullptr ||
-        !GltfLoader::nodeExtrasControllable(extras))
+    if (objectType != fastgltf::Category::Nodes || userPointer == nullptr)
     {
         return;
     }
 
-    auto* controllableNodeIndices = static_cast<std::unordered_set<std::size_t>*>(userPointer);
-    controllableNodeIndices->insert(objectIndex);
+    auto* state = static_cast<ExtrasParseState*>(userPointer);
+    if (state->controllableNodeIndices != nullptr && GltfLoader::nodeExtrasControllable(extras))
+    {
+        state->controllableNodeIndices->insert(objectIndex);
+    }
+
+    if (state->collisionNodeConfigs != nullptr)
+    {
+        auto collision = GltfLoader::nodeExtrasCollision(extras);
+        if (collision.has_value())
+        {
+            state->collisionNodeConfigs->insert_or_assign(objectIndex, collision.value());
+        }
+    }
 }
 
 void applyControllable(std::size_t nodeIndex,
@@ -304,6 +323,39 @@ void applyControllable(std::size_t nodeIndex,
     if (controllableNodeIndices.contains(nodeIndex))
     {
         node.emplaceControllable();
+    }
+}
+
+void applyCollisionConfig(
+    std::size_t nodeIndex,
+    const std::unordered_map<std::size_t, GltfLoader::CollisionConfig>& collisionNodeConfigs,
+    const fastgltf::Asset& asset, const fastgltf::Mesh& mesh, Node& node)
+{
+    auto it = collisionNodeConfigs.find(nodeIndex);
+    if (it == collisionNodeConfigs.end())
+    {
+        return;
+    }
+
+    auto& collider = node.emplaceCollider();
+    collider.collisionLayer(it->second.layer);
+    collider.collisionMask(it->second.mask);
+    auto bounds = GltfLoader::meshBounds(asset, mesh);
+    if (bounds.has_value())
+    {
+        collider.localBounds(bounds.value());
+    }
+}
+
+void validateCollisionTarget(
+    std::size_t nodeIndex,
+    const std::unordered_map<std::size_t, GltfLoader::CollisionConfig>& collisionNodeConfigs,
+    const fastgltf::Node& gltfNode)
+{
+    if (collisionNodeConfigs.contains(nodeIndex) && !gltfNode.meshIndex.has_value())
+    {
+        throw std::runtime_error("glTF node '" + std::string(gltfNode.name) +
+                                 "' has collision extras but no mesh");
     }
 }
 
@@ -481,9 +533,47 @@ bool GltfLoader::nodeExtrasControllable(simdjson::dom::object* extras) noexcept
     return controllable.get(enabled) == simdjson::SUCCESS && enabled;
 }
 
+std::optional<GltfLoader::CollisionConfig>
+GltfLoader::nodeExtrasCollision(simdjson::dom::object* extras)
+{
+    if (extras == nullptr)
+    {
+        return std::nullopt;
+    }
+
+    auto layerElement = extras->at_key("CollisionLayer");
+    auto maskElement = extras->at_key("CollisionMask");
+    const bool hasLayer = layerElement.error() != simdjson::NO_SUCH_FIELD;
+    const bool hasMask = maskElement.error() != simdjson::NO_SUCH_FIELD;
+
+    if (!hasLayer && !hasMask)
+    {
+        return std::nullopt;
+    }
+    if (hasLayer != hasMask)
+    {
+        throw std::runtime_error(
+            "glTF node extras must provide both CollisionLayer and CollisionMask");
+    }
+
+    std::uint64_t layer = 0;
+    std::uint64_t mask = 0;
+    if (layerElement.get(layer) != simdjson::SUCCESS ||
+        maskElement.get(mask) != simdjson::SUCCESS ||
+        layer > std::numeric_limits<std::uint32_t>::max() ||
+        mask > std::numeric_limits<std::uint32_t>::max())
+    {
+        throw std::runtime_error(
+            "glTF CollisionLayer and CollisionMask must be unsigned 32-bit integers");
+    }
+
+    return CollisionConfig{static_cast<std::uint32_t>(layer), static_cast<std::uint32_t>(mask)};
+}
+
 fastgltf::Expected<fastgltf::Asset>
 GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
-                       std::unordered_set<std::size_t>* controllableNodeIndices)
+                       std::unordered_set<std::size_t>* controllableNodeIndices,
+                       std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs)
 {
     // fastgltf only parses extension data when the extension is enabled here.
     // Without the opt-in, extension fields silently stay at their defaults.
@@ -493,10 +583,18 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission;
     fastgltf::Parser parser(enabledExtensions);
-    if (controllableNodeIndices != nullptr)
+    ExtrasParseState extrasState{controllableNodeIndices, collisionNodeConfigs};
+    if (controllableNodeIndices != nullptr || collisionNodeConfigs != nullptr)
     {
-        controllableNodeIndices->clear();
-        parser.setUserPointer(controllableNodeIndices);
+        if (controllableNodeIndices != nullptr)
+        {
+            controllableNodeIndices->clear();
+        }
+        if (collisionNodeConfigs != nullptr)
+        {
+            collisionNodeConfigs->clear();
+        }
+        parser.setUserPointer(&extrasState);
         parser.setExtrasParseCallback(&parseNodeExtras);
     }
 
@@ -558,7 +656,8 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
 {
     auto gltfPath = std::filesystem::path(path);
     std::unordered_set<std::size_t> controllableNodeIndices;
-    auto result = parseAsset(gltfPath, &controllableNodeIndices);
+    std::unordered_map<std::size_t, CollisionConfig> collisionNodeConfigs;
+    auto result = parseAsset(gltfPath, &controllableNodeIndices, &collisionNodeConfigs);
     auto& asset = result.get();
 
     // fastgltf stores extensionsRequired in a pmr-allocated string vector.
@@ -595,12 +694,13 @@ Node* GltfLoader::loadScene(const std::string& path, SceneGraph& scene, Resource
         if (nodeHasAnimation(asset, nodeIndex))
         {
             configureAnimatedNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
+                                  collisionNodeConfigs);
         }
         else
         {
             loadNode(asset, nodeIndex, rootRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
         }
     }
 
@@ -614,9 +714,11 @@ void GltfLoader::configureAnimatedNode(
     const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
     Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
     std::size_t& nextAnimSlot, Node*& activeCamera,
-    const std::unordered_set<std::size_t>& controllableNodeIndices)
+    const std::unordered_set<std::size_t>& controllableNodeIndices,
+    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
+    validateCollisionTarget(nodeIndex, collisionNodeConfigs, gltfNode);
 
     // Determine morph target count from the mesh (if any)
     std::size_t numMorphTargets = 0;
@@ -710,7 +812,7 @@ void GltfLoader::configureAnimatedNode(
             auto object =
                 loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
             meshRef.component().emplace<Mesh>(std::move(object));
-            applyMeshColliderBounds(asset, gltfMesh, meshRef);
+            applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
             meshMap[nodeIndex] = &std::get<Mesh>(meshRef.component());
 
             if (hasWeightAnim)
@@ -731,7 +833,7 @@ void GltfLoader::configureAnimatedNode(
         auto object =
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
-        applyMeshColliderBounds(asset, gltfMesh, node);
+        applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
         auto& mesh = std::get<Mesh>(node.component());
         meshMap[nodeIndex] = &mesh;
 
@@ -762,23 +864,26 @@ void GltfLoader::configureAnimatedNode(
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
+                                  collisionNodeConfigs);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
         }
     }
 }
 
-void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
-                          const std::string& baseDir, Resources& resources, Assets& assets,
-                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
-                          Node*& activeCamera,
-                          const std::unordered_set<std::size_t>& controllableNodeIndices)
+void GltfLoader::loadNode(
+    const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
+    Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
+    std::size_t& nextAnimSlot, Node*& activeCamera,
+    const std::unordered_set<std::size_t>& controllableNodeIndices,
+    const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
+    validateCollisionTarget(nodeIndex, collisionNodeConfigs, gltfNode);
     applyTRS(gltfNode, node);
 
     applyLight(asset, gltfNode, node);
@@ -789,7 +894,7 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         auto object =
             loadMesh(asset, gltfMesh, baseDir, resources, assets, gltfNode.meshIndex.value());
         node.component().emplace<Mesh>(std::move(object));
-        applyMeshColliderBounds(asset, gltfMesh, node);
+        applyCollisionConfig(nodeIndex, collisionNodeConfigs, asset, gltfMesh, node);
         meshMap[nodeIndex] = &std::get<Mesh>(node.component());
 
         // Static meshes with morph targets still honour mesh.weights (e.g.
@@ -818,12 +923,13 @@ void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, N
         if (nodeHasAnimation(asset, childIndex))
         {
             configureAnimatedNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap,
-                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices);
+                                  meshMap, nextAnimSlot, activeCamera, controllableNodeIndices,
+                                  collisionNodeConfigs);
         }
         else
         {
             loadNode(asset, childIndex, childRef, baseDir, resources, assets, nodeMap, meshMap,
-                     nextAnimSlot, activeCamera, controllableNodeIndices);
+                     nextAnimSlot, activeCamera, controllableNodeIndices, collisionNodeConfigs);
         }
     }
 }
@@ -937,12 +1043,12 @@ std::optional<AABB> GltfLoader::meshBounds(const fastgltf::Asset& asset, const f
 }
 
 void GltfLoader::applyMeshColliderBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                                         Node& node)
+                                         Collider& collider)
 {
     auto bounds = meshBounds(asset, mesh);
     if (bounds.has_value())
     {
-        node.collider().localBounds(bounds.value());
+        collider.localBounds(bounds.value());
     }
 }
 

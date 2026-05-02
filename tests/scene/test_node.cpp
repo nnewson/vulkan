@@ -72,11 +72,28 @@ TEST(NodeAccessors, ConstTransform)
 TEST(NodeAccessors, ColliderIsMutable)
 {
     Node n("ColliderNode");
-    n.collider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
+    auto& collider = n.emplaceCollider();
+    collider.localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
 
-    const auto bounds = n.collider().localBounds();
+    const auto bounds = n.collider()->localBounds();
     EXPECT_EQ(bounds.min, Vec3(-1.0f, -2.0f, -3.0f));
     EXPECT_EQ(bounds.max, Vec3(1.0f, 2.0f, 3.0f));
+}
+
+TEST(NodeAccessors, DefaultHasNoCollider)
+{
+    Node n("ColliderNode");
+    EXPECT_FALSE(n.hasCollider());
+    EXPECT_EQ(n.collider(), nullptr);
+}
+
+TEST(NodeAccessors, EmplaceCollider)
+{
+    Node n("ColliderNode");
+    auto& collider = n.emplaceCollider();
+
+    EXPECT_TRUE(n.hasCollider());
+    EXPECT_EQ(n.collider(), &collider);
 }
 
 TEST(NodeAccessors, DefaultHasNoControllable)
@@ -99,13 +116,26 @@ TEST(NodeUpdate, UpdatesColliderWorldBounds)
 {
     Node n("ColliderNode");
     n.transform().position({10.0f, 20.0f, 30.0f});
-    n.collider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
+    n.emplaceCollider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
 
     n.update(InputState{}, Mat4::identity());
 
-    const auto bounds = n.collider().worldBounds();
+    const auto bounds = n.collider()->worldBounds();
     EXPECT_EQ(bounds.min, Vec3(9.0f, 18.0f, 27.0f));
     EXPECT_EQ(bounds.max, Vec3(11.0f, 22.0f, 33.0f));
+}
+
+TEST(NodeUpdate, NodeWithoutColliderUpdatesTransform)
+{
+    Node n("NoColliderNode");
+    n.transform().position({10.0f, 20.0f, 30.0f});
+
+    n.update(InputState{}, Mat4::identity());
+
+    EXPECT_FALSE(n.hasCollider());
+    EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 10.0f);
+    EXPECT_FLOAT_EQ((n.transform().world()[1, 3]), 20.0f);
+    EXPECT_FLOAT_EQ((n.transform().world()[2, 3]), 30.0f);
 }
 
 TEST(NodeUpdate, ControllableMovesTransformFromControllerState)
