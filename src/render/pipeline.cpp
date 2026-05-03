@@ -42,6 +42,11 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         {15, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         // 16: KHR_materials_transmission texture (red channel).
         {16, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 17, 18, 19: KHR_materials_clearcoat — factor (R), roughness (G),
+        // normal (RGB).
+        {17, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        {18, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        {19, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
     return config;

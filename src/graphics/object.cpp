@@ -196,6 +196,41 @@ void Object::load(Resources& resources)
                 resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
         }
 
+        // Clearcoat textures (KHR_materials_clearcoat). Factor + roughness
+        // fall back to the white BaseColour dummy (the shader gates them on a
+        // present-flag, so the sample is harmless when absent). Normal falls
+        // back to the flat-normal dummy so the TBN reconstruction still
+        // produces the geometric normal.
+        if (binding.geometry->material().hasClearcoatTexture())
+        {
+            geoInfo.clearcoatTexture = binding.geometry->material().clearcoatTexture().handle();
+        }
+        else
+        {
+            geoInfo.clearcoatTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+        }
+        if (binding.geometry->material().hasClearcoatRoughnessTexture())
+        {
+            geoInfo.clearcoatRoughnessTexture =
+                binding.geometry->material().clearcoatRoughnessTexture().handle();
+        }
+        else
+        {
+            geoInfo.clearcoatRoughnessTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+        }
+        if (binding.geometry->material().hasClearcoatNormalTexture())
+        {
+            geoInfo.clearcoatNormalTexture =
+                binding.geometry->material().clearcoatNormalTexture().handle();
+        }
+        else
+        {
+            geoInfo.clearcoatNormalTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
+        }
+
         req.geometries.push_back(geoInfo);
     }
 
@@ -290,11 +325,31 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.uvRotationsExtra[0] = mat.occlusionUvTransform().rotation;
     ubo.uvRotationsExtra[1] = mat.transmissionUvTransform().rotation;
 
-    // KHR_materials_transmission. .x = factor, .y = texture-present flag,
-    // .z = texCoord index. .w reserved.
+    // KHR_materials_transmission + KHR_materials_ior.
+    // .x = factor, .y = texture-present flag, .z = texCoord index, .w = ior.
     ubo.transmissionParams[0] = mat.transmissionFactor();
     ubo.transmissionParams[1] = mat.hasTransmissionTexture() ? 1.0f : 0.0f;
     ubo.transmissionParams[2] = static_cast<float>(mat.transmissionTexCoord());
+    ubo.transmissionParams[3] = mat.ior();
+
+    // KHR_materials_clearcoat. factor / roughness / normalScale, presence
+    // flags, per-slot texCoord + per-slot UV transforms (offset/scale + the
+    // rotation packed separately).
+    ubo.clearcoatParams[0] = mat.clearcoatFactor();
+    ubo.clearcoatParams[1] = mat.clearcoatRoughness();
+    ubo.clearcoatParams[2] = mat.clearcoatNormalScale();
+    ubo.clearcoatFlags[0] = mat.hasClearcoatTexture() ? 1.0f : 0.0f;
+    ubo.clearcoatFlags[1] = mat.hasClearcoatRoughnessTexture() ? 1.0f : 0.0f;
+    ubo.clearcoatFlags[2] = mat.hasClearcoatNormalTexture() ? 1.0f : 0.0f;
+    ubo.clearcoatTexCoords[0] = static_cast<float>(mat.clearcoatTexCoord());
+    ubo.clearcoatTexCoords[1] = static_cast<float>(mat.clearcoatRoughnessTexCoord());
+    ubo.clearcoatTexCoords[2] = static_cast<float>(mat.clearcoatNormalTexCoord());
+    packUv(ubo.uvClearcoat, mat.clearcoatUvTransform());
+    packUv(ubo.uvClearcoatRoughness, mat.clearcoatRoughnessUvTransform());
+    packUv(ubo.uvClearcoatNormal, mat.clearcoatNormalUvTransform());
+    ubo.clearcoatRotations[0] = mat.clearcoatUvTransform().rotation;
+    ubo.clearcoatRotations[1] = mat.clearcoatRoughnessUvTransform().rotation;
+    ubo.clearcoatRotations[2] = mat.clearcoatNormalUvTransform().rotation;
     return ubo;
 }
 

@@ -118,6 +118,124 @@ public:
         return transmissionTexture_ != nullptr;
     }
 
+    // KHR_materials_clearcoat — thin lacquer layer over the base BRDF. Three
+    // optional textures (factor R, roughness G, normal RGB), each with their
+    // own UV-set + UvTransform. Defaults: factor 0 (clearcoat absent),
+    // roughness 0, normalScale 1.
+    [[nodiscard]] const Texture& clearcoatTexture() const noexcept
+    {
+        return *clearcoatTexture_;
+    }
+    void clearcoatTexture(const Texture* t) noexcept
+    {
+        clearcoatTexture_ = t;
+    }
+    [[nodiscard]] bool hasClearcoatTexture() const noexcept
+    {
+        return clearcoatTexture_ != nullptr;
+    }
+
+    [[nodiscard]] const Texture& clearcoatRoughnessTexture() const noexcept
+    {
+        return *clearcoatRoughnessTexture_;
+    }
+    void clearcoatRoughnessTexture(const Texture* t) noexcept
+    {
+        clearcoatRoughnessTexture_ = t;
+    }
+    [[nodiscard]] bool hasClearcoatRoughnessTexture() const noexcept
+    {
+        return clearcoatRoughnessTexture_ != nullptr;
+    }
+
+    [[nodiscard]] const Texture& clearcoatNormalTexture() const noexcept
+    {
+        return *clearcoatNormalTexture_;
+    }
+    void clearcoatNormalTexture(const Texture* t) noexcept
+    {
+        clearcoatNormalTexture_ = t;
+    }
+    [[nodiscard]] bool hasClearcoatNormalTexture() const noexcept
+    {
+        return clearcoatNormalTexture_ != nullptr;
+    }
+
+    [[nodiscard]] float clearcoatFactor() const noexcept
+    {
+        return clearcoatFactor_;
+    }
+    void clearcoatFactor(float v) noexcept
+    {
+        clearcoatFactor_ = v;
+    }
+    [[nodiscard]] float clearcoatRoughness() const noexcept
+    {
+        return clearcoatRoughness_;
+    }
+    void clearcoatRoughness(float v) noexcept
+    {
+        clearcoatRoughness_ = v;
+    }
+    [[nodiscard]] float clearcoatNormalScale() const noexcept
+    {
+        return clearcoatNormalScale_;
+    }
+    void clearcoatNormalScale(float v) noexcept
+    {
+        clearcoatNormalScale_ = v;
+    }
+
+    [[nodiscard]] int clearcoatTexCoord() const noexcept
+    {
+        return clearcoatTexCoord_;
+    }
+    void clearcoatTexCoord(int v) noexcept
+    {
+        clearcoatTexCoord_ = v;
+    }
+    [[nodiscard]] int clearcoatRoughnessTexCoord() const noexcept
+    {
+        return clearcoatRoughnessTexCoord_;
+    }
+    void clearcoatRoughnessTexCoord(int v) noexcept
+    {
+        clearcoatRoughnessTexCoord_ = v;
+    }
+    [[nodiscard]] int clearcoatNormalTexCoord() const noexcept
+    {
+        return clearcoatNormalTexCoord_;
+    }
+    void clearcoatNormalTexCoord(int v) noexcept
+    {
+        clearcoatNormalTexCoord_ = v;
+    }
+
+    [[nodiscard]] UvTransform clearcoatUvTransform() const noexcept
+    {
+        return clearcoatUvTransform_;
+    }
+    void clearcoatUvTransform(UvTransform t) noexcept
+    {
+        clearcoatUvTransform_ = t;
+    }
+    [[nodiscard]] UvTransform clearcoatRoughnessUvTransform() const noexcept
+    {
+        return clearcoatRoughnessUvTransform_;
+    }
+    void clearcoatRoughnessUvTransform(UvTransform t) noexcept
+    {
+        clearcoatRoughnessUvTransform_ = t;
+    }
+    [[nodiscard]] UvTransform clearcoatNormalUvTransform() const noexcept
+    {
+        return clearcoatNormalUvTransform_;
+    }
+    void clearcoatNormalUvTransform(UvTransform t) noexcept
+    {
+        clearcoatNormalUvTransform_ = t;
+    }
+
     [[nodiscard]] const std::string& name() const noexcept
     {
         return name_;
@@ -309,6 +427,20 @@ public:
         transmissionFactor_ = v;
     }
 
+    // KHR_materials_ior — index of refraction. Default 1.5 matches the glTF
+    // spec and the previously hardcoded shader constant; water 1.33,
+    // plastic 1.46, sapphire 1.77, diamond 2.42, etc. Only consulted by the
+    // transmission lobe in the fragment shader, so non-transmissive materials
+    // are unaffected by this value.
+    [[nodiscard]] float ior() const noexcept
+    {
+        return ior_;
+    }
+    void ior(float v) noexcept
+    {
+        ior_ = v;
+    }
+
     [[nodiscard]] AlphaMode alphaMode() const noexcept
     {
         return alphaMode_;
@@ -372,6 +504,16 @@ private:
     AlphaMode alphaMode_{AlphaMode::Opaque};
     float alphaCutoff_{0.5f};
     float transmissionFactor_{0.0f};
+    float ior_{1.5f};
+    float clearcoatFactor_{0.0f};
+    float clearcoatRoughness_{0.0f};
+    float clearcoatNormalScale_{1.0f};
+    int clearcoatTexCoord_{0};
+    int clearcoatRoughnessTexCoord_{0};
+    int clearcoatNormalTexCoord_{0};
+    UvTransform clearcoatUvTransform_{};
+    UvTransform clearcoatRoughnessUvTransform_{};
+    UvTransform clearcoatNormalUvTransform_{};
     bool doubleSided_{false};
     bool unlit_{false};
 
@@ -381,6 +523,9 @@ private:
     const Texture* metallicRoughnessTexture_{nullptr};
     const Texture* occlusionTexture_{nullptr};
     const Texture* transmissionTexture_{nullptr};
+    const Texture* clearcoatTexture_{nullptr};
+    const Texture* clearcoatRoughnessTexture_{nullptr};
+    const Texture* clearcoatNormalTexture_{nullptr};
 };
 
 } // namespace fire_engine

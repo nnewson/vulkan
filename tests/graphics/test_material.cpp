@@ -132,3 +132,77 @@ TEST(Material, MoveConstructionPreservesCoreFields)
     EXPECT_FLOAT_EQ(moved.alpha(), 0.3f);
     EXPECT_FLOAT_EQ(moved.normalScale(), 0.6f);
 }
+
+TEST(Material, IorDefaultsToFifteen)
+{
+    Material mat;
+    EXPECT_FLOAT_EQ(mat.ior(), 1.5f);
+}
+
+TEST(Material, IorRoundTrip)
+{
+    Material mat;
+    mat.ior(1.33f);
+    EXPECT_FLOAT_EQ(mat.ior(), 1.33f);
+}
+
+TEST(Material, ClearcoatDefaultsAreOff)
+{
+    Material mat;
+    EXPECT_FLOAT_EQ(mat.clearcoatFactor(), 0.0f);
+    EXPECT_FLOAT_EQ(mat.clearcoatRoughness(), 0.0f);
+    EXPECT_FLOAT_EQ(mat.clearcoatNormalScale(), 1.0f);
+    EXPECT_FALSE(mat.hasClearcoatTexture());
+    EXPECT_FALSE(mat.hasClearcoatRoughnessTexture());
+    EXPECT_FALSE(mat.hasClearcoatNormalTexture());
+}
+
+TEST(Material, ClearcoatScalarRoundTrips)
+{
+    Material mat;
+    mat.clearcoatFactor(0.8f);
+    mat.clearcoatRoughness(0.25f);
+    mat.clearcoatNormalScale(0.6f);
+    EXPECT_FLOAT_EQ(mat.clearcoatFactor(), 0.8f);
+    EXPECT_FLOAT_EQ(mat.clearcoatRoughness(), 0.25f);
+    EXPECT_FLOAT_EQ(mat.clearcoatNormalScale(), 0.6f);
+}
+
+TEST(Material, ClearcoatTexCoordsRoundTrip)
+{
+    Material mat;
+    mat.clearcoatTexCoord(1);
+    mat.clearcoatRoughnessTexCoord(0);
+    mat.clearcoatNormalTexCoord(1);
+    EXPECT_EQ(mat.clearcoatTexCoord(), 1);
+    EXPECT_EQ(mat.clearcoatRoughnessTexCoord(), 0);
+    EXPECT_EQ(mat.clearcoatNormalTexCoord(), 1);
+}
+
+TEST(Material, ClearcoatUvTransformsRoundTrip)
+{
+    Material mat;
+    UvTransform t1{0.1f, 0.2f, 2.0f, 3.0f, 0.5f};
+    UvTransform t2{0.3f, 0.4f, 0.5f, 0.5f, 1.0f};
+    UvTransform t3{0.5f, 0.6f, 1.5f, 2.5f, 1.5f};
+    mat.clearcoatUvTransform(t1);
+    mat.clearcoatRoughnessUvTransform(t2);
+    mat.clearcoatNormalUvTransform(t3);
+    EXPECT_FLOAT_EQ(mat.clearcoatUvTransform().offsetX, 0.1f);
+    EXPECT_FLOAT_EQ(mat.clearcoatRoughnessUvTransform().scaleY, 0.5f);
+    EXPECT_FLOAT_EQ(mat.clearcoatNormalUvTransform().rotation, 1.5f);
+}
+
+TEST(Material, ClearcoatTexturePointersRoundTrip)
+{
+    Material mat;
+    Texture tFactor;
+    Texture tRough;
+    Texture tNormal;
+    mat.clearcoatTexture(&tFactor);
+    mat.clearcoatRoughnessTexture(&tRough);
+    mat.clearcoatNormalTexture(&tNormal);
+    EXPECT_TRUE(mat.hasClearcoatTexture());
+    EXPECT_TRUE(mat.hasClearcoatRoughnessTexture());
+    EXPECT_TRUE(mat.hasClearcoatNormalTexture());
+}

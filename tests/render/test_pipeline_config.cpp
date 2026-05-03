@@ -11,7 +11,7 @@ TEST(PipelineConfig, ForwardConfigIncludesIblBindings)
 {
     auto config = Pipeline::forwardConfig({});
 
-    EXPECT_EQ(config.bindings.size(), 17u);
+    EXPECT_EQ(config.bindings.size(), 20u);
 
     auto hasBinding = [&](uint32_t binding)
     {
@@ -26,6 +26,10 @@ TEST(PipelineConfig, ForwardConfigIncludesIblBindings)
     EXPECT_TRUE(hasBinding(15));
     // KHR_materials_transmission texture.
     EXPECT_TRUE(hasBinding(16));
+    // KHR_materials_clearcoat: factor (R), roughness (G), normal (RGB).
+    EXPECT_TRUE(hasBinding(17));
+    EXPECT_TRUE(hasBinding(18));
+    EXPECT_TRUE(hasBinding(19));
 }
 
 TEST(PipelineConfig, SkyboxConfigIncludesCubemapSamplerBinding)

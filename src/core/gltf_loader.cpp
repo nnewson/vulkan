@@ -47,12 +47,14 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 5> kSupportedExtensions = {
+constexpr std::array<std::string_view, 7> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
     std::string_view{"KHR_texture_transform"},
     std::string_view{"KHR_materials_unlit"},
     std::string_view{"KHR_lights_punctual"},
     std::string_view{"KHR_materials_transmission"},
+    std::string_view{"KHR_materials_ior"},
+    std::string_view{"KHR_materials_clearcoat"},
 };
 
 struct ExtrasParseState
@@ -718,7 +720,8 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
         fastgltf::Extensions::KHR_materials_emissive_strength |
         fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual |
-        fastgltf::Extensions::KHR_materials_transmission;
+        fastgltf::Extensions::KHR_materials_transmission | fastgltf::Extensions::KHR_materials_ior |
+        fastgltf::Extensions::KHR_materials_clearcoat;
     fastgltf::Parser parser(enabledExtensions);
     ExtrasParseState extrasState{controllableNodeIndices, collisionNodeConfigs, dynamicNodeConfigs};
     if (controllableNodeIndices != nullptr || collisionNodeConfigs != nullptr ||
@@ -1383,6 +1386,80 @@ const Texture* GltfLoader::resolveTransmissionTexture(const fastgltf::Asset& ass
     return nullptr;
 }
 
+const Texture* GltfLoader::resolveClearcoatTexture(const fastgltf::Asset& asset,
+                                                   const fastgltf::Primitive& primitive,
+                                                   const std::string& baseDir,
+                                                   Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.clearcoat != nullptr && gltfMat.clearcoat->clearcoatTexture.has_value())
+        {
+            auto texIndex = gltfMat.clearcoat->clearcoatTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                auto settings = extractSamplerSettings(asset, texIndex);
+                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
+                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
+            }
+            return &tex;
+        }
+    }
+    return nullptr;
+}
+
+const Texture* GltfLoader::resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
+                                                            const fastgltf::Primitive& primitive,
+                                                            const std::string& baseDir,
+                                                            Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.clearcoat != nullptr &&
+            gltfMat.clearcoat->clearcoatRoughnessTexture.has_value())
+        {
+            auto texIndex = gltfMat.clearcoat->clearcoatRoughnessTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                auto settings = extractSamplerSettings(asset, texIndex);
+                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
+                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
+            }
+            return &tex;
+        }
+    }
+    return nullptr;
+}
+
+const Texture* GltfLoader::resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
+                                                         const fastgltf::Primitive& primitive,
+                                                         const std::string& baseDir,
+                                                         Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.clearcoat != nullptr &&
+            gltfMat.clearcoat->clearcoatNormalTexture.has_value())
+        {
+            auto texIndex = gltfMat.clearcoat->clearcoatNormalTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                auto settings = extractSamplerSettings(asset, texIndex);
+                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
+                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
+            }
+            return &tex;
+        }
+    }
+    return nullptr;
+}
+
 Material* GltfLoader::resolveMaterial(Material materialData, Assets& assets)
 {
     return &assets.addMaterial(std::move(materialData));
@@ -1746,6 +1823,12 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             resolveOcclusionTexture(asset, primitive, baseDir, resources, assets);
         const Texture* transTexPtr =
             resolveTransmissionTexture(asset, primitive, baseDir, resources, assets);
+        const Texture* ccTexPtr =
+            resolveClearcoatTexture(asset, primitive, baseDir, resources, assets);
+        const Texture* ccRoughTexPtr =
+            resolveClearcoatRoughnessTexture(asset, primitive, baseDir, resources, assets);
+        const Texture* ccNormalTexPtr =
+            resolveClearcoatNormalTexture(asset, primitive, baseDir, resources, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
         auto tangentResult =
@@ -1770,6 +1853,18 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         if (transTexPtr != nullptr)
         {
             materialData.transmissionTexture(transTexPtr);
+        }
+        if (ccTexPtr != nullptr)
+        {
+            materialData.clearcoatTexture(ccTexPtr);
+        }
+        if (ccRoughTexPtr != nullptr)
+        {
+            materialData.clearcoatRoughnessTexture(ccRoughTexPtr);
+        }
+        if (ccNormalTexPtr != nullptr)
+        {
+            materialData.clearcoatNormalTexture(ccNormalTexPtr);
         }
         if (normalTexPtr != nullptr)
         {
@@ -1911,6 +2006,39 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
                 const auto& info = gltfMat.transmission->transmissionTexture.value();
                 material.transmissionTexCoord(static_cast<int>(info.texCoordIndex));
                 material.transmissionUvTransform(readUvTransform(info));
+            }
+        }
+
+        // KHR_materials_ior. fastgltf defaults gltfMat.ior to 1.5f when the
+        // extension is absent (matching the spec), so we copy unconditionally.
+        material.ior(static_cast<float>(gltfMat.ior));
+
+        // KHR_materials_clearcoat. fastgltf surfaces clearcoat via a
+        // unique_ptr<MaterialClearcoat>; null when the extension isn't on the
+        // asset. clearcoatNormalTexture carries its own scale (NormalTextureInfo).
+        if (gltfMat.clearcoat != nullptr)
+        {
+            const auto& cc = *gltfMat.clearcoat;
+            material.clearcoatFactor(static_cast<float>(cc.clearcoatFactor));
+            material.clearcoatRoughness(static_cast<float>(cc.clearcoatRoughnessFactor));
+            if (cc.clearcoatTexture.has_value())
+            {
+                const auto& info = cc.clearcoatTexture.value();
+                material.clearcoatTexCoord(static_cast<int>(info.texCoordIndex));
+                material.clearcoatUvTransform(readUvTransform(info));
+            }
+            if (cc.clearcoatRoughnessTexture.has_value())
+            {
+                const auto& info = cc.clearcoatRoughnessTexture.value();
+                material.clearcoatRoughnessTexCoord(static_cast<int>(info.texCoordIndex));
+                material.clearcoatRoughnessUvTransform(readUvTransform(info));
+            }
+            if (cc.clearcoatNormalTexture.has_value())
+            {
+                const auto& info = cc.clearcoatNormalTexture.value();
+                material.clearcoatNormalTexCoord(static_cast<int>(info.texCoordIndex));
+                material.clearcoatNormalScale(static_cast<float>(info.scale));
+                material.clearcoatNormalUvTransform(readUvTransform(info));
             }
         }
 

@@ -27,9 +27,23 @@ layout(binding = 1) uniform MaterialUBO {
     vec4 uvRotations;
     // .x = occlusion rotation, .y = transmission rotation; rest reserved.
     vec4 uvRotationsExtra;
-    // KHR_materials_transmission. .x = transmissionFactor, .y = texture-present
-    // flag, .z = transmission texCoord index. .w reserved (IOR / thickness).
+    // KHR_materials_transmission + KHR_materials_ior. .x = transmissionFactor,
+    // .y = texture-present flag, .z = transmission texCoord index, .w = ior.
     vec4 transmissionParams;
+    // KHR_materials_clearcoat. .x = factor, .y = roughness, .z = normalScale.
+    vec4 clearcoatParams;
+    // .x = factor texture present, .y = roughness texture present,
+    // .z = normal texture present (all 0 / 1 floats).
+    vec4 clearcoatFlags;
+    // .x = factor texCoord, .y = roughness texCoord, .z = normal texCoord
+    // (encoded as floats).
+    vec4 clearcoatTexCoords;
+    // KHR_texture_transform per clearcoat slot (offset.xy + scale.xy).
+    vec4 uvClearcoat;
+    vec4 uvClearcoatRoughness;
+    vec4 uvClearcoatNormal;
+    // Rotations (radians, CCW): .x = factor, .y = roughness, .z = normal.
+    vec4 clearcoatRotations;
 } material;
 
 layout(binding = 2) uniform sampler2D texSampler;
@@ -39,6 +53,9 @@ layout(binding = 7) uniform sampler2D normalMap;
 layout(binding = 8) uniform sampler2D metallicRoughnessMap;
 layout(binding = 9) uniform sampler2D occlusionMap;
 layout(binding = 16) uniform sampler2D transmissionMap;
+layout(binding = 17) uniform sampler2D clearcoatMap;
+layout(binding = 18) uniform sampler2D clearcoatRoughnessMap;
+layout(binding = 19) uniform sampler2D clearcoatNormalMap;
 layout(binding = 10) uniform sampler2DArrayShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
 layout(binding = 13) uniform samplerCube prefilteredMap;
@@ -296,6 +313,35 @@ void main() {
     float a = roughness * roughness;
 
     // Direct lighting loop — accumulate contributions from every light in
+    // KHR_materials_clearcoat. Resolve the per-fragment clearcoat factor /
+    // roughness / normal once, ahead of the per-light loop.
+    float clearcoat = material.clearcoatParams.x;
+    float ccRough = material.clearcoatParams.y;
+    float ccNormalScale = material.clearcoatParams.z;
+    if (material.clearcoatFlags.x > 0.5) {
+        vec2 ccUv = applyUvTransform(pickUv(int(material.clearcoatTexCoords.x)),
+                                     material.uvClearcoat, material.clearcoatRotations.x);
+        clearcoat *= texture(clearcoatMap, ccUv).r;
+    }
+    if (material.clearcoatFlags.y > 0.5) {
+        vec2 ccRuv = applyUvTransform(pickUv(int(material.clearcoatTexCoords.y)),
+                                      material.uvClearcoatRoughness,
+                                      material.clearcoatRotations.y);
+        ccRough *= texture(clearcoatRoughnessMap, ccRuv).g;
+    }
+    ccRough = clamp(ccRough, 0.04, 1.0);
+    float ccAlpha = ccRough * ccRough;
+
+    vec3 N_cc = N;
+    if (material.clearcoatFlags.z > 0.5) {
+        vec2 ccNuv = applyUvTransform(pickUv(int(material.clearcoatTexCoords.z)),
+                                      material.uvClearcoatNormal,
+                                      material.clearcoatRotations.z);
+        vec3 cnSamp = texture(clearcoatNormalMap, ccNuv).rgb * 2.0 - 1.0;
+        cnSamp.xy *= ccNormalScale;
+        N_cc = normalize(fragTBN * cnSamp);
+    }
+
     // LightUBO::lights[]. Only the first directional (i==0, type==0) gets CSM
     // shadow; everything else is unshadowed.
     vec3 directDiffuse = vec3(0.0);
@@ -354,15 +400,34 @@ void main() {
         vec3 kD = (vec3(1.0) - F) * (1.0 - metallic);
         vec3 diffuseContrib = kD * baseColor * (1.0 / PI) * lightColor * NdotL;
 
+        // KHR_materials_clearcoat — second specular lobe over the base BRDF.
+        // Energy conservation: attenuate the underlying lobes by (1 − F_cc * clearcoat).
+        vec3 cc_contrib = vec3(0.0);
+        if (clearcoat > 0.0) {
+            float NccDotL = max(dot(N_cc, lightVec), 0.0);
+            float NccDotH = max(dot(N_cc, H), 0.0);
+            float D_cc = distributionGGX(NccDotH, ccAlpha);
+            // Kelemen visibility — separable, cheaper than Smith for clearcoat.
+            float V_cc = 1.0 / (4.0 * VdotH * VdotH + 0.0001);
+            float F_cc = 0.04 + (1.0 - 0.04) * pow(1.0 - VdotH, 5.0);
+            float spec_cc = D_cc * V_cc * F_cc * NccDotL * clearcoat;
+            cc_contrib = vec3(spec_cc) * lightColor;
+            float ccAtt = 1.0 - F_cc * clearcoat;
+            diffuseContrib *= ccAtt;
+            specularContrib *= ccAtt;
+        }
+
         if (i == 0 && type == 0) {
             int cascade = selectCascade(fragViewDepth);
             float shadow = computeShadow(fragWorldPos, N, lightVec, cascade, fragViewDepth);
             diffuseContrib *= shadow;
             specularContrib *= shadow;
+            cc_contrib *= shadow;
         }
 
         directDiffuse += diffuseContrib;
         directSpecular += specularContrib;
+        directSpecular += cc_contrib;
     }
 
     vec3 irradiance = texture(irradianceMap, N).rgb;
@@ -384,6 +449,22 @@ void main() {
     vec3 diffuseIbl = irradiance * iblKD * light.iblParams.y;
     vec3 specularIbl = prefilteredColor * (FssEss + multiScatter) * light.iblParams.z;
 
+    // Clearcoat IBL — sample the prefilter at the clearcoat normal/roughness
+    // and attenuate the base IBL terms by the clearcoat Fresnel.
+    vec3 clearcoatIbl = vec3(0.0);
+    if (clearcoat > 0.0) {
+        float NccDotV = max(dot(N_cc, V), 0.001);
+        vec3 R_cc = reflect(-V, N_cc);
+        vec3 prefilteredCc = textureLod(prefilteredMap, R_cc, ccRough * maxReflectionLod).rgb;
+        vec2 envBrdfCc = texture(brdfLut, vec2(NccDotV, ccRough)).rg;
+        float F_ccIbl = 0.04 + (1.0 - 0.04) * pow(1.0 - NccDotV, 5.0);
+        clearcoatIbl = prefilteredCc * (0.04 * envBrdfCc.x + envBrdfCc.y) * clearcoat
+                     * light.iblParams.z;
+        float ccIblAtt = 1.0 - F_ccIbl * clearcoat;
+        diffuseIbl *= ccIblAtt;
+        specularIbl *= ccIblAtt;
+    }
+
     float ao = 1.0;
     if (material.extraFlags.x == 1) {
         // glTF spec: occluded = lerp(colour, colour * sampled, strength).
@@ -397,7 +478,7 @@ void main() {
 
     vec3 diffuseAmbientTerm = diffuseIbl * ao;
     float specularAo = mix(1.0, ao, 0.25);
-    vec3 specularAmbientTerm = specularIbl * specularAo;
+    vec3 specularAmbientTerm = specularIbl * specularAo + clearcoatIbl * specularAo;
     vec3 ambientTerm = diffuseAmbientTerm + specularAmbientTerm;
 
     // Emissive
@@ -429,7 +510,10 @@ void main() {
         // pushes paper into ACES saturation and collapses text-vs-paper
         // contrast — the basecolor's 0.05–0.95 range is exactly what ACES
         // tonemaps cleanly. Proper scene-behind-glass refraction would be F3.
-        const float ior = 1.5;
+        // KHR_materials_ior: per-material index of refraction. Default 1.5
+        // when the extension is absent (set by the loader and the UBO field
+        // initialiser). Water 1.33, plastic 1.46, sapphire 1.77, diamond 2.42.
+        float ior = material.transmissionParams.w;
         vec3 refractDir = refract(-V, N, 1.0 / ior);
         if (dot(refractDir, refractDir) < 1e-6) {
             refractDir = R;

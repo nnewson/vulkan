@@ -44,10 +44,25 @@ struct MaterialUBO
     // CCW). Occlusion's rotation in uvRotationsExtra.x; transmission's in .y.
     alignas(16) float uvRotations[4]{};
     alignas(16) float uvRotationsExtra[4]{};
-    // KHR_materials_transmission. .x = transmissionFactor; .y = transmission
-    // texture present (0 / 1); .z = transmission texCoord index (0 / 1); .w
-    // reserved (will carry IOR or thickness in a later milestone).
-    alignas(16) float transmissionParams[4]{};
+    // KHR_materials_transmission + KHR_materials_ior. .x = transmissionFactor;
+    // .y = transmission texture present (0 / 1); .z = transmission texCoord
+    // index (0 / 1); .w = ior (KHR_materials_ior; default 1.5 per spec).
+    alignas(16) float transmissionParams[4]{0.0f, 0.0f, 0.0f, 1.5f};
+    // KHR_materials_clearcoat. .x = factor, .y = roughness, .z = normalScale,
+    // .w reserved.
+    alignas(16) float clearcoatParams[4]{0.0f, 0.0f, 1.0f, 0.0f};
+    // .x = factor texture present, .y = roughness texture present,
+    // .z = normal texture present, .w reserved (all 0 / 1 floats).
+    alignas(16) float clearcoatFlags[4]{};
+    // .x = factor texCoord, .y = roughness texCoord, .z = normal texCoord,
+    // .w reserved (as floats — saves an alignas slot vs int4).
+    alignas(16) float clearcoatTexCoords[4]{};
+    // KHR_texture_transform per clearcoat slot. offset.xy + scale.xy each.
+    alignas(16) float uvClearcoat[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvClearcoatRoughness[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    alignas(16) float uvClearcoatNormal[4]{0.0f, 0.0f, 1.0f, 1.0f};
+    // Rotations (radians, CCW): .x = factor, .y = roughness, .z = normal.
+    alignas(16) float clearcoatRotations[4]{};
 };
 
 struct SkinUBO

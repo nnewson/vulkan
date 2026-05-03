@@ -1027,3 +1027,84 @@ TEST(VertexColourExtraction, IgnoresAlphaChannel)
     EXPECT_FLOAT_EQ(c.g(), 0.2f);
     EXPECT_FLOAT_EQ(c.b(), 0.3f);
 }
+
+// ---------------------------------------------------------------------------
+// KHR_materials_ior — fastgltf surfaces gltfMat.ior with default 1.5f when
+// the extension is absent (matches the spec); the loader copies it through.
+// ---------------------------------------------------------------------------
+
+static void applyIor(const fastgltf::Material& gltfMat, Material& material)
+{
+    material.ior(static_cast<float>(gltfMat.ior));
+}
+
+TEST(LoadMaterialIor, DefaultIsFifteen)
+{
+    fastgltf::Material gltfMat;
+    Material material;
+    applyIor(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.ior(), 1.5f);
+}
+
+TEST(LoadMaterialIor, AuthoredValuePropagates)
+{
+    fastgltf::Material gltfMat;
+    gltfMat.ior = 2.42f;  // diamond
+    Material material;
+    applyIor(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.ior(), 2.42f);
+}
+
+// ---------------------------------------------------------------------------
+// KHR_materials_clearcoat — fastgltf surfaces clearcoat through a
+// unique_ptr<MaterialClearcoat>. Null when the extension is absent.
+// ---------------------------------------------------------------------------
+
+static void applyClearcoat(const fastgltf::Material& gltfMat, Material& material)
+{
+    if (gltfMat.clearcoat == nullptr)
+    {
+        return;
+    }
+    const auto& cc = *gltfMat.clearcoat;
+    material.clearcoatFactor(static_cast<float>(cc.clearcoatFactor));
+    material.clearcoatRoughness(static_cast<float>(cc.clearcoatRoughnessFactor));
+    if (cc.clearcoatNormalTexture.has_value())
+    {
+        material.clearcoatNormalScale(static_cast<float>(cc.clearcoatNormalTexture->scale));
+    }
+}
+
+TEST(LoadMaterialClearcoat, AbsentExtensionLeavesDefaults)
+{
+    fastgltf::Material gltfMat;
+    Material material;
+    applyClearcoat(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.clearcoatFactor(), 0.0f);
+    EXPECT_FLOAT_EQ(material.clearcoatRoughness(), 0.0f);
+    EXPECT_FLOAT_EQ(material.clearcoatNormalScale(), 1.0f);
+}
+
+TEST(LoadMaterialClearcoat, AuthoredFactorAndRoughnessPropagate)
+{
+    fastgltf::Material gltfMat;
+    gltfMat.clearcoat = std::make_unique<fastgltf::MaterialClearcoat>();
+    gltfMat.clearcoat->clearcoatFactor = 0.75f;
+    gltfMat.clearcoat->clearcoatRoughnessFactor = 0.2f;
+    Material material;
+    applyClearcoat(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.clearcoatFactor(), 0.75f);
+    EXPECT_FLOAT_EQ(material.clearcoatRoughness(), 0.2f);
+}
+
+TEST(LoadMaterialClearcoat, NormalScalePropagates)
+{
+    fastgltf::Material gltfMat;
+    gltfMat.clearcoat = std::make_unique<fastgltf::MaterialClearcoat>();
+    auto& info = gltfMat.clearcoat->clearcoatNormalTexture.emplace();
+    info.textureIndex = 0;
+    info.scale = 0.4f;
+    Material material;
+    applyClearcoat(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.clearcoatNormalScale(), 0.4f);
+}

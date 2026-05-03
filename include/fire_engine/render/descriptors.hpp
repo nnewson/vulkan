@@ -36,6 +36,9 @@ struct GeometryDescriptorInfo
     TextureHandle metallicRoughnessTexture{NullTexture};
     TextureHandle occlusionTexture{NullTexture};
     TextureHandle transmissionTexture{NullTexture};
+    TextureHandle clearcoatTexture{NullTexture};
+    TextureHandle clearcoatRoughnessTexture{NullTexture};
+    TextureHandle clearcoatNormalTexture{NullTexture};
 };
 
 struct ObjectDescriptorRequest

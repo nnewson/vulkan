@@ -199,6 +199,25 @@ private:
                                const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
+    static const Texture*
+    resolveClearcoatTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                            const std::string& baseDir, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
+                                     const fastgltf::Primitive& primitive,
+                                     const std::string& baseDir, Resources& resources,
+                                     Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
+                                  const fastgltf::Primitive& primitive,
+                                  const std::string& baseDir, Resources& resources,
+                                  Assets& assets);
+
+    [[nodiscard]]
     static Material* resolveMaterial(Material materialData, Assets& assets);
 
     [[nodiscard]]
