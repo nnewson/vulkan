@@ -199,7 +199,7 @@ void Object::load(Resources& resources)
         req.geometries.push_back(geoInfo);
     }
 
-    auto descResult = resources.createObjectDescriptors(req);
+    auto descResult = resources.descriptors().createObjectDescriptors(req);
     for (std::size_t g = 0; g < bindings_.size(); ++g)
     {
         bindings_[g].descSets = descResult.descSets[g];
@@ -236,7 +236,7 @@ void Object::load(Resources& resources)
         shadowReq.geometries.push_back(shadowInfo);
     }
 
-    auto shadowDescResult = resources.createShadowDescriptors(shadowReq);
+    auto shadowDescResult = resources.descriptors().createShadowDescriptors(shadowReq);
     for (std::size_t g = 0; g < bindings_.size(); ++g)
     {
         bindings_[g].shadowDescSets = shadowDescResult.descSets[g];

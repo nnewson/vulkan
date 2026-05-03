@@ -12,6 +12,7 @@
 #include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/graphics/texture.hpp>
 #include <fire_engine/render/constants.hpp>
+#include <fire_engine/render/descriptors.hpp>
 
 namespace fire_engine
 {
@@ -38,8 +39,8 @@ public:
 
     Resources(const Resources&) = delete;
     Resources& operator=(const Resources&) = delete;
-    Resources(Resources&&) noexcept = default;
-    Resources& operator=(Resources&&) noexcept = default;
+    Resources(Resources&&) noexcept = delete;
+    Resources& operator=(Resources&&) noexcept = delete;
 
     // --- Buffer creation ---
 
@@ -69,54 +70,19 @@ public:
 
     // --- Mapped buffer sets (per-frame, for UBOs and SSBOs) ---
 
-    struct MappedBufferSet
-    {
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> buffers{NullBuffer, NullBuffer};
-        std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> mapped{};
-    };
+    using MappedBufferSet = fire_engine::MappedBufferSet;
+    using GeometryDescriptorInfo = fire_engine::GeometryDescriptorInfo;
+    using ObjectDescriptorRequest = fire_engine::ObjectDescriptorRequest;
+    using ObjectDescriptorResult = fire_engine::ObjectDescriptorResult;
+    using ShadowGeometryDescriptorInfo = fire_engine::ShadowGeometryDescriptorInfo;
+    using ShadowDescriptorRequest = fire_engine::ShadowDescriptorRequest;
+    using ShadowDescriptorResult = fire_engine::ShadowDescriptorResult;
 
     [[nodiscard]] MappedBufferSet createMappedUniformBuffers(std::size_t size);
     [[nodiscard]] MappedBufferSet createMappedStorageBuffer(std::size_t size,
                                                             const void* initialData);
 
-    // --- Descriptor sets ---
-
-    struct GeometryDescriptorInfo
-    {
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> materialBufs{NullBuffer, NullBuffer};
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> skinBufs{NullBuffer, NullBuffer};
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> morphUboBufs{NullBuffer, NullBuffer};
-        BufferHandle morphSsbo{NullBuffer};
-        std::size_t morphSsboSize{0};
-        TextureHandle texture{NullTexture};
-        TextureHandle emissiveTexture{NullTexture};
-        TextureHandle normalTexture{NullTexture};
-        TextureHandle metallicRoughnessTexture{NullTexture};
-        TextureHandle occlusionTexture{NullTexture};
-        TextureHandle transmissionTexture{NullTexture};
-    };
-
-    struct ObjectDescriptorRequest
-    {
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> uniformBufs{NullBuffer, NullBuffer};
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBufs{NullBuffer, NullBuffer};
-        TextureHandle shadowMap{NullTexture};
-        TextureHandle irradianceMap{NullTexture};
-        TextureHandle prefilteredMap{NullTexture};
-        TextureHandle brdfLut{NullTexture};
-        std::vector<GeometryDescriptorInfo> geometries;
-    };
-
-    struct ObjectDescriptorResult
-    {
-        // descSets[geometryIndex][frameIndex]
-        std::vector<std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>> descSets;
-    };
-
-    [[nodiscard]] ObjectDescriptorResult
-    createObjectDescriptors(const ObjectDescriptorRequest& req);
-
-    // --- Shadow map + shadow descriptors ---
+    // --- Shadow map + offscreen textures ---
 
     // Allocates a 2D D32_SFLOAT image + view usable as a depth attachment and
     // as a sampled texture. Sampler uses comparison mode (CompareOp::eLess,
@@ -159,85 +125,15 @@ public:
     // createOffscreenColourTarget / createShadowColourAttachment call.
     void releaseTexture(TextureHandle handle);
 
-    struct ShadowGeometryDescriptorInfo
+    [[nodiscard]] Descriptors& descriptors() noexcept
     {
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> shadowUboBufs{NullBuffer, NullBuffer};
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> skinBufs{NullBuffer, NullBuffer};
-        std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> morphUboBufs{NullBuffer, NullBuffer};
-        BufferHandle morphSsbo{NullBuffer};
-        std::size_t morphSsboSize{0};
-    };
-
-    struct ShadowDescriptorRequest
-    {
-        std::vector<ShadowGeometryDescriptorInfo> geometries;
-    };
-
-    struct ShadowDescriptorResult
-    {
-        std::vector<std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>> descSets;
-    };
-
-    [[nodiscard]] ShadowDescriptorResult
-    createShadowDescriptors(const ShadowDescriptorRequest& req);
-
-    void shadowDescriptorSetLayout(vk::DescriptorSetLayout layout) noexcept
-    {
-        shadowDescLayout_ = layout;
-    }
-    [[nodiscard]] vk::DescriptorSetLayout shadowDescriptorSetLayout() const noexcept
-    {
-        return shadowDescLayout_;
+        return descriptors_;
     }
 
-    // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout that has a
-    // single uniform-buffer binding at slot 0. Writes one UBO descriptor per
-    // frame from the provided MappedBufferSet. Used by passes whose layout is
-    // simpler than the forward 6-binding layout (e.g. the skybox).
-    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
-    createSingleUboDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
-                               vk::DeviceSize uboSize);
-
-    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
-    createUboImageSamplerDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& ubo,
-                                     vk::DeviceSize uboSize, TextureHandle texture);
-
-    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
-    createSkyboxDescriptors(vk::DescriptorSetLayout layout, const MappedBufferSet& skyboxUbo,
-                            vk::DeviceSize skyboxUboSize, TextureHandle texture,
-                            const MappedBufferSet& lightUbo, vk::DeviceSize lightUboSize);
-
-    // Allocates MAX_FRAMES_IN_FLIGHT descriptor sets for a layout with a
-    // single combined-image-sampler binding at slot 0, writing the texture's
-    // view + sampler into each. Used by the post-process pass to sample the
-    // forward HDR target.
-    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
-    createSingleImageSamplerDescriptors(vk::DescriptorSetLayout layout, TextureHandle texture);
-
-    // Rewrites an existing descriptor set array (per-frame) so slot 0
-    // references a new texture. Used on resize to rebind the post-process
-    // input without reallocating sets.
-    void updateSingleImageSamplerDescriptors(
-        const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets, TextureHandle texture);
-
-    // Creates a single descriptor set with one combined-image-sampler binding
-    // bound to the supplied (view, sampler) pair. Used by bloom passes where
-    // the input view changes per pass (different mip).
-    [[nodiscard]] DescriptorSetHandle createImageViewDescriptor(vk::DescriptorSetLayout layout,
-                                                                vk::ImageView view,
-                                                                vk::Sampler sampler);
-
-    // Allocates a 2-binding descriptor set array for the post-process pass:
-    // binding 0 = HDR target, binding 1 = bloom mip 0 (additive bloom).
-    [[nodiscard]] std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>
-    createPostProcessDescriptors(vk::DescriptorSetLayout layout, TextureHandle hdrTarget,
-                                 TextureHandle bloomChain);
-
-    // Rewrites the post-process descriptor array so its two bindings target a
-    // new HDR view + bloom mip 0. Used on resize.
-    void
-    updatePostProcessDescriptors(const std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT>& sets,
-                                 TextureHandle hdrTarget, TextureHandle bloomChain);
+    [[nodiscard]] const Descriptors& descriptors() const noexcept
+    {
+        return descriptors_;
+    }
 
     // --- Shared light UBO (bound to every forward descriptor set) ---
 
@@ -316,21 +212,12 @@ public:
     [[nodiscard]] vk::PipelineLayout vulkanPipelineLayout(PipelineHandle handle) const noexcept;
 
 private:
-    struct DescriptorPoolEntry;
-
     BufferHandle storeBuffer(vk::raii::Buffer buf, vk::raii::DeviceMemory mem);
-    DescriptorPoolEntry& createDescriptorPool(std::span<const vk::DescriptorPoolSize> poolSizes,
-                                              uint32_t maxSets);
-    [[nodiscard]] std::vector<vk::raii::DescriptorSet>
-    allocateDescriptorSets(vk::DescriptorPool pool, vk::DescriptorSetLayout layout,
-                           uint32_t count) const;
-    [[nodiscard]] DescriptorSetHandle registerDescriptorSet(vk::DescriptorSet set);
-    void retainDescriptorSets(DescriptorPoolEntry& poolEntry,
-                              std::vector<vk::raii::DescriptorSet>& sets);
     [[nodiscard]] TextureHandle createFallbackTexture(FallbackTextureKind kind);
 
     const Device* device_;
     const Pipeline* pipeline_;
+    Descriptors descriptors_;
 
     vk::raii::CommandPool cmdPool_{nullptr};
 
@@ -359,16 +246,6 @@ private:
     std::array<TextureHandle, 5> fallbackTextures_{NullTexture, NullTexture, NullTexture,
                                                    NullTexture, NullTexture};
 
-    struct DescriptorPoolEntry
-    {
-        vk::raii::DescriptorPool pool{nullptr};
-        std::vector<vk::raii::DescriptorSet> sets;
-    };
-    std::vector<DescriptorPoolEntry> descriptorPools_;
-
-    // Flat lookup for descriptor set handles
-    std::vector<vk::DescriptorSet> descriptorSetTable_;
-
     struct PipelineEntry
     {
         vk::Pipeline pipeline{};
@@ -381,7 +258,6 @@ private:
     TextureHandle irradianceMap_{NullTexture};
     TextureHandle prefilteredMap_{NullTexture};
     TextureHandle brdfLut_{NullTexture};
-    vk::DescriptorSetLayout shadowDescLayout_{};
 };
 
 } // namespace fire_engine

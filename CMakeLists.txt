@@ -34,12 +34,16 @@ add_library(fireengine SHARED
     src/input/input.cpp
     src/platform/window.cpp
     src/render/device.cpp
+    src/render/descriptors.cpp
+    src/render/environment_precompute.cpp
     src/render/frame.cpp
     src/render/pipeline.cpp
+    src/render/post_processing.cpp
     src/render/render_context.cpp
     src/render/render_pass.cpp
     src/render/renderer.cpp
     src/render/resources.cpp
+    src/render/shadows.cpp
     src/render/swapchain.cpp
     src/scene/animator.cpp
     src/scene/controllable.cpp
