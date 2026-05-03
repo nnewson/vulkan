@@ -37,7 +37,6 @@ void FireEngine::run(size_t width, size_t height, std::string_view app_name,
     renderer_ = std::make_unique<Renderer>(*window_, std::string(skybox_path));
 
     loadScene(scene_path);
-    collisions_.setup(scene_);
     mainLoop();
 }
 
@@ -47,7 +46,7 @@ void FireEngine::loadScene(std::string_view scene_path)
     constexpr std::string_view default_scene = "RiggedSimple/RiggedSimple.gltf";
     std::string_view path = scene_path.empty() ? default_scene : scene_path;
     Node* activeCamera =
-        GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_);
+        GltfLoader::loadScene(std::string(path), scene_, renderer_->resources(), assets_, physics_);
 
     if (activeCamera != nullptr)
     {
@@ -96,17 +95,29 @@ void FireEngine::loadScene(std::string_view scene_path)
 
 void FireEngine::mainLoop()
 {
+    constexpr float fixedDt = 1.0f / 60.0f;
+    constexpr float maxFrameTime = 0.25f;
     double lastTime = System::getTime();
+    float accumulator = 0.0f;
     while (!window_->shouldClose())
     {
         double now = System::getTime();
-        float dt = static_cast<float>(now - lastTime);
+        float dt = std::min(static_cast<float>(now - lastTime), maxFrameTime);
         lastTime = now;
 
         auto input_state = input_.update(*window_, dt);
         input_state.time(now);
         scene_.update(input_state);
-        collisions_.update(scene_);
+        scene_.submitPhysics(physics_);
+
+        accumulator += dt;
+        while (accumulator >= fixedDt)
+        {
+            physics_.step(fixedDt);
+            accumulator -= fixedDt;
+        }
+
+        scene_.applyPhysics(physics_);
 
         renderer_->drawFrame(*window_, scene_, camera_->worldPosition(), camera_->worldTarget());
     }

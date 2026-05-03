@@ -32,8 +32,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":8,
-				"CollisionMask":3
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":8,
+					"Mask":3
+				}
 			},
 			"mesh":0,
 			"name":"Bottom",
@@ -45,8 +48,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":8,
-				"CollisionMask":3
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":8,
+					"Mask":3
+				}
 			},
 			"mesh":1,
 			"name":"Left",
@@ -69,8 +75,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":8,
-				"CollisionMask":3
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":8,
+					"Mask":3
+				}
 			},
 			"mesh":2,
 			"name":"Top",
@@ -87,8 +96,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":8,
-				"CollisionMask":3
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":8,
+					"Mask":3
+				}
 			},
 			"mesh":3,
 			"name":"Right",
@@ -112,8 +124,11 @@
 		{
 			"extras":{
 				"Controllable":true,
-				"CollisionLayer":1,
-				"CollisionMask":10
+				"Physics":{
+					"BodyType":"Kinematic",
+					"Layer":1,
+					"Mask":10
+				}
 			},
 			"mesh":4,
 			"name":"Paddle",
@@ -130,8 +145,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":4,
-				"CollisionMask":2
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":4,
+					"Mask":2
+				}
 			},
 			"mesh":5,
 			"name":"Block",
@@ -148,8 +166,11 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":0,
-				"CollisionMask":0
+				"Physics":{
+					"BodyType":"Static",
+					"Layer":0,
+					"Mask":0
+				}
 			},
 			"mesh":6,
 			"name":"Background",
@@ -166,14 +187,18 @@
 		},
 		{
 			"extras":{
-				"CollisionLayer":2,
-				"CollisionMask":13,
-				"Dynamic":true,
-				"Velocity":[
-					1.0,
-					-6.0,
-					0.0
-				]
+				"Physics":{
+					"BodyType":"Dynamic",
+					"Layer":2,
+					"Mask":13,
+					"Velocity":[
+						1.0,
+						-6.0,
+						0.0
+					],
+					"GravityScale":0.0,
+					"Restitution":1.0
+				}
 			},
 			"mesh":7,
 			"name":"Ball",

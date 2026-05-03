@@ -108,8 +108,8 @@ Collider::Collider(Collider&& rhs) noexcept
 {
     assert(!rhs.colliderId_.valid() &&
            "Cannot move a Collider that is currently registered with a "
-           "Collisions instance — its endpoints are tracked by address. "
-           "Call Collisions::removeCollider(rhs) first.");
+           "SweepAndPruneBroadPhase instance — its endpoints are tracked by address. "
+           "Call SweepAndPruneBroadPhase::removeCollider(rhs) first.");
     initialiseEndPoints();
     updateEndPointValues();
     rhs.colliderId_ = ColliderId{};

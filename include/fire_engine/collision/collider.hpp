@@ -9,7 +9,7 @@
 namespace fire_engine
 {
 
-class Collisions;
+class SweepAndPruneBroadPhase;
 
 struct AABB
 {
@@ -27,11 +27,11 @@ public:
     Collider& operator=(const Collider&) = delete;
 
     // Move ops are safe ONLY when neither the source nor the destination is
-    // currently registered with a Collisions instance. The endpoints carry
-    // back-pointers to `this` and Collisions's axis vectors hold pointers to
-    // the endpoints inside the Collider — moving a registered collider would
-    // invalidate those. Debug builds assert; release builds reset the source's
-    // id so the source is at least cleanly unregistered after the move.
+    // currently registered with a SweepAndPruneBroadPhase instance. The endpoints
+    // carry back-pointers to `this`, and the broadphase axis vectors hold pointers
+    // to the endpoints inside the Collider — moving a registered collider would
+    // invalidate those. Debug builds assert; release builds reset the source's id
+    // so the source is at least cleanly unregistered after the move.
     Collider(Collider&& rhs) noexcept;
     Collider& operator=(Collider&& rhs) noexcept;
 
@@ -106,7 +106,7 @@ public:
     std::array<EndPoint*, 6> endPoints() noexcept;
 
 private:
-    friend class Collisions;
+    friend class SweepAndPruneBroadPhase;
 
     static constexpr std::uint32_t defaultCollisionLayer = 1U;
     static constexpr std::uint32_t defaultCollisionMask = ~0U;

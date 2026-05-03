@@ -18,6 +18,8 @@
 #include <fire_engine/graphics/image.hpp>
 #include <fire_engine/math/mat4.hpp>
 #include <fire_engine/math/vec3.hpp>
+#include <fire_engine/physics/collider_shape.hpp>
+#include <fire_engine/physics/physics_world.hpp>
 
 namespace simdjson::dom
 {
@@ -48,7 +50,7 @@ public:
     // Returns the first imported glTF camera node, or nullptr when the scene
     // has no authored camera. The node owns an engine Camera component.
     static Node* loadScene(const std::string& path, SceneGraph& scene, Resources& resources,
-                           Assets& assets);
+                           Assets& assets, PhysicsWorld& physics);
 
     // Synthesises per-vertex normals from a triangle mesh when the source
     // glTF lacks the NORMAL attribute. Smooth (area-weighted accumulate-and-
@@ -83,15 +85,17 @@ public:
     using NodeMap = std::unordered_map<std::size_t, Node*>;
     using MeshMap = std::unordered_map<std::size_t, Mesh*>;
 
-    struct CollisionConfig
+    struct PhysicsConfig
     {
-        std::uint32_t layer{0U};
-        std::uint32_t mask{0U};
-    };
-
-    struct DynamicConfig
-    {
+        PhysicsBodyType bodyType{PhysicsBodyType::Static};
+        std::uint32_t layer{1U};
+        std::uint32_t mask{~0U};
         Vec3 velocity{};
+        float mass{1.0f};
+        float restitution{1.0f};
+        float friction{0.0f};
+        float gravityScale{1.0f};
+        std::optional<ColliderShape> shape;
     };
 
     // CPU-only mesh bounds for collision setup. Prefers POSITION accessor
@@ -103,10 +107,8 @@ public:
     static bool nodeExtrasControllable(simdjson::dom::object* extras) noexcept;
 
     [[nodiscard]]
-    static std::optional<CollisionConfig> nodeExtrasCollision(simdjson::dom::object* extras);
-
     [[nodiscard]]
-    static std::optional<DynamicConfig> nodeExtrasDynamic(simdjson::dom::object* extras);
+    static std::optional<PhysicsConfig> nodeExtrasPhysics(simdjson::dom::object* extras);
 
 private:
     // Asset parsing and setup
@@ -114,8 +116,7 @@ private:
     static fastgltf::Expected<fastgltf::Asset>
     parseAsset(const std::filesystem::path& gltfPath,
                std::unordered_set<std::size_t>* controllableNodeIndices = nullptr,
-               std::unordered_map<std::size_t, CollisionConfig>* collisionNodeConfigs = nullptr,
-               std::unordered_map<std::size_t, DynamicConfig>* dynamicNodeConfigs = nullptr);
+               std::unordered_map<std::size_t, PhysicsConfig>* physicsNodeConfigs = nullptr);
 
     static void presizeAssets(const fastgltf::Asset& asset, Assets& assets);
 
@@ -136,16 +137,16 @@ private:
         Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
         std::size_t& nextAnimSlot, Node*& activeCamera,
         const std::unordered_set<std::size_t>& controllableNodeIndices,
-        const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
-        const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs);
+        const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
+        PhysicsWorld& physics);
 
     static void
     loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
              const std::string& baseDir, Resources& resources, Assets& assets, NodeMap& nodeMap,
              MeshMap& meshMap, std::size_t& nextAnimSlot, Node*& activeCamera,
              const std::unordered_set<std::size_t>& controllableNodeIndices,
-             const std::unordered_map<std::size_t, CollisionConfig>& collisionNodeConfigs,
-             const std::unordered_map<std::size_t, DynamicConfig>& dynamicNodeConfigs);
+             const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
+             PhysicsWorld& physics);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
@@ -158,9 +159,6 @@ private:
     [[nodiscard]]
     static std::optional<AABB> primitiveBounds(const fastgltf::Asset& asset,
                                                const fastgltf::Primitive& primitive);
-
-    static void applyMeshColliderBounds(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,
-                                        Collider& collider);
 
     [[nodiscard]]
     static Object loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& mesh,

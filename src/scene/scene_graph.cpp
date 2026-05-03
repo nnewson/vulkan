@@ -38,6 +38,45 @@ bool hasDirectionalLightRecursive(const Node& node)
     }
     return false;
 }
+
+void submitPhysicsRecursive(const Node& node, PhysicsWorld& physics)
+{
+    const PhysicsBodyHandle handle = node.physicsBodyHandle();
+    if (handle.valid())
+    {
+        const PhysicsBody* body = physics.body(handle);
+        if (body != nullptr && body->type() != PhysicsBodyType::Dynamic)
+        {
+            physics.setBodyTransform(handle, node.transform());
+        }
+    }
+
+    for (const auto& child : node.children())
+    {
+        submitPhysicsRecursive(*child, physics);
+    }
+}
+
+void applyPhysicsRecursive(Node& node, const PhysicsWorld& physics)
+{
+    const PhysicsBodyHandle handle = node.physicsBodyHandle();
+    if (handle.valid())
+    {
+        const PhysicsBody* body = physics.body(handle);
+        auto transform = physics.bodyTransform(handle);
+        if (body != nullptr && transform.has_value() && body->type() != PhysicsBodyType::Static)
+        {
+            node.transform().position(transform->position());
+            node.transform().rotation(transform->rotation());
+            node.transform().scale(transform->scale());
+        }
+    }
+
+    for (const auto& child : node.children())
+    {
+        applyPhysicsRecursive(*child, physics);
+    }
+}
 } // namespace
 
 Node& SceneGraph::addNode(std::unique_ptr<Node> node)
@@ -60,6 +99,23 @@ void SceneGraph::resolve()
     {
         node->resolve(rootTransform_);
     }
+}
+
+void SceneGraph::submitPhysics(PhysicsWorld& physics) const
+{
+    for (const auto& node : nodes_)
+    {
+        submitPhysicsRecursive(*node, physics);
+    }
+}
+
+void SceneGraph::applyPhysics(const PhysicsWorld& physics)
+{
+    for (auto& node : nodes_)
+    {
+        applyPhysicsRecursive(*node, physics);
+    }
+    resolve();
 }
 
 void SceneGraph::render(const RenderContext& ctx)

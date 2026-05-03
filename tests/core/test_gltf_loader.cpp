@@ -2,6 +2,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <optional>
+#include <variant>
 #include <vector>
 
 #include <fastgltf/core.hpp>
@@ -24,6 +25,8 @@ using fire_engine::GltfLoader;
 using fire_engine::Mat4;
 using fire_engine::Material;
 using fire_engine::Node;
+using fire_engine::PhysicsBodyType;
+using fire_engine::SphereShape;
 using fire_engine::Vec3;
 
 // Mirrors the occlusion-strength translation performed inside
@@ -123,24 +126,14 @@ static bool nodeExtrasControllableFromJson(std::string_view json)
     return GltfLoader::nodeExtrasControllable(&extras);
 }
 
-static std::optional<GltfLoader::CollisionConfig> nodeExtrasCollisionFromJson(std::string_view json)
+static std::optional<GltfLoader::PhysicsConfig> nodeExtrasPhysicsFromJson(std::string_view json)
 {
     simdjson::dom::parser parser;
     simdjson::padded_string padded{std::string{json}};
     auto doc = parser.parse(padded);
     simdjson::dom::object extras;
     EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
-    return GltfLoader::nodeExtrasCollision(&extras);
-}
-
-static std::optional<GltfLoader::DynamicConfig> nodeExtrasDynamicFromJson(std::string_view json)
-{
-    simdjson::dom::parser parser;
-    simdjson::padded_string padded{std::string{json}};
-    auto doc = parser.parse(padded);
-    simdjson::dom::object extras;
-    EXPECT_EQ(doc.get_object().get(extras), simdjson::SUCCESS);
-    return GltfLoader::nodeExtrasDynamic(&extras);
+    return GltfLoader::nodeExtrasPhysics(&extras);
 }
 
 // Applies a fastgltf matrix to a Node's Transform via decomposition,
@@ -405,7 +398,7 @@ TEST(GltfNodeExtras, ControllableFalseIsIgnored)
 
 TEST(GltfNodeExtras, MissingControllableIsIgnored)
 {
-    EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"CollisionLayer":1})"));
+    EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"Physics":{"Layer":1}})"));
 }
 
 TEST(GltfNodeExtras, NonBooleanControllableIsIgnored)
@@ -413,114 +406,69 @@ TEST(GltfNodeExtras, NonBooleanControllableIsIgnored)
     EXPECT_FALSE(nodeExtrasControllableFromJson(R"({"Controllable":"true"})"));
 }
 
-TEST(GltfNodeExtras, CollisionLayerAndMaskAreParsed)
+TEST(GltfNodeExtras, MissingPhysicsIsIgnored)
 {
-    auto config = nodeExtrasCollisionFromJson(R"({"CollisionLayer":1,"CollisionMask":10})");
+    auto config = nodeExtrasPhysicsFromJson(R"({"Controllable":true})");
+    EXPECT_FALSE(config.has_value());
+}
+
+TEST(GltfNodeExtras, PhysicsRigidBodyFieldsAreParsed)
+{
+    auto config = nodeExtrasPhysicsFromJson(
+        R"({"Physics":{"BodyType":"Dynamic","Layer":1,"Mask":10,"Velocity":[1.0,0.5,-2.0],"Mass":2.5,"Restitution":0.25,"Friction":0.75,"GravityScale":0.0}})");
 
     ASSERT_TRUE(config.has_value());
+    EXPECT_EQ(config->bodyType, PhysicsBodyType::Dynamic);
     EXPECT_EQ(config->layer, 1u);
     EXPECT_EQ(config->mask, 10u);
-}
-
-TEST(GltfNodeExtras, MissingCollisionFieldsAreIgnored)
-{
-    auto config = nodeExtrasCollisionFromJson(R"({"Controllable":true})");
-
-    EXPECT_FALSE(config.has_value());
-}
-
-TEST(GltfNodeExtras, CollisionZeroValuesAreAccepted)
-{
-    auto config = nodeExtrasCollisionFromJson(R"({"CollisionLayer":0,"CollisionMask":0})");
-
-    ASSERT_TRUE(config.has_value());
-    EXPECT_EQ(config->layer, 0u);
-    EXPECT_EQ(config->mask, 0u);
-}
-
-TEST(GltfNodeExtras, CollisionLayerWithoutMaskThrows)
-{
-    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":1})"), std::runtime_error);
-}
-
-TEST(GltfNodeExtras, CollisionMaskWithoutLayerThrows)
-{
-    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionMask":1})"), std::runtime_error);
-}
-
-TEST(GltfNodeExtras, NonIntegerCollisionLayerThrows)
-{
-    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":"1","CollisionMask":10})"),
-                 std::runtime_error);
-}
-
-TEST(GltfNodeExtras, OutOfRangeCollisionMaskThrows)
-{
-    EXPECT_THROW(nodeExtrasCollisionFromJson(R"({"CollisionLayer":1,"CollisionMask":4294967296})"),
-                 std::runtime_error);
-}
-
-TEST(GltfNodeExtras, DynamicVelocityIsParsed)
-{
-    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.5,-2.0]})");
-
-    ASSERT_TRUE(config.has_value());
     EXPECT_EQ(config->velocity, Vec3(1.0f, 0.5f, -2.0f));
+    EXPECT_FLOAT_EQ(config->mass, 2.5f);
+    EXPECT_FLOAT_EQ(config->restitution, 0.25f);
+    EXPECT_FLOAT_EQ(config->friction, 0.75f);
+    EXPECT_FLOAT_EQ(config->gravityScale, 0.0f);
 }
 
-TEST(GltfNodeExtras, DynamicVelocityAcceptsIntegers)
+TEST(GltfNodeExtras, PhysicsShapeFieldsAreParsed)
 {
-    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1,0,-2]})");
+    auto config =
+        nodeExtrasPhysicsFromJson(R"({"Physics":{"Shape":"Sphere","Radius":3.0,"Center":[1,2,3]}})");
 
     ASSERT_TRUE(config.has_value());
-    EXPECT_EQ(config->velocity, Vec3(1.0f, 0.0f, -2.0f));
+    ASSERT_TRUE(config->shape.has_value());
+    ASSERT_TRUE(std::holds_alternative<SphereShape>(config->shape.value()));
+    const auto shape = std::get<SphereShape>(config->shape.value());
+    EXPECT_FLOAT_EQ(shape.radius, 3.0f);
+    EXPECT_EQ(shape.center, Vec3(1.0f, 2.0f, 3.0f));
 }
 
-TEST(GltfNodeExtras, MissingDynamicAndVelocityAreIgnored)
+TEST(GltfNodeExtras, InvalidPhysicsObjectThrows)
 {
-    auto config = nodeExtrasDynamicFromJson(R"({"CollisionLayer":1,"CollisionMask":2})");
-    EXPECT_FALSE(config.has_value());
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":true})"), std::runtime_error);
 }
 
-TEST(GltfNodeExtras, DynamicFalseWithoutVelocityIsIgnored)
+TEST(GltfNodeExtras, InvalidPhysicsBodyTypeThrows)
 {
-    auto config = nodeExtrasDynamicFromJson(R"({"Dynamic":false})");
-    EXPECT_FALSE(config.has_value());
-}
-
-TEST(GltfNodeExtras, VelocityWithoutDynamicThrows)
-{
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Velocity":[1.0,0.0,0.0]})"), std::runtime_error);
-}
-
-TEST(GltfNodeExtras, DynamicTrueWithoutVelocityThrows)
-{
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true})"), std::runtime_error);
-}
-
-TEST(GltfNodeExtras, DynamicFalseWithVelocityThrows)
-{
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":false,"Velocity":[1.0,0.0,0.0]})"),
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":{"BodyType":"Actor"}})"),
                  std::runtime_error);
 }
 
-TEST(GltfNodeExtras, NonBooleanDynamicThrows)
+TEST(GltfNodeExtras, OutOfRangePhysicsMaskThrows)
 {
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":"true","Velocity":[1.0,0.0,0.0]})"),
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":{"Mask":4294967296}})"),
                  std::runtime_error);
 }
 
 TEST(GltfNodeExtras, VelocityWithWrongCountThrows)
 {
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.0]})"),
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":{"Velocity":[1.0,0.0]}})"),
                  std::runtime_error);
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,0.0,0.0,0.0]})"),
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":{"Velocity":[1.0,0.0,0.0,0.0]}})"),
                  std::runtime_error);
 }
 
 TEST(GltfNodeExtras, NonNumericVelocityThrows)
 {
-    EXPECT_THROW(nodeExtrasDynamicFromJson(R"({"Dynamic":true,"Velocity":[1.0,"0",0.0]})"),
+    EXPECT_THROW(nodeExtrasPhysicsFromJson(R"({"Physics":{"Velocity":[1.0,"0",0.0]}})"),
                  std::runtime_error);
 }
 

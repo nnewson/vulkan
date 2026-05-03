@@ -1,12 +1,7 @@
-#include <fire_engine/collision/collisions.hpp>
+#include <fire_engine/collision/sweep_and_prune_broad_phase.hpp>
 
 #include <algorithm>
 #include <limits>
-
-#include <fire_engine/input/input_state.hpp>
-#include <fire_engine/math/constants.hpp>
-#include <fire_engine/scene/node.hpp>
-#include <fire_engine/scene/scene_graph.hpp>
 
 namespace fire_engine
 {
@@ -48,27 +43,9 @@ float axisMax(const AABB& bounds, CollisionAxis axis) noexcept
     return bounds.max.x();
 }
 
-[[nodiscard]]
-bool isMovable(const Node& node) noexcept
-{
-    return node.hasPhysicsBody() || node.hasControllable();
-}
-
-[[nodiscard]]
-bool movedThisFrame(const Node& node) noexcept
-{
-    return node.frameDelta().magnitudeSquared() > float_epsilon * float_epsilon;
-}
-
-[[nodiscard]]
-Vec3 relativeFrameDelta(const Node& moving, const Node& target) noexcept
-{
-    return moving.frameDelta() - target.frameDelta();
-}
-
 } // namespace
 
-ColliderId Collisions::addCollider(Collider& collider)
+ColliderId SweepAndPruneBroadPhase::addCollider(Collider& collider)
 {
     const ColliderId existingId = colliderId(collider);
     if (existingId.valid())
@@ -93,7 +70,7 @@ ColliderId Collisions::addCollider(Collider& collider)
     return id;
 }
 
-bool Collisions::removeCollider(ColliderId colliderId)
+bool SweepAndPruneBroadPhase::removeCollider(ColliderId colliderId)
 {
     const auto found =
         std::find_if(colliders_.begin(), colliders_.end(),
@@ -111,7 +88,7 @@ bool Collisions::removeCollider(ColliderId colliderId)
     return true;
 }
 
-bool Collisions::removeCollider(Collider& collider)
+bool SweepAndPruneBroadPhase::removeCollider(Collider& collider)
 {
     const ColliderId id = colliderId(collider);
     if (!id.valid())
@@ -122,17 +99,7 @@ bool Collisions::removeCollider(Collider& collider)
     return removeCollider(id);
 }
 
-void Collisions::setup(SceneGraph& scene)
-{
-    clear();
-    scene.update(InputState{});
-    for (auto& node : scene.nodes())
-    {
-        addCollidersRecursive(*node);
-    }
-}
-
-void Collisions::clear()
+void SweepAndPruneBroadPhase::clear()
 {
     resetIndices(xEndPoints_);
     resetIndices(yEndPoints_);
@@ -148,10 +115,9 @@ void Collisions::clear()
     zEndPoints_.clear();
     pairStates_.clear();
     possiblePairs_.clear();
-    colliderNodes_.clear();
 }
 
-void Collisions::update()
+void SweepAndPruneBroadPhase::update()
 {
     for (ColliderEntry& entry : colliders_)
     {
@@ -162,18 +128,7 @@ void Collisions::update()
     }
 }
 
-void Collisions::update(SceneGraph& scene)
-{
-    update();
-    auto frameContacts = contacts();
-    if (applyResponses(frameContacts))
-    {
-        scene.resolve();
-        rebuild();
-    }
-}
-
-void Collisions::updateCollider(Collider& collider)
+void SweepAndPruneBroadPhase::updateCollider(Collider& collider)
 {
     if (!colliderId(collider).valid())
     {
@@ -186,12 +141,12 @@ void Collisions::updateCollider(Collider& collider)
     }
 }
 
-void Collisions::updateEndPoint(EndPoint& endPoint)
+void SweepAndPruneBroadPhase::updateEndPoint(EndPoint& endPoint)
 {
     updateEndPoint(endPoint, true);
 }
 
-void Collisions::rebuild()
+void SweepAndPruneBroadPhase::rebuild()
 {
     sortAndIndexEndPoints(xEndPoints_);
     sortAndIndexEndPoints(yEndPoints_);
@@ -199,7 +154,7 @@ void Collisions::rebuild()
     rebuildPairStates();
 }
 
-bool Collisions::validate() const
+bool SweepAndPruneBroadPhase::validate() const
 {
     const auto validateAxis = [this](CollisionAxis axis)
     {
@@ -290,144 +245,7 @@ bool Collisions::validate() const
     return possiblePairs_.size() == expectedPossibleCount;
 }
 
-void Collisions::addCollidersRecursive(Node& node)
-{
-    if (auto* collider = node.collider())
-    {
-        const ColliderId id = addCollider(*collider);
-        colliderNodes_[id.value()] = &node;
-    }
-
-    for (const auto& child : node.children())
-    {
-        addCollidersRecursive(*child);
-    }
-}
-
-std::vector<Collisions::Contact> Collisions::contacts() const
-{
-    std::vector<Contact> result;
-    result.reserve(possiblePairs_.size());
-    for (const CollisionPair& pair : possiblePairs_)
-    {
-        auto contact = contactForPair(pair);
-        if (contact.has_value())
-        {
-            result.push_back(contact.value());
-        }
-    }
-    return result;
-}
-
-std::optional<Collisions::Contact> Collisions::contactForPair(const CollisionPair& pair) const
-{
-    auto firstIt = colliderNodes_.find(pair.firstId.value());
-    auto secondIt = colliderNodes_.find(pair.secondId.value());
-    if (firstIt == colliderNodes_.end() || secondIt == colliderNodes_.end())
-    {
-        return std::nullopt;
-    }
-
-    Node* firstNode = firstIt->second;
-    Node* secondNode = secondIt->second;
-    if (firstNode == nullptr || secondNode == nullptr)
-    {
-        return std::nullopt;
-    }
-
-    Node* moving = nullptr;
-    Node* target = nullptr;
-    const Collider* movingCollider = nullptr;
-    const Collider* targetCollider = nullptr;
-
-    if (firstNode->hasPhysicsBody())
-    {
-        moving = firstNode;
-        target = secondNode;
-        movingCollider = pair.first;
-        targetCollider = pair.second;
-    }
-    else if (secondNode->hasPhysicsBody())
-    {
-        moving = secondNode;
-        target = firstNode;
-        movingCollider = pair.second;
-        targetCollider = pair.first;
-    }
-    else if (firstNode->hasControllable())
-    {
-        moving = firstNode;
-        target = secondNode;
-        movingCollider = pair.first;
-        targetCollider = pair.second;
-    }
-    else if (secondNode->hasControllable())
-    {
-        moving = secondNode;
-        target = firstNode;
-        movingCollider = pair.second;
-        targetCollider = pair.first;
-    }
-
-    if (moving == nullptr || target == nullptr || !isMovable(*moving))
-    {
-        return std::nullopt;
-    }
-
-    auto contact = narrowPhase_.sweptAabb(*movingCollider, *targetCollider);
-    if (!contact.has_value())
-    {
-        return std::nullopt;
-    }
-
-    const Vec3 relativeDelta = relativeFrameDelta(*moving, *target);
-    if (Vec3::dotProduct(relativeDelta, contact->normal) >= 0.0f)
-    {
-        return std::nullopt;
-    }
-
-    return Contact{contact->toi, contact->normal, moving, target};
-}
-
-bool Collisions::applyResponses(std::vector<Contact>& contacts)
-{
-    std::ranges::sort(contacts,
-                      [](const Contact& lhs, const Contact& rhs) { return lhs.toi < rhs.toi; });
-
-    bool resolved = false;
-    for (const Contact& contact : contacts)
-    {
-        const bool movingHadFrameDelta =
-            contact.moving != nullptr && movedThisFrame(*contact.moving);
-        if (movingHadFrameDelta)
-        {
-            if (contact.moving->hasControllable())
-            {
-                contact.moving->slideFrameMovement(contact.toi, contact.normal);
-            }
-            else
-            {
-                contact.moving->moveToFrameTime(contact.toi);
-            }
-            resolved = true;
-        }
-        if (contact.target != nullptr && contact.target->hasControllable() &&
-            movedThisFrame(*contact.target))
-        {
-            contact.target->slideFrameMovement(contact.toi, contact.normal * -1.0f);
-            resolved = true;
-        }
-
-        if (movingHadFrameDelta && contact.moving->hasPhysicsBody())
-        {
-            contact.moving->physicsBody()->reflect(contact.normal);
-        }
-    }
-
-    return resolved;
-}
-
-void Collisions::addEndPointsSorted(Collider& collider)
+void SweepAndPruneBroadPhase::addEndPointsSorted(Collider& collider)
 {
     insertEndPointSorted(&collider.minEndPoint(CollisionAxis::X), xEndPoints_);
     insertEndPointSorted(&collider.maxEndPoint(CollisionAxis::X), xEndPoints_);
@@ -437,7 +255,8 @@ void Collisions::addEndPointsSorted(Collider& collider)
     insertEndPointSorted(&collider.maxEndPoint(CollisionAxis::Z), zEndPoints_);
 }
 
-void Collisions::insertEndPointSorted(EndPoint* endPoint, std::vector<EndPoint*>& endPoints)
+void SweepAndPruneBroadPhase::insertEndPointSorted(EndPoint* endPoint,
+                                                   std::vector<EndPoint*>& endPoints)
 {
     const auto pos = std::lower_bound(endPoints.begin(), endPoints.end(), endPoint,
                                       [](const EndPoint* lhs, const EndPoint* rhs)
@@ -451,8 +270,8 @@ void Collisions::insertEndPointSorted(EndPoint* endPoint, std::vector<EndPoint*>
     }
 }
 
-void Collisions::sweepAxisForCollider(const std::vector<EndPoint*>& endPoints,
-                                      const Collider* target)
+void SweepAndPruneBroadPhase::sweepAxisForCollider(const std::vector<EndPoint*>& endPoints,
+                                                   const Collider* target)
 {
     std::vector<const Collider*> active;
     active.reserve(colliders_.size());
@@ -498,7 +317,7 @@ void Collisions::sweepAxisForCollider(const std::vector<EndPoint*>& endPoints,
     }
 }
 
-void Collisions::removeEndPoints(Collider& collider)
+void SweepAndPruneBroadPhase::removeEndPoints(Collider& collider)
 {
     auto removeFromAxis = [](std::vector<EndPoint*>& endPoints, EndPoint& endPoint)
     {
@@ -519,14 +338,14 @@ void Collisions::removeEndPoints(Collider& collider)
     removeFromAxis(zEndPoints_, collider.maxEndPoint(CollisionAxis::Z));
 }
 
-void Collisions::sortAndIndexEndPoints(std::vector<EndPoint*>& endPoints)
+void SweepAndPruneBroadPhase::sortAndIndexEndPoints(std::vector<EndPoint*>& endPoints)
 {
     std::sort(endPoints.begin(), endPoints.end(),
               [](const EndPoint* lhs, const EndPoint* rhs) { return lessThan(*lhs, *rhs); });
     updateIndices(endPoints);
 }
 
-void Collisions::rebuildPairStates()
+void SweepAndPruneBroadPhase::rebuildPairStates()
 {
     pairStates_.clear();
     possiblePairs_.clear();
@@ -535,7 +354,7 @@ void Collisions::rebuildPairStates()
     sweepAxis(zEndPoints_);
 }
 
-void Collisions::sweepAxis(const std::vector<EndPoint*>& endPoints)
+void SweepAndPruneBroadPhase::sweepAxis(const std::vector<EndPoint*>& endPoints)
 {
     std::vector<const Collider*> active;
     active.reserve(colliders_.size());
@@ -562,7 +381,7 @@ void Collisions::sweepAxis(const std::vector<EndPoint*>& endPoints)
     }
 }
 
-void Collisions::updateEndPoint(EndPoint& endPoint, bool /*refreshPairs*/)
+void SweepAndPruneBroadPhase::updateEndPoint(EndPoint& endPoint, bool /*refreshPairs*/)
 {
     std::vector<EndPoint*>& endPoints = endPointsForAxis(endPoint.axis());
     std::size_t index = endPoint.index();
@@ -611,8 +430,8 @@ void Collisions::updateEndPoint(EndPoint& endPoint, bool /*refreshPairs*/)
     }
 }
 
-void Collisions::updatePairAxis(const Collider* lhs, const Collider* rhs, CollisionAxis axis,
-                                bool overlaps)
+void SweepAndPruneBroadPhase::updatePairAxis(const Collider* lhs, const Collider* rhs,
+                                             CollisionAxis axis, bool overlaps)
 {
     if (lhs == rhs || lhs == nullptr || rhs == nullptr || !canCollide(*lhs, *rhs))
     {
@@ -675,7 +494,7 @@ void Collisions::updatePairAxis(const Collider* lhs, const Collider* rhs, Collis
     }
 }
 
-void Collisions::addPossiblePair(PairKey key, PairState& state)
+void SweepAndPruneBroadPhase::addPossiblePair(PairKey key, PairState& state)
 {
     if (state.possibleIndex != kInvalidPairIndex)
     {
@@ -685,7 +504,7 @@ void Collisions::addPossiblePair(PairKey key, PairState& state)
     possiblePairs_.push_back({key.first, key.second, state.first, state.second});
 }
 
-void Collisions::removePossiblePair(PairState& state)
+void SweepAndPruneBroadPhase::removePossiblePair(PairState& state)
 {
     if (state.possibleIndex == kInvalidPairIndex)
     {
@@ -712,7 +531,7 @@ void Collisions::removePossiblePair(PairState& state)
     state.possibleIndex = kInvalidPairIndex;
 }
 
-void Collisions::removePairStatesFor(ColliderId colliderId)
+void SweepAndPruneBroadPhase::removePairStatesFor(ColliderId colliderId)
 {
     for (auto it = pairStates_.begin(); it != pairStates_.end();)
     {
@@ -731,7 +550,7 @@ void Collisions::removePairStatesFor(ColliderId colliderId)
     }
 }
 
-std::vector<EndPoint*>& Collisions::endPointsForAxis(CollisionAxis axis) noexcept
+std::vector<EndPoint*>& SweepAndPruneBroadPhase::endPointsForAxis(CollisionAxis axis) noexcept
 {
     switch (axis)
     {
@@ -746,7 +565,8 @@ std::vector<EndPoint*>& Collisions::endPointsForAxis(CollisionAxis axis) noexcep
     return xEndPoints_;
 }
 
-const std::vector<EndPoint*>& Collisions::endPointsForAxis(CollisionAxis axis) const noexcept
+const std::vector<EndPoint*>&
+SweepAndPruneBroadPhase::endPointsForAxis(CollisionAxis axis) const noexcept
 {
     switch (axis)
     {
@@ -761,7 +581,7 @@ const std::vector<EndPoint*>& Collisions::endPointsForAxis(CollisionAxis axis) c
     return xEndPoints_;
 }
 
-ColliderId Collisions::colliderId(const Collider& collider) const noexcept
+ColliderId SweepAndPruneBroadPhase::colliderId(const Collider& collider) const noexcept
 {
     for (const ColliderEntry& entry : colliders_)
     {
@@ -774,7 +594,8 @@ ColliderId Collisions::colliderId(const Collider& collider) const noexcept
     return {};
 }
 
-Collisions::PairKey Collisions::orderedPair(ColliderId lhs, ColliderId rhs) noexcept
+SweepAndPruneBroadPhase::PairKey SweepAndPruneBroadPhase::orderedPair(ColliderId lhs,
+                                                                      ColliderId rhs) noexcept
 {
     if (lhs < rhs)
     {
@@ -784,12 +605,13 @@ Collisions::PairKey Collisions::orderedPair(ColliderId lhs, ColliderId rhs) noex
     return {rhs, lhs};
 }
 
-Collisions::PairKey Collisions::orderedPair(const Collider* lhs, const Collider* rhs) noexcept
+SweepAndPruneBroadPhase::PairKey SweepAndPruneBroadPhase::orderedPair(const Collider* lhs,
+                                                                      const Collider* rhs) noexcept
 {
     return orderedPair(lhs->colliderId(), rhs->colliderId());
 }
 
-bool Collisions::lessThan(const EndPoint& lhs, const EndPoint& rhs) noexcept
+bool SweepAndPruneBroadPhase::lessThan(const EndPoint& lhs, const EndPoint& rhs) noexcept
 {
     if (lhs.value() != rhs.value())
     {
@@ -809,8 +631,8 @@ bool Collisions::lessThan(const EndPoint& lhs, const EndPoint& rhs) noexcept
     return false;
 }
 
-bool Collisions::overlapsOnAxis(const Collider& lhs, const Collider& rhs,
-                                CollisionAxis axis) noexcept
+bool SweepAndPruneBroadPhase::overlapsOnAxis(const Collider& lhs, const Collider& rhs,
+                                             CollisionAxis axis) noexcept
 {
     const AABB lhsBounds = lhs.sweptWorldBounds();
     const AABB rhsBounds = rhs.sweptWorldBounds();
@@ -818,13 +640,13 @@ bool Collisions::overlapsOnAxis(const Collider& lhs, const Collider& rhs,
            axisMax(lhsBounds, axis) >= axisMin(rhsBounds, axis);
 }
 
-bool Collisions::canCollide(const Collider& lhs, const Collider& rhs) noexcept
+bool SweepAndPruneBroadPhase::canCollide(const Collider& lhs, const Collider& rhs) noexcept
 {
     return (lhs.collisionMask() & rhs.collisionLayer()) != 0U &&
            (rhs.collisionMask() & lhs.collisionLayer()) != 0U;
 }
 
-unsigned char Collisions::axisBit(CollisionAxis axis) noexcept
+unsigned char SweepAndPruneBroadPhase::axisBit(CollisionAxis axis) noexcept
 {
     switch (axis)
     {
@@ -839,7 +661,7 @@ unsigned char Collisions::axisBit(CollisionAxis axis) noexcept
     return 1U;
 }
 
-void Collisions::updateIndices(std::vector<EndPoint*>& endPoints) noexcept
+void SweepAndPruneBroadPhase::updateIndices(std::vector<EndPoint*>& endPoints) noexcept
 {
     for (std::size_t i = 0; i < endPoints.size(); ++i)
     {
@@ -847,7 +669,7 @@ void Collisions::updateIndices(std::vector<EndPoint*>& endPoints) noexcept
     }
 }
 
-void Collisions::resetIndices(std::vector<EndPoint*>& endPoints) noexcept
+void SweepAndPruneBroadPhase::resetIndices(std::vector<EndPoint*>& endPoints) noexcept
 {
     for (EndPoint* endPoint : endPoints)
     {
@@ -855,7 +677,7 @@ void Collisions::resetIndices(std::vector<EndPoint*>& endPoints) noexcept
     }
 }
 
-std::size_t Collisions::PairKeyHash::operator()(PairKey key) const noexcept
+std::size_t SweepAndPruneBroadPhase::PairKeyHash::operator()(PairKey key) const noexcept
 {
     constexpr std::size_t multiplier = 0x9E3779B97F4A7C15ULL;
     return static_cast<std::size_t>(key.first.value()) * multiplier ^

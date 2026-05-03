@@ -6,6 +6,8 @@ using fire_engine::Camera;
 using fire_engine::InputState;
 using fire_engine::Mat4;
 using fire_engine::Node;
+using fire_engine::PhysicsBodyHandle;
+using fire_engine::PhysicsColliderHandle;
 using fire_engine::Vec3;
 
 // ==========================================================================
@@ -69,33 +71,6 @@ TEST(NodeAccessors, ConstTransform)
     EXPECT_FLOAT_EQ(cn.transform().position().x(), 5.0f);
 }
 
-TEST(NodeAccessors, ColliderIsMutable)
-{
-    Node n("ColliderNode");
-    auto& collider = n.emplaceCollider();
-    collider.localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
-
-    const auto bounds = n.collider()->localBounds();
-    EXPECT_EQ(bounds.min, Vec3(-1.0f, -2.0f, -3.0f));
-    EXPECT_EQ(bounds.max, Vec3(1.0f, 2.0f, 3.0f));
-}
-
-TEST(NodeAccessors, DefaultHasNoCollider)
-{
-    Node n("ColliderNode");
-    EXPECT_FALSE(n.hasCollider());
-    EXPECT_EQ(n.collider(), nullptr);
-}
-
-TEST(NodeAccessors, EmplaceCollider)
-{
-    Node n("ColliderNode");
-    auto& collider = n.emplaceCollider();
-
-    EXPECT_TRUE(n.hasCollider());
-    EXPECT_EQ(n.collider(), &collider);
-}
-
 TEST(NodeAccessors, DefaultHasNoControllable)
 {
     Node n("ControllableNode");
@@ -112,43 +87,34 @@ TEST(NodeAccessors, EmplaceControllable)
     EXPECT_EQ(n.controllable(), &controllable);
 }
 
-TEST(NodeAccessors, DefaultHasNoPhysicsBody)
+TEST(NodeAccessors, DefaultHasNoPhysicsHandles)
 {
     Node n("DynamicNode");
-    EXPECT_FALSE(n.hasPhysicsBody());
-    EXPECT_EQ(n.physicsBody(), nullptr);
+    EXPECT_FALSE(n.hasPhysicsBodyHandle());
+    EXPECT_FALSE(n.hasPhysicsColliderHandle());
+    EXPECT_FALSE(n.physicsBodyHandle().valid());
+    EXPECT_FALSE(n.physicsColliderHandle().valid());
 }
 
-TEST(NodeAccessors, EmplacePhysicsBody)
+TEST(NodeAccessors, PhysicsHandlesAreMutable)
 {
     Node n("DynamicNode");
-    auto& body = n.emplacePhysicsBody();
+    n.physicsBodyHandle(PhysicsBodyHandle{12U});
+    n.physicsColliderHandle(PhysicsColliderHandle{34U});
 
-    EXPECT_TRUE(n.hasPhysicsBody());
-    EXPECT_EQ(n.physicsBody(), &body);
+    EXPECT_TRUE(n.hasPhysicsBodyHandle());
+    EXPECT_TRUE(n.hasPhysicsColliderHandle());
+    EXPECT_EQ(n.physicsBodyHandle(), PhysicsBodyHandle{12U});
+    EXPECT_EQ(n.physicsColliderHandle(), PhysicsColliderHandle{34U});
 }
 
-TEST(NodeUpdate, UpdatesColliderWorldBounds)
+TEST(NodeUpdate, UpdatesTransform)
 {
-    Node n("ColliderNode");
-    n.transform().position({10.0f, 20.0f, 30.0f});
-    n.emplaceCollider().localBounds({Vec3{-1.0f, -2.0f, -3.0f}, Vec3{1.0f, 2.0f, 3.0f}});
-
-    n.update(InputState{}, Mat4::identity());
-
-    const auto bounds = n.collider()->worldBounds();
-    EXPECT_EQ(bounds.min, Vec3(9.0f, 18.0f, 27.0f));
-    EXPECT_EQ(bounds.max, Vec3(11.0f, 22.0f, 33.0f));
-}
-
-TEST(NodeUpdate, NodeWithoutColliderUpdatesTransform)
-{
-    Node n("NoColliderNode");
+    Node n("Node");
     n.transform().position({10.0f, 20.0f, 30.0f});
 
     n.update(InputState{}, Mat4::identity());
 
-    EXPECT_FALSE(n.hasCollider());
     EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 10.0f);
     EXPECT_FLOAT_EQ((n.transform().world()[1, 3]), 20.0f);
     EXPECT_FLOAT_EQ((n.transform().world()[2, 3]), 30.0f);
@@ -178,67 +144,6 @@ TEST(NodeUpdate, NonControllableIgnoresControllerState)
 
     EXPECT_FLOAT_EQ(n.transform().position().x(), 1.0f);
     EXPECT_FLOAT_EQ((n.transform().world()[0, 3]), 1.0f);
-}
-
-TEST(NodeUpdate, PhysicsBodyMovesByVelocityAndDeltaTime)
-{
-    Node n("DynamicNode");
-    n.emplacePhysicsBody().velocity({2.0f, 0.0f, -1.0f});
-
-    InputState state;
-    state.deltaTime(0.5f);
-    n.update(state, Mat4::identity());
-
-    EXPECT_EQ(n.frameStartPosition(), Vec3(0.0f, 0.0f, 0.0f));
-    EXPECT_EQ(n.frameDelta(), Vec3(1.0f, 0.0f, -0.5f));
-    EXPECT_EQ(n.transform().position(), Vec3(1.0f, 0.0f, -0.5f));
-}
-
-TEST(NodeUpdate, MoveToFrameTimeAppliesPartialFrameMotionAndZerosDelta)
-{
-    Node n("DynamicNode");
-    n.emplacePhysicsBody().velocity({4.0f, 0.0f, 0.0f});
-
-    InputState state;
-    state.deltaTime(1.0f);
-    n.update(state, Mat4::identity());
-
-    n.moveToFrameTime(0.25f);
-
-    EXPECT_EQ(n.transform().position(), Vec3(1.0f, 0.0f, 0.0f));
-    EXPECT_EQ(n.frameDelta(), Vec3(0.0f, 0.0f, 0.0f));
-}
-
-TEST(NodeUpdate, SlideFrameMovementKeepsTangentAndBlocksImpactDirection)
-{
-    Node n("DynamicNode");
-    n.transform().position({0.0f, 0.0f, 0.0f});
-    n.emplacePhysicsBody().velocity({10.0f, 10.0f, 0.0f});
-
-    InputState state;
-    state.deltaTime(1.0f);
-    n.update(state, Mat4::identity());
-
-    n.slideFrameMovement(0.5f, {-1.0f, 0.0f, 0.0f});
-
-    EXPECT_EQ(n.transform().position(), Vec3(5.0f, 10.0f, 0.0f));
-    EXPECT_EQ(n.frameDelta(), Vec3(5.0f, 10.0f, 0.0f));
-}
-
-TEST(NodeUpdate, SlideFrameMovementAllowsMovementAwayFromCollider)
-{
-    Node n("ControllableNode");
-    n.transform().position({0.0f, 0.0f, 0.0f});
-
-    InputState state;
-    state.controllerState().deltaPosition({-1.0f, 0.0f, 0.0f});
-    n.emplaceControllable();
-    n.update(state, Mat4::identity());
-
-    n.slideFrameMovement(0.0f, {-1.0f, 0.0f, 0.0f});
-
-    EXPECT_EQ(n.transform().position(), Vec3(-10.0f, 0.0f, 0.0f));
-    EXPECT_EQ(n.frameDelta(), Vec3(-10.0f, 0.0f, 0.0f));
 }
 
 // ==========================================================================

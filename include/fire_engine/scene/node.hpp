@@ -6,13 +6,12 @@
 #include <string>
 #include <vector>
 
-#include <fire_engine/collision/collider.hpp>
 #include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/physics/physics_handle.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/components.hpp>
 #include <fire_engine/scene/controllable.hpp>
-#include <fire_engine/scene/physics_body.hpp>
 #include <fire_engine/scene/transform.hpp>
 
 namespace fire_engine
@@ -57,23 +56,6 @@ public:
         return component_;
     }
 
-    [[nodiscard]] bool hasCollider() const noexcept
-    {
-        return collider_.has_value();
-    }
-    [[nodiscard]] Collider* collider() noexcept
-    {
-        return collider_ ? &collider_.value() : nullptr;
-    }
-    [[nodiscard]] const Collider* collider() const noexcept
-    {
-        return collider_ ? &collider_.value() : nullptr;
-    }
-    Collider& emplaceCollider()
-    {
-        return collider_.emplace();
-    }
-
     [[nodiscard]] bool hasControllable() const noexcept
     {
         return controllable_.has_value();
@@ -91,33 +73,39 @@ public:
         return controllable_.emplace();
     }
 
-    [[nodiscard]] bool hasPhysicsBody() const noexcept
+    [[nodiscard]]
+    PhysicsBodyHandle physicsBodyHandle() const noexcept
     {
-        return physicsBody_.has_value();
-    }
-    [[nodiscard]] PhysicsBody* physicsBody() noexcept
-    {
-        return physicsBody_ ? &physicsBody_.value() : nullptr;
-    }
-    [[nodiscard]] const PhysicsBody* physicsBody() const noexcept
-    {
-        return physicsBody_ ? &physicsBody_.value() : nullptr;
-    }
-    PhysicsBody& emplacePhysicsBody()
-    {
-        return physicsBody_.emplace();
+        return physicsBodyHandle_;
     }
 
-    [[nodiscard]] Vec3 frameStartPosition() const noexcept
+    void physicsBodyHandle(PhysicsBodyHandle handle) noexcept
     {
-        return frameStartPosition_;
+        physicsBodyHandle_ = handle;
     }
-    [[nodiscard]] Vec3 frameDelta() const noexcept
+
+    [[nodiscard]]
+    bool hasPhysicsBodyHandle() const noexcept
     {
-        return frameDelta_;
+        return physicsBodyHandle_.valid();
     }
-    void moveToFrameTime(float toi) noexcept;
-    void slideFrameMovement(float toi, Vec3 normal) noexcept;
+
+    [[nodiscard]]
+    PhysicsColliderHandle physicsColliderHandle() const noexcept
+    {
+        return physicsColliderHandle_;
+    }
+
+    void physicsColliderHandle(PhysicsColliderHandle handle) noexcept
+    {
+        physicsColliderHandle_ = handle;
+    }
+
+    [[nodiscard]]
+    bool hasPhysicsColliderHandle() const noexcept
+    {
+        return physicsColliderHandle_.valid();
+    }
 
     [[nodiscard]] Node* parent() const noexcept
     {
@@ -144,12 +132,10 @@ private:
     std::string name_;
     Transform transform_;
     Components component_;
-    std::optional<Collider> collider_;
     std::optional<Controllable> controllable_;
-    std::optional<PhysicsBody> physicsBody_;
+    PhysicsBodyHandle physicsBodyHandle_;
+    PhysicsColliderHandle physicsColliderHandle_;
     Mat4 composedWorld_{Mat4::identity()};
-    Vec3 frameStartPosition_{};
-    Vec3 frameDelta_{};
     Node* parent_{nullptr};
     std::vector<std::unique_ptr<Node>> children_;
 };

@@ -7,6 +7,7 @@
 #include <fire_engine/graphics/lighting.hpp>
 #include <fire_engine/input/input_state.hpp>
 #include <fire_engine/math/mat4.hpp>
+#include <fire_engine/physics/physics_world.hpp>
 #include <fire_engine/render/render_context.hpp>
 #include <fire_engine/scene/node.hpp>
 
@@ -42,6 +43,8 @@ public:
 
     void update(const InputState& input_state);
     void resolve();
+    void submitPhysics(PhysicsWorld& physics) const;
+    void applyPhysics(const PhysicsWorld& physics);
     void render(const RenderContext& ctx);
 
     // Walk the scene tree and resolve every Light component into a world-space

@@ -9,7 +9,7 @@ namespace fire_engine
 {
 
 class Collider;
-class Collisions;
+class SweepAndPruneBroadPhase;
 
 enum class CollisionAxis
 {
@@ -70,7 +70,7 @@ public:
 
 private:
     friend class Collider;
-    friend class Collisions;
+    friend class SweepAndPruneBroadPhase;
 
     float value_{0.0f};
     Collider* collider_{nullptr};

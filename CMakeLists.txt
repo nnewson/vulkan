@@ -19,7 +19,7 @@ find_package(fastgltf CONFIG REQUIRED)
 add_library(fireengine SHARED
     src/animation/animation.cpp
     src/collision/collider.cpp
-    src/collision/collisions.cpp
+    src/collision/sweep_and_prune_broad_phase.cpp
     src/collision/narrow_phase.cpp
     src/core/gltf_loader.cpp
     src/core/shader_loader.cpp
@@ -33,6 +33,8 @@ add_library(fireengine SHARED
     src/graphics/texture.cpp
     src/input/input.cpp
     src/platform/window.cpp
+    src/physics/physics_body.cpp
+    src/physics/physics_world.cpp
     src/render/device.cpp
     src/render/descriptors.cpp
     src/render/environment_precompute.cpp
@@ -52,7 +54,6 @@ add_library(fireengine SHARED
     src/scene/light.cpp
     src/scene/mesh.cpp
     src/scene/node.cpp
-    src/scene/physics_body.cpp
     src/scene/scene_graph.cpp
     src/scene/transform.cpp
 )
@@ -133,8 +134,9 @@ add_custom_target(assets ALL
 enable_testing()
 
 add_executable(test_fire_engine
-    tests/collision/test_collisions.cpp
+    tests/collision/test_sweep_and_prune_broad_phase.cpp
     tests/collision/test_narrow_phase.cpp
+    tests/physics/test_physics_world.cpp
     tests/math/test_mat4.cpp
     tests/math/test_quaternion.cpp
     tests/math/test_vec2.cpp
