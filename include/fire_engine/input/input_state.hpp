@@ -3,6 +3,7 @@
 #include <fire_engine/input/animation_state.hpp>
 #include <fire_engine/input/camera_state.hpp>
 #include <fire_engine/input/controller_state.hpp>
+#include <fire_engine/input/variant_state.hpp>
 
 namespace fire_engine
 {
@@ -57,6 +58,19 @@ public:
         controllerState_ = cs;
     }
 
+    [[nodiscard]] const VariantState& variantState() const noexcept
+    {
+        return variantState_;
+    }
+    [[nodiscard]] VariantState& variantState() noexcept
+    {
+        return variantState_;
+    }
+    void variantState(VariantState vs) noexcept
+    {
+        variantState_ = vs;
+    }
+
     [[nodiscard]] double time() const noexcept
     {
         return cameraState_.time();
@@ -80,6 +94,7 @@ private:
     CameraState cameraState_{};
     AnimationState animationState_{};
     ControllerState controllerState_{};
+    VariantState variantState_{};
     float deltaTime_{0.0f};
 };
 

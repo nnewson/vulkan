@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 #include <vector>
 
 #include <fire_engine/graphics/draw_command.hpp>
@@ -16,6 +17,7 @@ class Geometry;
 class Material;
 class Resources;
 class Skin;
+struct GeometryDescriptorInfo;
 struct MaterialUBO;
 
 class Object
@@ -30,7 +32,11 @@ public:
     Object& operator=(Object&&) noexcept = default;
 
     void addGeometry(const Geometry& geometry);
+    void addVariantMaterial(std::size_t geometryIndex, std::size_t variantIndex, const Material* material);
     void load(Resources& resources);
+    void activeVariant(std::optional<std::size_t> variantIndex);
+    [[nodiscard]] bool hasVariant(std::size_t variantIndex) const noexcept;
+    [[nodiscard]] bool wouldChangeVariant(std::optional<std::size_t> variantIndex) const noexcept;
 
     void skin(Skin* s) noexcept
     {
@@ -55,6 +61,10 @@ private:
     struct GeometryBindings
     {
         const Geometry* geometry{nullptr};
+        const Material* defaultMaterial{nullptr};
+        const Material* activeMaterial{nullptr};
+        std::vector<const Material*> variantMaterials;
+        std::array<bool, MAX_FRAMES_IN_FLIGHT> descriptorDirty{false, false};
 
         std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> materialMapped{};
         std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> skinMapped{};
@@ -67,9 +77,13 @@ private:
     };
 
     static MaterialUBO toMaterialUBO(const Material& mat);
+    [[nodiscard]] static bool materialsEquivalent(const Material& a, const Material& b);
+    static void applyMaterialTextures(GeometryDescriptorInfo& geoInfo, const Material& mat,
+                                      Resources& resources);
 
     Skin* skin_{nullptr};
     std::vector<float> morphWeights_;
+    Resources* resources_{nullptr};
 
     std::array<MappedMemory, MAX_FRAMES_IN_FLIGHT> uniformMapped_{};
 

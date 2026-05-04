@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <deque>
 #include <utility>
 #include <vector>
 
@@ -32,11 +33,6 @@ public:
     void resizeMaterials(std::size_t count)
     {
         materials_.resize(count);
-    }
-
-    void reserveMaterials(std::size_t count)
-    {
-        materials_.reserve(count);
     }
 
     void resizeGeometries(std::size_t count)
@@ -128,7 +124,7 @@ public:
 
 private:
     std::vector<Texture> textures_;
-    std::vector<Material> materials_;
+    std::deque<Material> materials_;
     std::vector<Geometry> geometries_;
     std::vector<Skin> skins_;
     std::vector<Animation> animations_;

@@ -168,7 +168,9 @@ add_executable(test_fire_engine
     tests/input/test_camera_state.cpp
     tests/input/test_controller_state.cpp
     tests/input/test_animation_state.cpp
+    tests/input/test_variant_state.cpp
     tests/input/test_input_state.cpp
+    tests/platform/test_application_args.cpp
     tests/scene/test_animator.cpp
     tests/scene/test_controllable.cpp
     tests/scene/test_camera.cpp

@@ -25,6 +25,7 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 - **Morph target animation** — vertex POSITION + NORMAL + TANGENT deltas uploaded as a single packed SSBO, blended by weights in the vertex shader (up to 8 targets per mesh). Tangent morphs feed the TBN reconstruction so facial-rig normal mapping stays correct mid-blend
 - **Alpha blending and masking** — three forward pipeline variants (opaque, double-sided opaque, blend) dispatched per draw from the material's `AlphaMode`/`doubleSided` flags. MASK handled via a fragment-shader discard test; BLEND uses straight-alpha blending with depth-write disabled and back-to-front sort of translucent draws
 - **Scenegraph architecture** — tree of Nodes with Component variants (Camera, Animator, Mesh, Empty, **Light**) that propagate transforms, an `InputState` bundle, and draw commands. Node transforms store rotation as a quaternion so orientations from glTF round-trip exactly
+- **Custom collision and physics path** — glTF `extras.Physics` can create `Static`, `Kinematic`, and `Dynamic` bodies with layer/mask filtering, authored AABB/box/sphere/capsule proxy shapes, linear velocity, mass, restitution, friction, and gravity scale. `PhysicsWorld` owns body/collider state, `SweepAndPruneBroadPhase` gathers AABB candidate pairs, `NarrowPhase` performs swept-AABB time-of-impact tests, and `SceneGraph::submitPhysics` / `SceneGraph::applyPhysics` bridge scene-authored and physics-authored transforms each frame
 - **Backend-decoupled graphics layer** — graphics classes use opaque handles (`BufferHandle`, `TextureHandle`, `DescriptorSetHandle`, `PipelineHandle`) and emit `DrawCommand` structs with no Vulkan dependencies. IBL cubemaps, BRDF LUT, shadow map, bloom chain are all owned by the render layer and referenced through the same handle types
 - **Vulkan rendering** via vulkan.hpp C++ bindings with a 17-binding forward descriptor set, plus separate descriptor layouts for skybox, shadow, post-process, and bloom passes
 - **Single source of truth for tunables** — every rendering knob (light intensity, IBL strengths, shadow biases, bloom strength, cascade count, PCSS light size, IBL extents, camera FOV) lives in `include/fire_engine/render/constants.hpp`
@@ -36,13 +37,42 @@ I've no doubt these are all solved problems nowadays with the Unreal engine et a
 
 ### Scenegraph
 
-The engine uses a scenegraph where each `Node` holds a `Transform` (position, unit-quaternion rotation, scale) and an optional `Component`. Components are stored as a `std::variant<Empty, Animator, Camera, Mesh, Light>`. Each component implements `update(InputState, ...)` and `render(...)`:
+The engine uses a scenegraph where each `Node` holds a `Transform` (position, unit-quaternion rotation, scale), a `Component`, optional `Controllable` input behaviour, optional physics handles, child ownership, and a cached composed-world matrix. Components are stored as a `std::variant<Empty, Animator, Camera, Mesh, Light>`. Each component implements the update/render behaviour relevant to that component:
 
 - **Camera** integrates per-frame deltas from `InputState::cameraState()` (deltaPosition, deltaYaw, deltaPitch, deltaZoom) into absolute position and orientation. Pitch is clamped to ±1.5 rad. FireEngine owns the active Camera directly and passes its position/target to the renderer each frame.
 - **Animator** owns an `Animation` (per-channel Linear/Step/CubicSpline interpolation across rotation, translation, scale, and morph weight keyframes). Each frame it samples the animation at the current elapsed time, producing a TRS matrix that is applied to all child nodes. It also consults `InputState::animationState()` to switch between animations at runtime.
 - **Mesh** wraps an `Object` that manages GPU resources via opaque handles. During render traversal it calls `Object::render()` which writes UBO data to mapped memory and returns `DrawCommand` structs.
 - **Light** carries a `Type` (Directional / Point / Spot), `Colour3`, intensity, range, and inner/outer cone angles. Position and forward direction come from the node's `composedWorld` matrix at gather time — KHR_lights_punctual convention has the light forward as the node's local −Z. `SceneGraph::gatherLights()` walks the tree once per frame and returns a `std::vector<Lighting>` for the renderer to pack into the LightUBO array. `SceneGraph::hasDirectionalLight()` lets FireEngine skip seeding its default Sun when an asset has authored its own.
 - **Empty** is a no-op component for structural nodes (joint bones, group nodes).
+
+`Node` does not own physics objects directly. It stores `PhysicsBodyHandle` and `PhysicsColliderHandle` values when the glTF node has `extras.Physics`. `PhysicsWorld` owns the actual bodies/colliders and `SceneGraph` synchronizes transforms across that boundary with `submitPhysics()` and `applyPhysics()`.
+
+### Collision And Physics
+
+Physics is split across three layers:
+
+- **`collision/`** contains low-level collision primitives. `Collider` stores local/world/swept AABBs, collision layer/mask filtering, a stable `ColliderId`, and six owned SAP `EndPoint`s. `SweepAndPruneBroadPhase` owns endpoint lists and emits broadphase `CollisionPair`s. `NarrowPhase` currently provides swept-AABB contact tests.
+- **`physics/`** owns simulation state. `PhysicsWorld` stores bodies, colliders, shapes, materials, the broadphase, and the narrowphase. `PhysicsBody` stores type, velocity, mass/inverse mass, angular velocity, gravity scale, restitution, and friction. `ColliderShape` supports AABB, box, sphere, and capsule authoring, with all explicit shapes currently converted to an AABB proxy for contact testing.
+- **`scene/`** stores only opaque physics handles. Scene nodes stay responsible for transforms, hierarchy, input, animation, and rendering; physics ownership stays in `PhysicsWorld`.
+
+The frame loop makes the authority split explicit:
+
+```cpp
+scene_.update(input_state);
+scene_.submitPhysics(physics_);
+
+while (accumulator >= fixedDt)
+{
+    physics_.step(fixedDt);
+    accumulator -= fixedDt;
+}
+
+scene_.applyPhysics(physics_);
+```
+
+`submitPhysics()` pushes non-dynamic scene transforms into `PhysicsWorld`: static bodies are scene-authored, and kinematic bodies are gameplay/input-authored. `PhysicsWorld::step()` integrates dynamic bodies, refreshes collider AABBs, updates broadphase candidates, runs swept-AABB narrowphase, applies the current simple response, and captures previous positions for the next swept test. `applyPhysics()` pulls non-static physics transforms back onto scene nodes, so dynamic simulation and kinematic collision correction are visible before rendering.
+
+Physics can be authored in glTF through node `extras.Physics`. The loader creates bodies/colliders, assigns handles to the node, and rejects unsupported combinations such as a `Dynamic` body on a `Controllable` node.
 
 ### Graphics/Render Boundary
 
@@ -67,6 +97,7 @@ The `graphics/` layer is fully decoupled from Vulkan:
 - **Material extensions** — `KHR_materials_emissive_strength` is multiplied into emissive at load time so HDR emissives reach the bloom chain at the authored magnitude. `KHR_materials_unlit` flips a flag on the Material that the fragment shader uses to skip BRDF/IBL/shadow. `KHR_texture_transform` is read per slot and applied in shader before each sample. **`KHR_materials_transmission`** populates `transmissionFactor`, `transmissionTexture`, per-slot UV-set + `UvTransform`; the fragment shader attenuates the diffuse lobe by `(1 − transmission)` and adds a separate transmission lobe (basecolor pass-through with a small irradiance tint) on top.
 - **Light extensions** — `KHR_lights_punctual.lights` are loaded into the asset's lights array; nodes carrying a `lightIndex` get a `Light` component (skipped with a warning if the node already holds a Mesh / Animator). Type / colour / intensity / range / cone angles all map directly. `FireEngine::loadScene` checks `SceneGraph::hasDirectionalLight()` after load and seeds a default Sun only when no directional was authored.
 - **Camera extension** — `GltfLoader::cameraViewFromMatrix` resolves a node's accumulated world transform into a `(position, target)` viewpoint (glTF cameras look down −Z in local space). FOV / near / far stay engine-side; first-cut adoption is position + look direction only.
+- **Physics extras** — `extras.Physics` can create `Static`, `Kinematic`, or `Dynamic` bodies. Supported custom fields include `Layer`, `Mask`, `Velocity`, `Mass`, `Restitution`, `Friction`, `GravityScale`, `Shape`, `Center`, `HalfExtents`, `Radius`, and `HalfHeight`. If no shape is supplied, the loader uses the mesh POSITION bounds as an AABB proxy.
 - **Safety checks** — `GltfLoader::ensureSupportedExtensions` walks `asset.extensionsRequired` and throws if any aren't in our supported set (so e.g. draco-compressed assets fail fast instead of producing corrupt geometry). Non-triangle primitives are skipped with a `std::clog` warning rather than rendered as garbage.
 
 Animation keyframes (input times and output quaternions/vectors/weights, plus CUBICSPLINE tangents) are read from glTF accessor data and set on the Animator's `Animation`.
@@ -84,15 +115,18 @@ The transient pipelines are destroyed once the bake completes; only the resultin
 
 ### Frame Loop
 
-1. `FireEngine::mainLoop()` polls GLFW, calls `input_.update(window, dt)` to produce an `InputState`, then `scene_.update(inputState)`
-2. `SceneGraph::update()` propagates `InputState` and transforms down the node tree; each Node caches its `composedWorld` matrix for skin joint lookups
-3. `Renderer::drawFrame()` acquires a swapchain image and records **five sub-passes**:
+1. `FireEngine::mainLoop()` polls GLFW, calls `input_.update(window, dt)` to produce an `InputState`, then `scene_.update(inputState)`.
+2. `SceneGraph::update()` propagates `InputState` and transforms down the node tree; each Node caches its `composedWorld` matrix for skin joint lookups.
+3. `scene_.submitPhysics(physics_)` pushes static/kinematic scene transforms into `PhysicsWorld`.
+4. `PhysicsWorld::step(1.0f / 60.0f)` runs zero or more fixed substeps from the frame accumulator.
+5. `scene_.applyPhysics(physics_)` pulls dynamic and corrected kinematic transforms back into scene nodes and resolves composed-world matrices.
+6. `Renderer::drawFrame()` acquires a swapchain image and records **five sub-passes**:
    - **Shadow pass** — looped 4 times, once per cascade. Each iteration begins a depth-only pass on its own framebuffer (one shadow-map array layer), pushes the cascade index as a push constant, and replays all collected shadow `DrawCommand`s. `shadow.vert` projects with `lightViewProj[cascadeIndex]` from the per-draw `ShadowUBO`. Skin and morph still apply
    - **Forward pass** — begin the HDR offscreen pass, draw the skybox (LEQUAL depth, no write), then call `scene.render(ctx)`; Mesh/Object emit `DrawCommand`s that the Renderer buckets into opaque vs blend, sorts the blend bucket back-to-front by `sortDepth`, and replays through the same bind/draw loop resolving handles via `Resources`
    - **Bloom downsample chain** — 6 fullscreen-triangle passes. Pass 0 reads the HDR target with the Karis-average 13-tap kernel (firefly suppression), writing mip 0 of the bloom chain. Passes 1..5 read the previous bloom mip and write the next, plain CoD weights
    - **Bloom upsample chain** — 5 fullscreen-triangle passes back up the chain (mip 5 → mip 4 → … → mip 0). Each samples its source mip with a 9-tap tent kernel and **additively blends** onto the destination mip (preserved by `loadOp=eLoad`). The final write to mip 0 carries the summed contribution from every coarser mip
    - **Post-process pass** — begin the swapchain-format pass, draw a fullscreen triangle that samples both the HDR target and bloom mip 0, mixes them by `bloomStrength`, and applies ACES + gamma 2.2
-4. Renderer submits the command buffer and presents
+7. Renderer submits the command buffer and presents
 
 ### Rendering Pipeline
 
@@ -157,7 +191,7 @@ Build:
 cmake --build build
 ```
 
-Run the tests (843 tests):
+Run the tests (912 tests):
 
 ```bash
 ./build/test_fire_engine
@@ -175,7 +209,9 @@ The app accepts two optional positional arguments:
 ./fireEngineApp <scene.gltf> <skybox.hdr>
 ```
 
-Both fall back to built-in defaults when omitted.
+Both fall back to built-in defaults when omitted. A single `.hdr`/`.exr` argument is treated as a
+skybox path, so `./fireEngineApp nightbox.hdr` keeps the default scene and swaps only the
+environment.
 
 ## Dependencies
 

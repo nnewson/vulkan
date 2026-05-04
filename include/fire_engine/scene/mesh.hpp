@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include <fire_engine/graphics/object.hpp>
@@ -83,14 +86,23 @@ public:
     [[nodiscard]]
     Mat4 render(const RenderContext& ctx, const Mat4& world);
 
+    void variantNames(std::vector<std::string> names) noexcept
+    {
+        variantNames_ = std::move(names);
+    }
+
 private:
     [[nodiscard]] std::size_t findMorphAnimationIndex(std::size_t id) const noexcept;
+    void cycleVariant(int delta) noexcept;
+    [[nodiscard]] bool isSelectableVariantState(int state) const noexcept;
 
     Object object_;
     std::vector<MorphAnimationEntry> morphAnimations_;
     std::size_t activeMorphIndex_{0};
     std::size_t activeMorphAnimationId_{0};
     std::vector<float> morphWeights_;
+    std::vector<std::string> variantNames_;
+    std::optional<std::size_t> activeVariant_{};
     double startTime_{0.0};
     bool morphInitialized_{false};
 };

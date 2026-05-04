@@ -310,6 +310,104 @@ ObjectDescriptorResult Descriptors::createObjectDescriptors(const ObjectDescript
     return result;
 }
 
+void Descriptors::updateObjectGeometryTextures(DescriptorSetHandle set,
+                                               const GeometryDescriptorInfo& geo)
+{
+    vk::DescriptorImageInfo texInfo = makeDescriptorImageInfo(
+        resources_->vulkanSampler(geo.texture), resources_->vulkanImageView(geo.texture),
+        vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo emissiveTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.emissiveTexture),
+                                resources_->vulkanImageView(geo.emissiveTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo normalTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.normalTexture),
+                                resources_->vulkanImageView(geo.normalTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo mrTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.metallicRoughnessTexture),
+                                resources_->vulkanImageView(geo.metallicRoughnessTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo occTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.occlusionTexture),
+                                resources_->vulkanImageView(geo.occlusionTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo transTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.transmissionTexture),
+                                resources_->vulkanImageView(geo.transmissionTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo ccTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatTexture),
+                                resources_->vulkanImageView(geo.clearcoatTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo ccRoughTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatRoughnessTexture),
+                                resources_->vulkanImageView(geo.clearcoatRoughnessTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo ccNormalTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatNormalTexture),
+                                resources_->vulkanImageView(geo.clearcoatNormalTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+    vk::DescriptorImageInfo thicknessTexInfo =
+        makeDescriptorImageInfo(resources_->vulkanSampler(geo.thicknessTexture),
+                                resources_->vulkanImageView(geo.thicknessTexture),
+                                vk::ImageLayout::eShaderReadOnlyOptimal);
+
+    std::array<vk::WriteDescriptorSet, 10> writes = {{
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 2,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &texInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 6,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &emissiveTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 7,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &normalTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 8,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &mrTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 9,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &occTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 16,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &transTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 17,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &ccTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 18,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &ccRoughTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 19,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &ccNormalTexInfo},
+        vk::WriteDescriptorSet{.dstSet = descriptorSetTable_[static_cast<uint32_t>(set)],
+                               .dstBinding = 21,
+                               .descriptorCount = 1,
+                               .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                               .pImageInfo = &thicknessTexInfo},
+    }};
+    device_->device().updateDescriptorSets(writes, {});
+}
+
 ShadowDescriptorResult Descriptors::createShadowDescriptors(const ShadowDescriptorRequest& req)
 {
     auto numGeometries = static_cast<uint32_t>(req.geometries.size());

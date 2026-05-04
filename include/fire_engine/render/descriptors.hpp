@@ -93,6 +93,7 @@ public:
 
     [[nodiscard]] ObjectDescriptorResult
     createObjectDescriptors(const ObjectDescriptorRequest& req);
+    void updateObjectGeometryTextures(DescriptorSetHandle set, const GeometryDescriptorInfo& geometry);
     [[nodiscard]] ShadowDescriptorResult
     createShadowDescriptors(const ShadowDescriptorRequest& req);
 

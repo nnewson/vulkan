@@ -6,6 +6,7 @@ using fire_engine::AnimationState;
 using fire_engine::CameraState;
 using fire_engine::ControllerState;
 using fire_engine::InputState;
+using fire_engine::VariantState;
 using fire_engine::Vec3;
 
 // ==========================================================================
@@ -39,6 +40,13 @@ TEST(InputStateConstruction, DefaultDeltaTimeIsZero)
     EXPECT_FLOAT_EQ(s.deltaTime(), 0.0f);
 }
 
+TEST(InputStateConstruction, DefaultVariantStateHasNoCycleCommand)
+{
+    InputState s;
+    EXPECT_FALSE(s.variantState().hasCycleCommand());
+    EXPECT_EQ(s.variantState().cycleDelta(), 0);
+}
+
 // ==========================================================================
 // Accessors
 // ==========================================================================
@@ -68,6 +76,15 @@ TEST(InputStateAccessors, SetControllerState)
     cs.deltaPosition({1.0f, 0.0f, 0.0f});
     s.controllerState(cs);
     EXPECT_FLOAT_EQ(s.controllerState().deltaPosition().x(), 1.0f);
+}
+
+TEST(InputStateAccessors, SetVariantState)
+{
+    InputState s;
+    VariantState vs;
+    vs.cycleDelta(1);
+    s.variantState(vs);
+    EXPECT_EQ(s.variantState().cycleDelta(), 1);
 }
 
 TEST(InputStateAccessors, TimeConvenienceAccessor)
@@ -107,6 +124,13 @@ TEST(InputStateAccessors, MutableControllerStateRef)
     EXPECT_FLOAT_EQ(s.controllerState().deltaPosition().x(), 2.0f);
 }
 
+TEST(InputStateAccessors, MutableVariantStateRef)
+{
+    InputState s;
+    s.variantState().cycleDelta(-1);
+    EXPECT_EQ(s.variantState().cycleDelta(), -1);
+}
+
 // ==========================================================================
 // Copy / Move
 // ==========================================================================
@@ -117,11 +141,13 @@ TEST(InputStateCopy, CopyConstructCreatesIndependentCopy)
     a.time(10.0);
     a.animationState().activeAnimation(5);
     a.controllerState().deltaPosition({1.0f, 0.0f, 0.0f});
+    a.variantState().cycleDelta(1);
 
     InputState b{a};
     EXPECT_DOUBLE_EQ(b.time(), 10.0);
     EXPECT_EQ(*b.animationState().activeAnimation(), 5);
     EXPECT_FLOAT_EQ(b.controllerState().deltaPosition().x(), 1.0f);
+    EXPECT_EQ(b.variantState().cycleDelta(), 1);
 
     b.time(20.0);
     EXPECT_DOUBLE_EQ(a.time(), 10.0);
@@ -160,6 +186,7 @@ TEST(InputStateNoexcept, AllOperationsAreNoexcept)
     static_assert(noexcept(s.cameraState()));
     static_assert(noexcept(s.animationState()));
     static_assert(noexcept(s.controllerState()));
+    static_assert(noexcept(s.variantState()));
     static_assert(noexcept(s.deltaTime()));
     static_assert(noexcept(s.deltaTime(0.0f)));
     static_assert(noexcept(s.time()));

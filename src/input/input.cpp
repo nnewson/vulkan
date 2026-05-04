@@ -93,6 +93,12 @@ InputState Input::update(const Window& window, float deltaTime)
         state.animationState().activeAnimation(2);
     }
 
+    if (keyboard_.v() && !previousVariantKey_)
+    {
+        state.variantState().cycleDelta(keyboard_.shift() ? -1 : 1);
+    }
+    previousVariantKey_ = keyboard_.v();
+
     return state;
 }
 

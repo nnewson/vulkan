@@ -15,14 +15,47 @@
 namespace fire_engine
 {
 
+bool sameTextureSlot(bool hasA, bool hasB, const Texture& texA, const Texture& texB) noexcept
+{
+    if (hasA != hasB)
+    {
+        return false;
+    }
+
+    if (!hasA)
+    {
+        return true;
+    }
+
+    return texA.handle() == texB.handle();
+}
+
 void Object::addGeometry(const Geometry& geometry)
 {
     auto& binding = bindings_.emplace_back();
     binding.geometry = &geometry;
+    binding.defaultMaterial = &geometry.material();
+    binding.activeMaterial = &geometry.material();
+}
+
+void Object::addVariantMaterial(std::size_t geometryIndex, std::size_t variantIndex, const Material* material)
+{
+    if (geometryIndex >= bindings_.size() || material == nullptr)
+    {
+        return;
+    }
+
+    auto& binding = bindings_[geometryIndex];
+    if (binding.variantMaterials.size() <= variantIndex)
+    {
+        binding.variantMaterials.resize(variantIndex + 1, nullptr);
+    }
+    binding.variantMaterials[variantIndex] = material;
 }
 
 void Object::load(Resources& resources)
 {
+    resources_ = &resources;
     // Create shared uniform buffers (model/view/proj)
     auto uniformSet = resources.createMappedUniformBuffers(sizeof(UniformBufferObject));
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -45,10 +78,10 @@ void Object::load(Resources& resources)
 
     for (auto& binding : bindings_)
     {
-        Resources::GeometryDescriptorInfo geoInfo;
+        GeometryDescriptorInfo geoInfo;
 
         // Material buffers
-        MaterialUBO matUbo = toMaterialUBO(binding.geometry->material());
+        MaterialUBO matUbo = toMaterialUBO(*binding.activeMaterial);
         auto matSet = resources.createMappedUniformBuffers(sizeof(MaterialUBO));
         for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
         {
@@ -131,120 +164,7 @@ void Object::load(Resources& resources)
         }
 
         // Texture handle — use a 1x1 white dummy when material has no texture
-        if (binding.geometry->material().hasTexture())
-        {
-            geoInfo.texture = binding.geometry->material().texture().handle();
-        }
-        else
-        {
-            geoInfo.texture = resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
-        }
-
-        // Emissive texture — use a 1x1 black dummy when material has no emissive texture
-        if (binding.geometry->material().hasEmissiveTexture())
-        {
-            geoInfo.emissiveTexture = binding.geometry->material().emissiveTexture().handle();
-        }
-        else
-        {
-            geoInfo.emissiveTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::Emissive);
-        }
-
-        // Normal texture — use a 1x1 flat-normal dummy (128,128,255 = z-up in tangent space)
-        if (binding.geometry->material().hasNormalTexture())
-        {
-            geoInfo.normalTexture = binding.geometry->material().normalTexture().handle();
-        }
-        else
-        {
-            geoInfo.normalTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
-        }
-
-        // MetallicRoughness texture — use a 1x1 white dummy (1.0 metallic, 1.0 roughness)
-        if (binding.geometry->material().hasMetallicRoughnessTexture())
-        {
-            geoInfo.metallicRoughnessTexture =
-                binding.geometry->material().metallicRoughnessTexture().handle();
-        }
-        else
-        {
-            geoInfo.metallicRoughnessTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::MetallicRoughness);
-        }
-
-        // Occlusion texture — use a 1x1 white dummy (1.0 = no occlusion)
-        if (binding.geometry->material().hasOcclusionTexture())
-        {
-            geoInfo.occlusionTexture = binding.geometry->material().occlusionTexture().handle();
-        }
-        else
-        {
-            geoInfo.occlusionTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
-        }
-
-        // Transmission texture (KHR_materials_transmission). 1x1 white dummy
-        // when absent so the shader's sample is harmless when the factor is 0.
-        if (binding.geometry->material().hasTransmissionTexture())
-        {
-            geoInfo.transmissionTexture =
-                binding.geometry->material().transmissionTexture().handle();
-        }
-        else
-        {
-            geoInfo.transmissionTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
-        }
-
-        // Clearcoat textures (KHR_materials_clearcoat). Factor + roughness
-        // fall back to the white BaseColour dummy (the shader gates them on a
-        // present-flag, so the sample is harmless when absent). Normal falls
-        // back to the flat-normal dummy so the TBN reconstruction still
-        // produces the geometric normal.
-        if (binding.geometry->material().hasClearcoatTexture())
-        {
-            geoInfo.clearcoatTexture = binding.geometry->material().clearcoatTexture().handle();
-        }
-        else
-        {
-            geoInfo.clearcoatTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
-        }
-        if (binding.geometry->material().hasClearcoatRoughnessTexture())
-        {
-            geoInfo.clearcoatRoughnessTexture =
-                binding.geometry->material().clearcoatRoughnessTexture().handle();
-        }
-        else
-        {
-            geoInfo.clearcoatRoughnessTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
-        }
-        if (binding.geometry->material().hasClearcoatNormalTexture())
-        {
-            geoInfo.clearcoatNormalTexture =
-                binding.geometry->material().clearcoatNormalTexture().handle();
-        }
-        else
-        {
-            geoInfo.clearcoatNormalTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
-        }
-
-        // KHR_materials_volume thickness texture (G-channel modulates factor).
-        // Fall back to white BaseColour — harmless multiplier of 1 when factor
-        // is 0.
-        if (binding.geometry->material().hasThicknessTexture())
-        {
-            geoInfo.thicknessTexture = binding.geometry->material().thicknessTexture().handle();
-        }
-        else
-        {
-            geoInfo.thicknessTexture =
-                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
-        }
+        applyMaterialTextures(geoInfo, *binding.activeMaterial, resources);
 
         req.geometries.push_back(geoInfo);
     }
@@ -291,6 +211,91 @@ void Object::load(Resources& resources)
     {
         bindings_[g].shadowDescSets = shadowDescResult.descSets[g];
     }
+}
+
+void Object::activeVariant(std::optional<std::size_t> variantIndex)
+{
+    for (auto& binding : bindings_)
+    {
+        const Material* nextMaterial = binding.defaultMaterial;
+        if (variantIndex.has_value() && variantIndex.value() < binding.variantMaterials.size() &&
+            binding.variantMaterials[variantIndex.value()] != nullptr)
+        {
+            nextMaterial = binding.variantMaterials[variantIndex.value()];
+        }
+
+        if (nextMaterial == binding.activeMaterial)
+        {
+            continue;
+        }
+
+        binding.activeMaterial = nextMaterial;
+        binding.descriptorDirty.fill(true);
+    }
+}
+
+bool Object::hasVariant(std::size_t variantIndex) const noexcept
+{
+    for (const auto& binding : bindings_)
+    {
+        if (variantIndex < binding.variantMaterials.size() &&
+            binding.variantMaterials[variantIndex] != nullptr)
+        {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool Object::wouldChangeVariant(std::optional<std::size_t> variantIndex) const noexcept
+{
+    for (const auto& binding : bindings_)
+    {
+        const Material* candidate = binding.defaultMaterial;
+        if (variantIndex.has_value() && variantIndex.value() < binding.variantMaterials.size() &&
+            binding.variantMaterials[variantIndex.value()] != nullptr)
+        {
+            candidate = binding.variantMaterials[variantIndex.value()];
+        }
+
+        if (!materialsEquivalent(*candidate, *binding.activeMaterial))
+        {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+bool Object::materialsEquivalent(const Material& a, const Material& b)
+{
+    const MaterialUBO aUbo = toMaterialUBO(a);
+    const MaterialUBO bUbo = toMaterialUBO(b);
+
+    if (std::memcmp(&aUbo, &bUbo, sizeof(MaterialUBO)) != 0)
+    {
+        return false;
+    }
+
+    return sameTextureSlot(a.hasTexture(), b.hasTexture(), a.texture(), b.texture()) &&
+           sameTextureSlot(a.hasEmissiveTexture(), b.hasEmissiveTexture(), a.emissiveTexture(),
+                           b.emissiveTexture()) &&
+           sameTextureSlot(a.hasNormalTexture(), b.hasNormalTexture(), a.normalTexture(),
+                           b.normalTexture()) &&
+           sameTextureSlot(a.hasMetallicRoughnessTexture(), b.hasMetallicRoughnessTexture(),
+                           a.metallicRoughnessTexture(), b.metallicRoughnessTexture()) &&
+           sameTextureSlot(a.hasOcclusionTexture(), b.hasOcclusionTexture(), a.occlusionTexture(),
+                           b.occlusionTexture()) &&
+           sameTextureSlot(a.hasTransmissionTexture(), b.hasTransmissionTexture(),
+                           a.transmissionTexture(), b.transmissionTexture()) &&
+           sameTextureSlot(a.hasClearcoatTexture(), b.hasClearcoatTexture(), a.clearcoatTexture(),
+                           b.clearcoatTexture()) &&
+           sameTextureSlot(a.hasClearcoatRoughnessTexture(), b.hasClearcoatRoughnessTexture(),
+                           a.clearcoatRoughnessTexture(), b.clearcoatRoughnessTexture()) &&
+           sameTextureSlot(a.hasClearcoatNormalTexture(), b.hasClearcoatNormalTexture(),
+                           a.clearcoatNormalTexture(), b.clearcoatNormalTexture()) &&
+           sameTextureSlot(a.hasThicknessTexture(), b.hasThicknessTexture(), a.thicknessTexture(),
+                           b.thicknessTexture());
 }
 
 MaterialUBO Object::toMaterialUBO(const Material& mat)
@@ -383,6 +388,50 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     return ubo;
 }
 
+void Object::applyMaterialTextures(GeometryDescriptorInfo& geoInfo, const Material& mat,
+                                   Resources& resources)
+{
+    geoInfo.texture = mat.hasTexture()
+                          ? mat.texture().handle()
+                          : resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+    geoInfo.emissiveTexture =
+        mat.hasEmissiveTexture()
+            ? mat.emissiveTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::Emissive);
+    geoInfo.normalTexture =
+        mat.hasNormalTexture()
+            ? mat.normalTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
+    geoInfo.metallicRoughnessTexture =
+        mat.hasMetallicRoughnessTexture()
+            ? mat.metallicRoughnessTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::MetallicRoughness);
+    geoInfo.occlusionTexture =
+        mat.hasOcclusionTexture()
+            ? mat.occlusionTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
+    geoInfo.transmissionTexture =
+        mat.hasTransmissionTexture()
+            ? mat.transmissionTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::Occlusion);
+    geoInfo.clearcoatTexture =
+        mat.hasClearcoatTexture()
+            ? mat.clearcoatTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+    geoInfo.clearcoatRoughnessTexture =
+        mat.hasClearcoatRoughnessTexture()
+            ? mat.clearcoatRoughnessTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+    geoInfo.clearcoatNormalTexture =
+        mat.hasClearcoatNormalTexture()
+            ? mat.clearcoatNormalTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
+    geoInfo.thicknessTexture =
+        mat.hasThicknessTexture()
+            ? mat.thicknessTexture().handle()
+            : resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+}
+
 void Object::updateSkin()
 {
     if (skin_ != nullptr && !skin_->empty())
@@ -425,6 +474,18 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     // Upload morph weights
     for (auto& binding : bindings_)
     {
+        MaterialUBO matUbo = toMaterialUBO(*binding.activeMaterial);
+        std::memcpy(binding.materialMapped[frame.currentFrame], &matUbo, sizeof(matUbo));
+
+        if (binding.descriptorDirty[frame.currentFrame] && resources_ != nullptr)
+        {
+            GeometryDescriptorInfo geoInfo;
+            applyMaterialTextures(geoInfo, *binding.activeMaterial, *resources_);
+            resources_->descriptors().updateObjectGeometryTextures(
+                binding.descSets[frame.currentFrame], geoInfo);
+            binding.descriptorDirty[frame.currentFrame] = false;
+        }
+
         auto numTargets = binding.geometry->morphTargetCount();
         MorphUBO morphUbo{};
         if (numTargets > 0 && !morphWeights_.empty())
@@ -468,7 +529,7 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
     commands.reserve(bindings_.size() * 2);
     for (const auto& binding : bindings_)
     {
-        const Material& mat = binding.geometry->material();
+        const Material& mat = *binding.activeMaterial;
         PipelineHandle pipe{};
         if (mat.alphaMode() == AlphaMode::Blend)
         {

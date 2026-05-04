@@ -26,6 +26,7 @@ public:
 private:
     Keyboard keyboard_;
     Mouse mouse_;
+    bool previousVariantKey_{false};
 
     static constexpr float speed_{10.0f};
     static constexpr float sensitivity_{0.003f};

@@ -169,56 +169,56 @@ private:
 
     [[nodiscard]]
     static const Texture*
-    resolveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+    resolveTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
                    const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
-    resolveEmissiveTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                           const std::string& baseDir, Resources& resources, Assets& assets);
+    resolveEmissiveTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                            const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
-    resolveNormalTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                         const std::string& baseDir, Resources& resources, Assets& assets);
+    resolveNormalTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                          const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture* resolveMetallicRoughnessTexture(const fastgltf::Asset& asset,
-                                                          const fastgltf::Primitive& primitive,
-                                                          const std::string& baseDir,
-                                                          Resources& resources, Assets& assets);
-
-    [[nodiscard]]
-    static const Texture*
-    resolveOcclusionTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                            const std::string& baseDir, Resources& resources, Assets& assets);
-
-    [[nodiscard]]
-    static const Texture*
-    resolveTransmissionTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                               const std::string& baseDir, Resources& resources, Assets& assets);
-
-    [[nodiscard]]
-    static const Texture*
-    resolveClearcoatTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                            const std::string& baseDir, Resources& resources, Assets& assets);
-
-    [[nodiscard]]
-    static const Texture* resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
-                                                           const fastgltf::Primitive& primitive,
+                                                           std::optional<std::size_t> materialIndex,
                                                            const std::string& baseDir,
                                                            Resources& resources, Assets& assets);
 
     [[nodiscard]]
-    static const Texture* resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
-                                                        const fastgltf::Primitive& primitive,
-                                                        const std::string& baseDir,
-                                                        Resources& resources, Assets& assets);
+    static const Texture*
+    resolveOcclusionTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                             const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
-    resolveThicknessTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
-                            const std::string& baseDir, Resources& resources, Assets& assets);
+    resolveTransmissionTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                                const std::string& baseDir, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveClearcoatTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                             const std::string& baseDir, Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture* resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
+                                                            std::optional<std::size_t> materialIndex,
+                                                            const std::string& baseDir,
+                                                            Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture* resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
+                                                         std::optional<std::size_t> materialIndex,
+                                                         const std::string& baseDir,
+                                                         Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture*
+    resolveThicknessTexture(const fastgltf::Asset& asset, std::optional<std::size_t> materialIndex,
+                             const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static Material* resolveMaterial(Material materialData, Assets& assets);
@@ -230,7 +230,7 @@ private:
 
     [[nodiscard]]
     static Material loadMaterial(const fastgltf::Asset& asset,
-                                 const fastgltf::Primitive& primitive);
+                                 std::optional<std::size_t> materialIndex);
 
     [[nodiscard]]
     static Image loadImage(const fastgltf::Asset& asset, std::size_t imageIndex,

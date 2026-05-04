@@ -29,9 +29,12 @@ public:
         d_ = glfwGetKey(w, GLFW_KEY_D) == GLFW_PRESS;
         e_ = glfwGetKey(w, GLFW_KEY_E) == GLFW_PRESS;
         f_ = glfwGetKey(w, GLFW_KEY_F) == GLFW_PRESS;
+        v_ = glfwGetKey(w, GLFW_KEY_V) == GLFW_PRESS;
         one_ = glfwGetKey(w, GLFW_KEY_1) == GLFW_PRESS;
         two_ = glfwGetKey(w, GLFW_KEY_2) == GLFW_PRESS;
         three_ = glfwGetKey(w, GLFW_KEY_3) == GLFW_PRESS;
+        leftShift_ = glfwGetKey(w, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS;
+        rightShift_ = glfwGetKey(w, GLFW_KEY_RIGHT_SHIFT) == GLFW_PRESS;
         left_ = glfwGetKey(w, GLFW_KEY_LEFT) == GLFW_PRESS;
         right_ = glfwGetKey(w, GLFW_KEY_RIGHT) == GLFW_PRESS;
     }
@@ -64,6 +67,10 @@ public:
     {
         return f_;
     }
+    [[nodiscard]] bool v() const noexcept
+    {
+        return v_;
+    }
     [[nodiscard]] bool one() const noexcept
     {
         return one_;
@@ -75,6 +82,10 @@ public:
     [[nodiscard]] bool three() const noexcept
     {
         return three_;
+    }
+    [[nodiscard]] bool shift() const noexcept
+    {
+        return leftShift_ || rightShift_;
     }
     [[nodiscard]] bool left() const noexcept
     {
@@ -93,9 +104,12 @@ private:
     bool d_{false};
     bool e_{false};
     bool f_{false};
+    bool v_{false};
     bool one_{false};
     bool two_{false};
     bool three_{false};
+    bool leftShift_{false};
+    bool rightShift_{false};
     bool left_{false};
     bool right_{false};
 };

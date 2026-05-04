@@ -2,6 +2,7 @@
 // Dependencies: Vulkan SDK, GLFW 3.3+, glslc (for SPIR-V compilation via CMake).
 
 #include <fire_engine/fire_engine.hpp>
+#include <fire_engine/platform/application_args.hpp>
 
 #include <cstdlib>
 #include <iostream>
@@ -11,12 +12,11 @@ using namespace fire_engine;
 
 int main(int argc, char* argv[])
 {
-    std::string_view scene_path = (argc >= 2) ? argv[1] : "";
-    std::string_view skybox_path = (argc >= 3) ? argv[2] : "";
+    const auto args = parseApplicationArgs(argc, argv);
     try
     {
         FireEngine app;
-        app.run(800, 600, "FireEngine Demo", scene_path, skybox_path);
+        app.run(800, 600, "FireEngine Demo", args.scenePath, args.skyboxPath);
     }
     catch (const std::exception& e)
     {

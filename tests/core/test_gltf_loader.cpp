@@ -99,6 +99,89 @@ static void applyTexCoordIndices(const fastgltf::Material& gltfMat, Material& ma
     }
 }
 
+static fastgltf::Asset parseRealGltfAsset(const std::filesystem::path& gltfPath)
+{
+    constexpr fastgltf::Extensions enabledExtensions =
+        fastgltf::Extensions::KHR_materials_emissive_strength |
+        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_texture_basisu |
+        fastgltf::Extensions::KHR_materials_variants |
+        fastgltf::Extensions::KHR_materials_unlit |
+        fastgltf::Extensions::KHR_lights_punctual |
+        fastgltf::Extensions::KHR_materials_transmission | fastgltf::Extensions::KHR_materials_ior |
+        fastgltf::Extensions::KHR_materials_clearcoat | fastgltf::Extensions::KHR_materials_volume;
+
+    fastgltf::Parser parser(enabledExtensions);
+    auto dataResult = fastgltf::GltfDataBuffer::FromPath(gltfPath);
+    EXPECT_EQ(dataResult.error(), fastgltf::Error::None);
+    if (dataResult.error() != fastgltf::Error::None)
+    {
+        return fastgltf::Asset{};
+    }
+
+    auto result =
+        parser.loadGltf(dataResult.get(), gltfPath.parent_path(),
+                        fastgltf::Options::LoadExternalBuffers |
+                            fastgltf::Options::LoadExternalImages);
+    EXPECT_EQ(result.error(), fastgltf::Error::None);
+    if (result.error() != fastgltf::Error::None)
+    {
+        return fastgltf::Asset{};
+    }
+
+    return std::move(result.get());
+}
+
+static std::vector<std::size_t> referencedTextureIndices(const fastgltf::Material& material)
+{
+    std::vector<std::size_t> indices;
+
+    if (material.pbrData.baseColorTexture.has_value())
+    {
+        indices.push_back(material.pbrData.baseColorTexture->textureIndex);
+    }
+    if (material.emissiveTexture.has_value())
+    {
+        indices.push_back(material.emissiveTexture->textureIndex);
+    }
+    if (material.normalTexture.has_value())
+    {
+        indices.push_back(material.normalTexture->textureIndex);
+    }
+    if (material.pbrData.metallicRoughnessTexture.has_value())
+    {
+        indices.push_back(material.pbrData.metallicRoughnessTexture->textureIndex);
+    }
+    if (material.occlusionTexture.has_value())
+    {
+        indices.push_back(material.occlusionTexture->textureIndex);
+    }
+    if (material.transmission != nullptr && material.transmission->transmissionTexture.has_value())
+    {
+        indices.push_back(material.transmission->transmissionTexture->textureIndex);
+    }
+    if (material.clearcoat != nullptr)
+    {
+        if (material.clearcoat->clearcoatTexture.has_value())
+        {
+            indices.push_back(material.clearcoat->clearcoatTexture->textureIndex);
+        }
+        if (material.clearcoat->clearcoatRoughnessTexture.has_value())
+        {
+            indices.push_back(material.clearcoat->clearcoatRoughnessTexture->textureIndex);
+        }
+        if (material.clearcoat->clearcoatNormalTexture.has_value())
+        {
+            indices.push_back(material.clearcoat->clearcoatNormalTexture->textureIndex);
+        }
+    }
+    if (material.volume != nullptr && material.volume->thicknessTexture.has_value())
+    {
+        indices.push_back(material.volume->thicknessTexture->textureIndex);
+    }
+
+    return indices;
+}
+
 // Mirrors the alpha-mode translation performed inside
 // GltfLoader::loadMaterial so the translation can be exercised without
 // needing a GPU-backed Resources object.
@@ -763,6 +846,12 @@ TEST(EnsureSupportedExtensions, KtxBasisuAccepts)
     EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
 }
 
+TEST(EnsureSupportedExtensions, MaterialsVariantsAccepts)
+{
+    std::vector<std::string_view> required{"KHR_materials_variants"};
+    EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
+}
+
 TEST(EnsureSupportedExtensions, UnsupportedExtensionThrows)
 {
     std::vector<std::string_view> required{"KHR_draco_mesh_compression"};
@@ -790,13 +879,13 @@ TEST(EnsureSupportedExtensions, MixedThrowsListingOnlyUnsupported)
     {
         const std::string what(e.what());
         EXPECT_NE(what.find("KHR_mesh_quantization"), std::string::npos);
-        EXPECT_NE(what.find("KHR_materials_variants"), std::string::npos);
-        // The supported one must not be listed in the unsupported message.
+        // Supported extensions must not be listed in the unsupported message.
+        EXPECT_EQ(what.find("KHR_materials_variants"), std::string::npos);
         EXPECT_EQ(what.find("KHR_materials_emissive_strength"), std::string::npos);
     }
 }
 
-TEST(EnsureSupportedExtensions, StainedGlassLampKtxRequiredExtensionsNowAccept)
+TEST(EnsureSupportedExtensions, StainedGlassLampKtxAndVariantsExtensionsNowAccept)
 {
     ASSERT_TRUE(std::filesystem::exists("StainedGlassLampKTX/StainedGlassLamp.gltf"));
 
@@ -857,6 +946,52 @@ TEST(EnsureSupportedExtensions, StainedGlassLampKtxRequiredExtensionsNowAccept)
               used.end());
 
     EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
+}
+
+TEST(ParseAssetKtxBasisu, StainedGlassLampTexturesUseBasisuSources)
+{
+    const auto asset =
+        parseRealGltfAsset(std::filesystem::path("StainedGlassLampKTX") / "StainedGlassLamp.gltf");
+
+    ASSERT_FALSE(asset.textures.empty());
+    for (const auto& texture : asset.textures)
+    {
+        EXPECT_TRUE(texture.basisuImageIndex.has_value());
+        EXPECT_FALSE(texture.imageIndex.has_value());
+    }
+}
+
+TEST(ParseAssetKtxBasisu, StainedGlassLampMaterialsReferenceBasisuTextures)
+{
+    const auto asset =
+        parseRealGltfAsset(std::filesystem::path("StainedGlassLampKTX") / "StainedGlassLamp.gltf");
+
+    ASSERT_FALSE(asset.materials.empty());
+    bool sawReferencedTexture = false;
+    for (const auto& material : asset.materials)
+    {
+        for (const std::size_t textureIndex : referencedTextureIndices(material))
+        {
+            ASSERT_LT(textureIndex, asset.textures.size());
+            EXPECT_TRUE(asset.textures[textureIndex].basisuImageIndex.has_value());
+            EXPECT_FALSE(asset.textures[textureIndex].imageIndex.has_value());
+            sawReferencedTexture = true;
+        }
+    }
+    EXPECT_TRUE(sawReferencedTexture);
+}
+
+TEST(ParseAssetImageSources, TextureSettingsTestUsesLegacyImageIndices)
+{
+    const auto asset =
+        parseRealGltfAsset(std::filesystem::path("TextureSettingsTest") / "TextureSettingsTest.gltf");
+
+    ASSERT_FALSE(asset.textures.empty());
+    for (const auto& texture : asset.textures)
+    {
+        EXPECT_TRUE(texture.imageIndex.has_value());
+        EXPECT_FALSE(texture.basisuImageIndex.has_value());
+    }
 }
 
 // ==========================================================================

@@ -39,6 +39,11 @@ void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
 {
     object_.updateSkin();
 
+    if (input_state.variantState().hasCycleCommand())
+    {
+        cycleVariant(input_state.variantState().cycleDelta());
+    }
+
     const auto& animState = input_state.animationState();
     if (animState.hasActiveAnimation())
     {
@@ -68,6 +73,46 @@ void Mesh::update(const InputState& input_state, const Transform& /*transform*/)
     {
         object_.morphWeights(morphWeights_);
     }
+}
+
+void Mesh::cycleVariant(int delta) noexcept
+{
+    if (delta == 0 || variantNames_.empty())
+    {
+        return;
+    }
+
+    const int stateCount = static_cast<int>(variantNames_.size()) + 1;
+    int currentState = activeVariant_.has_value() ? static_cast<int>(activeVariant_.value()) + 1 : 0;
+    const int direction = delta > 0 ? 1 : -1;
+
+    for (int step = 0; step < stateCount; ++step)
+    {
+        currentState = (currentState + direction + stateCount) % stateCount;
+        if (isSelectableVariantState(currentState))
+        {
+            break;
+        }
+    }
+
+    if (currentState == 0)
+    {
+        activeVariant_.reset();
+    }
+    else
+    {
+        activeVariant_ = static_cast<std::size_t>(currentState - 1);
+    }
+
+    object_.activeVariant(activeVariant_);
+}
+
+bool Mesh::isSelectableVariantState(int state) const noexcept
+{
+    const std::optional<std::size_t> candidate =
+        (state == 0) ? std::nullopt : std::optional<std::size_t>{static_cast<std::size_t>(state - 1)};
+
+    return object_.wouldChangeVariant(candidate);
 }
 
 Mat4 Mesh::render(const RenderContext& ctx, const Mat4& world)
