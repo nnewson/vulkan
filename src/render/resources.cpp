@@ -2,8 +2,11 @@
 
 #include <algorithm>
 #include <cstring>
+#include <stdexcept>
+#include <string>
 
 #include <fire_engine/graphics/image.hpp>
+#include <fire_engine/graphics/ktx_image.hpp>
 #include <fire_engine/graphics/vertex.hpp>
 #include <fire_engine/render/device.hpp>
 #include <fire_engine/render/pipeline.hpp>
@@ -106,6 +109,62 @@ static vk::Format toVkTextureFormat(TextureEncoding encoding)
 static std::size_t fallbackTextureIndex(Resources::FallbackTextureKind kind)
 {
     return static_cast<std::size_t>(kind);
+}
+
+[[nodiscard]] static bool supportsSampledTextureFormat(const Device& device, vk::Format format)
+{
+    vk::FormatProperties properties = device.physicalDevice().getFormatProperties(format);
+    constexpr vk::FormatFeatureFlags required =
+        vk::FormatFeatureFlagBits::eSampledImage | vk::FormatFeatureFlagBits::eTransferDst;
+    return (properties.optimalTilingFeatures & required) == required;
+}
+
+[[nodiscard]] static ktx_transcode_fmt_e chooseBasisTranscodeFormat(const Device& device,
+                                                                    TextureEncoding encoding)
+{
+    const vk::Format astcFormat = encoding == TextureEncoding::Srgb
+                                      ? vk::Format::eAstc4x4SrgbBlock
+                                      : vk::Format::eAstc4x4UnormBlock;
+    if (supportsSampledTextureFormat(device, astcFormat))
+    {
+        return KTX_TTF_ASTC_4x4_RGBA;
+    }
+
+    const vk::Format bc7Format = encoding == TextureEncoding::Srgb
+                                     ? vk::Format::eBc7SrgbBlock
+                                     : vk::Format::eBc7UnormBlock;
+    if (supportsSampledTextureFormat(device, bc7Format))
+    {
+        return KTX_TTF_BC7_RGBA;
+    }
+
+    const vk::Format etc2Format = encoding == TextureEncoding::Srgb
+                                      ? vk::Format::eEtc2R8G8B8A8SrgbBlock
+                                      : vk::Format::eEtc2R8G8B8A8UnormBlock;
+    if (supportsSampledTextureFormat(device, etc2Format))
+    {
+        return KTX_TTF_ETC2_RGBA;
+    }
+
+    const vk::Format rgbaFormat = encoding == TextureEncoding::Srgb ? vk::Format::eR8G8B8A8Srgb
+                                                                    : vk::Format::eR8G8B8A8Unorm;
+    if (supportsSampledTextureFormat(device, rgbaFormat))
+    {
+        return KTX_TTF_RGBA32;
+    }
+
+    throw std::runtime_error("No supported Vulkan transcode target for Basis-compressed KTX image");
+}
+
+[[nodiscard]] static std::string ktxFailureDetail(KTX_error_code error)
+{
+    const char* reason = ktxErrorString(error);
+    if (reason == nullptr || reason[0] == '\0')
+    {
+        return "unknown libktx error";
+    }
+
+    return reason;
 }
 
 [[nodiscard]] static vk::ImageSubresourceRange
@@ -274,6 +333,132 @@ TextureHandle Resources::createTexture(const Image& image, const SamplerSettings
     }
 
     return createTexture(image.data(), image.width(), image.height(), sampler, encoding);
+}
+
+TextureHandle Resources::createTexture(KtxImage image, const SamplerSettings& sampler,
+                                       TextureEncoding encoding)
+{
+    if (image.empty())
+    {
+        throw std::runtime_error("Cannot upload an empty KTX image");
+    }
+
+    if (image.dimensions() != 2u || image.depth() != 1u || image.layers() != 1u || image.faces() != 1u)
+    {
+        throw std::runtime_error("Only 2D single-layer KTX textures are currently supported");
+    }
+
+    if (image.needsTranscoding())
+    {
+        auto* texture = reinterpret_cast<ktxTexture2*>(image.native_handle());
+        KTX_error_code error =
+            ktxTexture2_TranscodeBasis(texture, chooseBasisTranscodeFormat(*device_, encoding), 0);
+        if (error != KTX_SUCCESS)
+        {
+            throw std::runtime_error("Failed to transcode Basis-compressed KTX image (" +
+                                     ktxFailureDetail(error) + ")");
+        }
+    }
+
+    const vk::Format format = static_cast<vk::Format>(image.vkFormat());
+    if (format == vk::Format::eUndefined)
+    {
+        throw std::runtime_error("KTX image does not expose a Vulkan format");
+    }
+
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+    entry.format = format;
+    entry.mipLevels = image.levels();
+
+    const vk::DeviceSize imageSize = static_cast<vk::DeviceSize>(image.size_bytes());
+    auto [stagingBuf, stagingMem] = device_->createBuffer(
+        imageSize, vk::BufferUsageFlagBits::eTransferSrc,
+        vk::MemoryPropertyFlagBits::eHostVisible | vk::MemoryPropertyFlagBits::eHostCoherent);
+    void* data = stagingMem.mapMemory(0, imageSize);
+    std::memcpy(data, image.data(), static_cast<std::size_t>(imageSize));
+    stagingMem.unmapMemory();
+
+    vk::ImageCreateInfo imgCi = makeImageCreateInfo(
+        {}, vk::ImageType::e2D, entry.format,
+        vk::Extent3D{.width = image.width(), .height = image.height(), .depth = 1},
+        entry.mipLevels, 1, vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eSampled);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi = makeMemoryAllocateInfo(
+        imgReq,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    vk::CommandBufferAllocateInfo cmdAi = makeCommandBufferAllocateInfo(*cmdPool_, 1);
+    auto cmds = device_->device().allocateCommandBuffers(cmdAi);
+    auto& cmd = cmds[0];
+
+    cmd.begin(makeOneTimeSubmitBeginInfo());
+
+    vk::ImageMemoryBarrier toTransfer = makeImageMemoryBarrier(
+        {}, vk::AccessFlagBits::eTransferWrite, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eTransferDstOptimal, *entry.image,
+        makeImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, entry.mipLevels, 0, 1));
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe, vk::PipelineStageFlagBits::eTransfer,
+                        {}, {}, {}, toTransfer);
+
+    std::vector<vk::BufferImageCopy> regions;
+    regions.reserve(entry.mipLevels);
+    for (uint32_t level = 0; level < entry.mipLevels; ++level)
+    {
+        ktx_size_t offset = 0;
+        KTX_error_code error =
+            ktxTexture_GetImageOffset(image.native_handle(), level, 0, 0, &offset);
+        if (error != KTX_SUCCESS)
+        {
+            throw std::runtime_error("Failed to read KTX mip offset (" + ktxFailureDetail(error) +
+                                     ")");
+        }
+
+        regions.push_back(makeBufferImageCopy(
+            static_cast<vk::DeviceSize>(offset),
+            makeImageSubresourceLayers(vk::ImageAspectFlagBits::eColor, level, 0, 1),
+            vk::Extent3D{.width = std::max(1u, image.width() >> level),
+                         .height = std::max(1u, image.height() >> level),
+                         .depth = 1}));
+    }
+    cmd.copyBufferToImage(*stagingBuf, *entry.image, vk::ImageLayout::eTransferDstOptimal, regions);
+
+    vk::ImageMemoryBarrier toShader = makeImageMemoryBarrier(
+        vk::AccessFlagBits::eTransferWrite, vk::AccessFlagBits::eShaderRead,
+        vk::ImageLayout::eTransferDstOptimal, vk::ImageLayout::eShaderReadOnlyOptimal, *entry.image,
+        makeImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, entry.mipLevels, 0, 1));
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toShader);
+
+    cmd.end();
+
+    vk::CommandBuffer rawCmd = *cmd;
+    vk::SubmitInfo submitInfo{
+        .commandBufferCount = 1,
+        .pCommandBuffers = &rawCmd,
+    };
+    device_->graphicsQueue().submit(submitInfo);
+    device_->graphicsQueue().waitIdle();
+
+    vk::ImageViewCreateInfo viewCi = makeImageViewCreateInfo(
+        *entry.image, vk::ImageViewType::e2D, entry.format,
+        makeImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, entry.mipLevels, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    auto props = device_->physicalDevice().getProperties();
+    vk::SamplerCreateInfo samplerCi = makeSamplerCreateInfo(
+        toVkFilter(sampler.magFilter), toVkFilter(sampler.minFilter), vk::SamplerMipmapMode::eLinear,
+        toVkAddressMode(sampler.wrapS), toVkAddressMode(sampler.wrapT), toVkAddressMode(sampler.wrapS),
+        vk::True, props.limits.maxSamplerAnisotropy, vk::False, vk::CompareOp::eAlways, 0.0f,
+        static_cast<float>(entry.mipLevels - 1), vk::BorderColor::eIntOpaqueBlack);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
 }
 
 TextureHandle Resources::createTexture(const uint8_t* pixels, int width, int height,

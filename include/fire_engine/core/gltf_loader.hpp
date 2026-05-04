@@ -40,7 +40,9 @@ class Resources;
 class SceneGraph;
 class Skin;
 class Texture;
+enum class TextureEncoding : std::uint8_t;
 class Mesh;
+class KtxImage;
 
 class GltfLoader
 {
@@ -233,6 +235,15 @@ private:
     [[nodiscard]]
     static Image loadImage(const fastgltf::Asset& asset, std::size_t imageIndex,
                            const std::string& baseDir);
+
+    [[nodiscard]]
+    static KtxImage loadKtxImage(const fastgltf::Asset& asset, std::size_t imageIndex,
+                                 const std::string& baseDir);
+
+    [[nodiscard]]
+    static const Texture* resolveTextureIndex(const fastgltf::Asset& asset, std::size_t textureIndex,
+                                              const std::string& baseDir, Resources& resources,
+                                              Assets& assets, TextureEncoding encoding);
 
     // Animation
     static void applyRestTRS(const fastgltf::Node& gltfNode, Animation& anim);

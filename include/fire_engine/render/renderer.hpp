@@ -20,6 +20,7 @@
 #include <fire_engine/render/resources.hpp>
 #include <fire_engine/render/shadows.hpp>
 #include <fire_engine/render/swapchain.hpp>
+#include <fire_engine/render/transmission.hpp>
 #include <fire_engine/render/ubo.hpp>
 
 namespace fire_engine
@@ -102,9 +103,6 @@ private:
     void recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
                           PipelineHandle& lastBoundPipeline) const;
     void recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
-    void recordSceneColorCapture(vk::CommandBuffer cmd);
-    void recordForwardTransmissionPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
-    void rebuildSceneColorChain(vk::Extent2D extent);
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
@@ -115,7 +113,6 @@ private:
     Device device_;
     Swapchain swapchain_;
     RenderPass forwardPass_;
-    RenderPass forwardTransmissionPass_;
     Pipeline pipelineOpaque_;
     Pipeline pipelineOpaqueDoubleSided_;
     Pipeline pipelineBlend_;
@@ -123,6 +120,7 @@ private:
     Frame frame_;
     Resources resources_;
     PostProcessing postProcessing_;
+    Transmission transmission_;
     Shadows shadows_;
     PipelineHandle forwardOpaqueHandle_{NullPipeline};
     PipelineHandle forwardOpaqueDoubleSidedHandle_{NullPipeline};
@@ -132,8 +130,6 @@ private:
     TextureHandle irradianceCubemapHandle_{NullTexture};
     TextureHandle prefilteredCubemapHandle_{NullTexture};
     TextureHandle brdfLutHandle_{NullTexture};
-    TextureHandle sceneColorHandle_{NullTexture};
-    uint32_t sceneColorMipLevels_{0};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};

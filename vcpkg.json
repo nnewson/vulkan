@@ -3,6 +3,7 @@
     "fastgltf",
     "gtest",
     "stb",
-    "vulkan-headers"
+    "vulkan-headers",
+    "ktx"
   ]
 }

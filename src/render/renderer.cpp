@@ -20,7 +20,6 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
     : device_(window),
       swapchain_(device_, window),
       forwardPass_(RenderPass::createForward(device_)),
-      forwardTransmissionPass_(RenderPass::createForwardTransmission(device_)),
       pipelineOpaque_(device_, Pipeline::forwardConfig(forwardPass_.renderPass())),
       pipelineOpaqueDoubleSided_(device_,
                                  Pipeline::forwardDoubleSidedConfig(forwardPass_.renderPass())),
@@ -29,6 +28,7 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
       frame_(device_, swapchain_),
       resources_(device_, pipelineOpaque_),
       postProcessing_(device_, swapchain_, resources_),
+      transmission_(device_, swapchain_, resources_, postProcessing_.offscreenColourTarget()),
       shadows_(device_, resources_),
       environmentPath_(std::move(environmentPath))
 {
@@ -36,10 +36,7 @@ Renderer::Renderer(const Window& window, std::string environmentPath)
     forwardPass_.createForwardFramebuffer(
         device_, resources_.vulkanImageView(postProcessing_.offscreenColourTarget()),
         swapchain_.depthView(), swapchain_.extent());
-    forwardTransmissionPass_.createForwardFramebuffer(
-        device_, resources_.vulkanImageView(postProcessing_.offscreenColourTarget()),
-        swapchain_.depthView(), swapchain_.extent());
-    rebuildSceneColorChain(swapchain_.extent());
+    transmission_.recreate(postProcessing_.offscreenColourTarget());
     forwardOpaqueHandle_ =
         resources_.registerPipeline(pipelineOpaque_.pipeline(), pipelineOpaque_.pipelineLayout());
     forwardOpaqueDoubleSidedHandle_ = resources_.registerPipeline(
@@ -351,12 +348,7 @@ void Renderer::drawFrame(Window& display, SceneGraph& scene, Vec3 cameraPosition
     recordForwardPass(cmd, buckets);
     if (!buckets.transmissive.empty())
     {
-        // KHR_materials_transmission F3 — capture the post-opaque HDR target
-        // into the sceneColor mip chain, then render transmissive draws on
-        // top so their fragment shader can sample sceneColor for screen-space
-        // refraction.
-        recordSceneColorCapture(cmd);
-        recordForwardTransmissionPass(cmd, buckets);
+        transmission_.recordPass(cmd, buckets.transmissive);
     }
     postProcessing_.transitionOffscreenForSampling(cmd);
     postProcessing_.recordBloomPasses(cmd);
@@ -507,212 +499,6 @@ void Renderer::recordSkybox(Vec3 cameraPosition, Vec3 cameraTarget,
     drawCommands.push_back(dc);
 }
 
-void Renderer::rebuildSceneColorChain(vk::Extent2D extent)
-{
-    if (sceneColorHandle_ != NullTexture)
-    {
-        resources_.releaseTexture(sceneColorHandle_);
-        sceneColorHandle_ = NullTexture;
-    }
-    const uint32_t maxDim = std::max(extent.width, extent.height);
-    sceneColorMipLevels_ = 1u;
-    while ((maxDim >> sceneColorMipLevels_) > 0)
-    {
-        ++sceneColorMipLevels_;
-    }
-    sceneColorHandle_ =
-        resources_.createSceneColorTarget(extent.width, extent.height, sceneColorMipLevels_);
-    resources_.sceneColor(sceneColorHandle_);
-}
-
-void Renderer::recordSceneColorCapture(vk::CommandBuffer cmd)
-{
-    auto extent = swapchain_.extent();
-    auto hdrImage = resources_.vulkanImage(postProcessing_.offscreenColourTarget());
-    auto sceneImage = resources_.vulkanImage(sceneColorHandle_);
-
-    auto colourRange = [](uint32_t baseMip, uint32_t levels)
-    {
-        return vk::ImageSubresourceRange{
-            .aspectMask = vk::ImageAspectFlagBits::eColor,
-            .baseMipLevel = baseMip,
-            .levelCount = levels,
-            .baseArrayLayer = 0,
-            .layerCount = 1,
-        };
-    };
-
-    // 1. HDR target (currently in ShaderReadOnlyOptimal after forward pass) →
-    //    TransferSrcOptimal so we can blit it.
-    vk::ImageMemoryBarrier hdrToSrc{
-        .srcAccessMask = vk::AccessFlagBits::eShaderRead,
-        .dstAccessMask = vk::AccessFlagBits::eTransferRead,
-        .oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        .newLayout = vk::ImageLayout::eTransferSrcOptimal,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = hdrImage,
-        .subresourceRange = colourRange(0, 1),
-    };
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader,
-                        vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, hdrToSrc);
-
-    // 2. sceneColor mips were left in ShaderReadOnlyOptimal at creation (and
-    //    by the previous frame's capture). Transition them all to
-    //    TransferDstOptimal so the blit chain can write each level.
-    vk::ImageMemoryBarrier sceneToDst{
-        .srcAccessMask = vk::AccessFlagBits::eShaderRead,
-        .dstAccessMask = vk::AccessFlagBits::eTransferWrite,
-        .oldLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        .newLayout = vk::ImageLayout::eTransferDstOptimal,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = sceneImage,
-        .subresourceRange = colourRange(0, sceneColorMipLevels_),
-    };
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eFragmentShader,
-                        vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, sceneToDst);
-
-    // 3. Blit HDR (mip 0 only) → sceneColor mip 0 at full extent.
-    vk::ImageBlit blit0{
-        .srcSubresource = vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                                     .mipLevel = 0,
-                                                     .baseArrayLayer = 0,
-                                                     .layerCount = 1},
-        .srcOffsets =
-            std::array<vk::Offset3D, 2>{vk::Offset3D{.x = 0, .y = 0, .z = 0},
-                                        vk::Offset3D{.x = static_cast<int32_t>(extent.width),
-                                                     .y = static_cast<int32_t>(extent.height),
-                                                     .z = 1}},
-        .dstSubresource = vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                                     .mipLevel = 0,
-                                                     .baseArrayLayer = 0,
-                                                     .layerCount = 1},
-        .dstOffsets =
-            std::array<vk::Offset3D, 2>{vk::Offset3D{.x = 0, .y = 0, .z = 0},
-                                        vk::Offset3D{.x = static_cast<int32_t>(extent.width),
-                                                     .y = static_cast<int32_t>(extent.height),
-                                                     .z = 1}},
-    };
-    cmd.blitImage(hdrImage, vk::ImageLayout::eTransferSrcOptimal, sceneImage,
-                  vk::ImageLayout::eTransferDstOptimal, blit0, vk::Filter::eLinear);
-
-    // 4. Generate the rest of the mip chain by halving each dimension.
-    int32_t mipW = static_cast<int32_t>(extent.width);
-    int32_t mipH = static_cast<int32_t>(extent.height);
-    for (uint32_t i = 1; i < sceneColorMipLevels_; ++i)
-    {
-        // Source mip (i - 1): TransferDst → TransferSrc.
-        vk::ImageMemoryBarrier srcReady{
-            .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-            .dstAccessMask = vk::AccessFlagBits::eTransferRead,
-            .oldLayout = vk::ImageLayout::eTransferDstOptimal,
-            .newLayout = vk::ImageLayout::eTransferSrcOptimal,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = sceneImage,
-            .subresourceRange = colourRange(i - 1, 1),
-        };
-        cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                            vk::PipelineStageFlagBits::eTransfer, {}, {}, {}, srcReady);
-
-        const int32_t nextW = std::max(1, mipW >> 1);
-        const int32_t nextH = std::max(1, mipH >> 1);
-        vk::ImageBlit blit{
-            .srcSubresource =
-                vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                           .mipLevel = i - 1,
-                                           .baseArrayLayer = 0,
-                                           .layerCount = 1},
-            .srcOffsets = std::array<vk::Offset3D, 2>{vk::Offset3D{.x = 0, .y = 0, .z = 0},
-                                                      vk::Offset3D{.x = mipW, .y = mipH, .z = 1}},
-            .dstSubresource =
-                vk::ImageSubresourceLayers{.aspectMask = vk::ImageAspectFlagBits::eColor,
-                                           .mipLevel = i,
-                                           .baseArrayLayer = 0,
-                                           .layerCount = 1},
-            .dstOffsets = std::array<vk::Offset3D, 2>{vk::Offset3D{.x = 0, .y = 0, .z = 0},
-                                                      vk::Offset3D{.x = nextW, .y = nextH, .z = 1}},
-        };
-        cmd.blitImage(sceneImage, vk::ImageLayout::eTransferSrcOptimal, sceneImage,
-                      vk::ImageLayout::eTransferDstOptimal, blit, vk::Filter::eLinear);
-
-        // Source mip (i - 1) → ShaderReadOnly so the shader can sample any level.
-        vk::ImageMemoryBarrier srcDone{
-            .srcAccessMask = vk::AccessFlagBits::eTransferRead,
-            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-            .oldLayout = vk::ImageLayout::eTransferSrcOptimal,
-            .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-            .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-            .image = sceneImage,
-            .subresourceRange = colourRange(i - 1, 1),
-        };
-        cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                            vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, srcDone);
-
-        mipW = nextW;
-        mipH = nextH;
-    }
-
-    // Final mip is still in TransferDstOptimal — transition to ShaderReadOnly.
-    vk::ImageMemoryBarrier lastMipDone{
-        .srcAccessMask = vk::AccessFlagBits::eTransferWrite,
-        .dstAccessMask = vk::AccessFlagBits::eShaderRead,
-        .oldLayout = vk::ImageLayout::eTransferDstOptimal,
-        .newLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = sceneImage,
-        .subresourceRange = colourRange(sceneColorMipLevels_ - 1, 1),
-    };
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, lastMipDone);
-
-    // 5. HDR target back to ColorAttachmentOptimal so the second forward pass
-    //    can render onto it (loadOp=eLoad keeps existing contents).
-    vk::ImageMemoryBarrier hdrBack{
-        .srcAccessMask = vk::AccessFlagBits::eTransferRead,
-        .dstAccessMask =
-            vk::AccessFlagBits::eColorAttachmentRead | vk::AccessFlagBits::eColorAttachmentWrite,
-        .oldLayout = vk::ImageLayout::eTransferSrcOptimal,
-        .newLayout = vk::ImageLayout::eColorAttachmentOptimal,
-        .srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-        .image = hdrImage,
-        .subresourceRange = colourRange(0, 1),
-    };
-    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                        vk::PipelineStageFlagBits::eColorAttachmentOutput, {}, {}, {}, hdrBack);
-}
-
-void Renderer::recordForwardTransmissionPass(vk::CommandBuffer cmd, const DrawBuckets& buckets)
-{
-    if (buckets.transmissive.empty())
-    {
-        return;
-    }
-
-    auto extent = swapchain_.extent();
-    vk::Rect2D renderArea{.offset = vk::Offset2D{.x = 0, .y = 0}, .extent = extent};
-    vk::RenderPassBeginInfo begin{
-        .renderPass = forwardTransmissionPass_.renderPass(),
-        .framebuffer = forwardTransmissionPass_.framebuffer(0),
-        .renderArea = renderArea,
-    };
-    cmd.beginRenderPass(begin, vk::SubpassContents::eInline);
-    cmd.setViewport(0, vk::Viewport{.x = 0.0f,
-                                    .y = 0.0f,
-                                    .width = static_cast<float>(extent.width),
-                                    .height = static_cast<float>(extent.height),
-                                    .minDepth = 0.0f,
-                                    .maxDepth = 1.0f});
-    cmd.setScissor(0, renderArea);
-    auto lastBoundPipeline = PipelineHandle{std::numeric_limits<uint32_t>::max()};
-    recordDrawBucket(cmd, buckets.transmissive, lastBoundPipeline);
-    cmd.endRenderPass();
-}
-
 void Renderer::recreateSwapchain(const Window& display)
 {
     auto [w, h] = display.framebufferSize();
@@ -730,10 +516,7 @@ void Renderer::recreateSwapchain(const Window& display)
     forwardPass_.createForwardFramebuffer(
         device_, resources_.vulkanImageView(postProcessing_.offscreenColourTarget()),
         swapchain_.depthView(), swapchain_.extent());
-    forwardTransmissionPass_.createForwardFramebuffer(
-        device_, resources_.vulkanImageView(postProcessing_.offscreenColourTarget()),
-        swapchain_.depthView(), swapchain_.extent());
-    rebuildSceneColorChain(swapchain_.extent());
+    transmission_.recreate(postProcessing_.offscreenColourTarget());
     frame_.createRenderFinishedSemaphores(swapchain_.images().size());
     imagesInFlight_.assign(swapchain_.images().size(), vk::Fence{});
 }

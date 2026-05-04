@@ -13,6 +13,7 @@ find_package(glfw3 3.3 REQUIRED)
 find_package(GTest REQUIRED)
 find_package(Stb REQUIRED)
 find_package(fastgltf CONFIG REQUIRED)
+find_package(Ktx CONFIG REQUIRED)
 
 # --- Library ------------------------------------------------------------
 
@@ -28,6 +29,7 @@ add_library(fireengine SHARED
     src/fire_engine.cpp
     src/graphics/geometry.cpp
     src/graphics/image.cpp
+    src/graphics/ktx_image.cpp
     src/graphics/object.cpp
     src/graphics/skin.cpp
     src/graphics/texture.cpp
@@ -47,6 +49,7 @@ add_library(fireengine SHARED
     src/render/resources.cpp
     src/render/shadows.cpp
     src/render/swapchain.cpp
+    src/render/transmission.cpp
     src/scene/animator.cpp
     src/scene/controllable.cpp
     src/scene/camera.cpp
@@ -71,7 +74,7 @@ target_compile_definitions(fireengine PRIVATE
     FIRE_ENGINE_SOURCE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets"
     FIRE_ENGINE_BUILD_ASSET_DIR="${CMAKE_CURRENT_BINARY_DIR}"
 )
-target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw fastgltf::fastgltf)
+target_link_libraries(fireengine PUBLIC Vulkan::Vulkan glfw fastgltf::fastgltf KTX::ktx)
 
 # --- Executable ---------------------------------------------------------
 
@@ -145,6 +148,7 @@ add_executable(test_fire_engine
     tests/graphics/test_colour3.cpp
     tests/graphics/test_joints4.cpp
     tests/graphics/test_image.cpp
+    tests/graphics/test_ktx_image.cpp
     tests/graphics/test_vertex.cpp
     tests/graphics/test_skin.cpp
     tests/graphics/test_assets.cpp

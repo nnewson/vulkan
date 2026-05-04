@@ -25,6 +25,7 @@
 #include <fire_engine/graphics/assets.hpp>
 #include <fire_engine/graphics/geometry.hpp>
 #include <fire_engine/graphics/material.hpp>
+#include <fire_engine/graphics/ktx_image.hpp>
 #include <fire_engine/graphics/object.hpp>
 #include <fire_engine/graphics/sampler_settings.hpp>
 #include <fire_engine/graphics/skin.hpp>
@@ -47,9 +48,10 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 8> kSupportedExtensions = {
+constexpr std::array<std::string_view, 9> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
     std::string_view{"KHR_texture_transform"},
+    std::string_view{"KHR_texture_basisu"},
     std::string_view{"KHR_materials_unlit"},
     std::string_view{"KHR_lights_punctual"},
     std::string_view{"KHR_materials_transmission"},
@@ -746,7 +748,8 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
     // Without the opt-in, extension fields silently stay at their defaults.
     constexpr fastgltf::Extensions enabledExtensions =
         fastgltf::Extensions::KHR_materials_emissive_strength |
-        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit |
+        fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_texture_basisu |
+        fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission | fastgltf::Extensions::KHR_materials_ior |
         fastgltf::Extensions::KHR_materials_clearcoat | fastgltf::Extensions::KHR_materials_volume;
@@ -1238,6 +1241,60 @@ Image GltfLoader::loadImage(const fastgltf::Asset& asset, std::size_t imageIndex
                                    "image[" + std::to_string(imageIndex) + "]");
 }
 
+KtxImage GltfLoader::loadKtxImage(const fastgltf::Asset& asset, std::size_t imageIndex,
+                                  const std::string& baseDir)
+{
+    const auto& image = asset.images[imageIndex];
+
+    if (auto* uri = std::get_if<fastgltf::sources::URI>(&image.data);
+        uri != nullptr && uri->uri.isLocalPath() && !uri->uri.isDataUri() && uri->fileByteOffset == 0)
+    {
+        return KtxImage::load_from_file(
+            (std::filesystem::path(baseDir) / uri->uri.fspath()).string());
+    }
+
+    auto bytes = loadDataSourceBytes(asset, image.data, baseDir,
+                                     "image[" + std::to_string(imageIndex) + "]");
+    if (bytes.empty())
+    {
+        throw std::runtime_error("Image data is empty for image[" + std::to_string(imageIndex) +
+                                 "]");
+    }
+
+    return KtxImage::load_from_memory(reinterpret_cast<const uint8_t*>(bytes.data()), bytes.size(),
+                                      "image[" + std::to_string(imageIndex) + "]");
+}
+
+const Texture* GltfLoader::resolveTextureIndex(const fastgltf::Asset& asset, std::size_t textureIndex,
+                                               const std::string& baseDir, Resources& resources,
+                                               Assets& assets, TextureEncoding encoding)
+{
+    auto& tex = assets.texture(textureIndex);
+    if (!tex.loaded())
+    {
+        auto settings = extractSamplerSettings(asset, textureIndex);
+        const auto& gltfTexture = asset.textures[textureIndex];
+
+        if (gltfTexture.basisuImageIndex.has_value())
+        {
+            auto image = loadKtxImage(asset, gltfTexture.basisuImageIndex.value(), baseDir);
+            tex = Texture::load_from_ktx_image(std::move(image), resources, settings, encoding);
+        }
+        else if (gltfTexture.imageIndex.has_value())
+        {
+            auto image = loadImage(asset, gltfTexture.imageIndex.value(), baseDir);
+            tex = Texture::load_from_image(image, resources, settings, encoding);
+        }
+        else
+        {
+            throw std::runtime_error("Texture[" + std::to_string(textureIndex) +
+                                     "] does not reference an image source");
+        }
+    }
+
+    return &tex;
+}
+
 const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
                                           const fastgltf::Primitive& primitive,
                                           const std::string& baseDir, Resources& resources,
@@ -1249,14 +1306,8 @@ const Texture* GltfLoader::resolveTexture(const fastgltf::Asset& asset,
         if (gltfMat.pbrData.baseColorTexture.has_value())
         {
             auto texIndex = gltfMat.pbrData.baseColorTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Srgb);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Srgb);
         }
     }
 
@@ -1274,14 +1325,8 @@ const Texture* GltfLoader::resolveEmissiveTexture(const fastgltf::Asset& asset,
         if (gltfMat.emissiveTexture.has_value())
         {
             auto texIndex = gltfMat.emissiveTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Srgb);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Srgb);
         }
     }
 
@@ -1299,14 +1344,8 @@ const Texture* GltfLoader::resolveNormalTexture(const fastgltf::Asset& asset,
         if (gltfMat.normalTexture.has_value())
         {
             auto texIndex = gltfMat.normalTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
 
@@ -1324,14 +1363,8 @@ const Texture* GltfLoader::resolveMetallicRoughnessTexture(const fastgltf::Asset
         if (gltfMat.pbrData.metallicRoughnessTexture.has_value())
         {
             auto texIndex = gltfMat.pbrData.metallicRoughnessTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
 
@@ -1349,14 +1382,8 @@ const Texture* GltfLoader::resolveOcclusionTexture(const fastgltf::Asset& asset,
         if (gltfMat.occlusionTexture.has_value())
         {
             auto texIndex = gltfMat.occlusionTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
 
@@ -1375,14 +1402,8 @@ const Texture* GltfLoader::resolveTransmissionTexture(const fastgltf::Asset& ass
             gltfMat.transmission->transmissionTexture.has_value())
         {
             auto texIndex = gltfMat.transmission->transmissionTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
 
@@ -1400,14 +1421,8 @@ const Texture* GltfLoader::resolveClearcoatTexture(const fastgltf::Asset& asset,
         if (gltfMat.clearcoat != nullptr && gltfMat.clearcoat->clearcoatTexture.has_value())
         {
             auto texIndex = gltfMat.clearcoat->clearcoatTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
     return nullptr;
@@ -1425,14 +1440,8 @@ const Texture* GltfLoader::resolveClearcoatRoughnessTexture(const fastgltf::Asse
             gltfMat.clearcoat->clearcoatRoughnessTexture.has_value())
         {
             auto texIndex = gltfMat.clearcoat->clearcoatRoughnessTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
     return nullptr;
@@ -1449,14 +1458,8 @@ const Texture* GltfLoader::resolveClearcoatNormalTexture(const fastgltf::Asset& 
         if (gltfMat.clearcoat != nullptr && gltfMat.clearcoat->clearcoatNormalTexture.has_value())
         {
             auto texIndex = gltfMat.clearcoat->clearcoatNormalTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
     return nullptr;
@@ -1473,14 +1476,8 @@ const Texture* GltfLoader::resolveThicknessTexture(const fastgltf::Asset& asset,
         if (gltfMat.volume != nullptr && gltfMat.volume->thicknessTexture.has_value())
         {
             auto texIndex = gltfMat.volume->thicknessTexture.value().textureIndex;
-            auto& tex = assets.texture(texIndex);
-            if (!tex.loaded())
-            {
-                auto settings = extractSamplerSettings(asset, texIndex);
-                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
-                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
-            }
-            return &tex;
+            return resolveTextureIndex(asset, texIndex, baseDir, resources, assets,
+                                       TextureEncoding::Linear);
         }
     }
     return nullptr;

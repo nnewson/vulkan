@@ -167,6 +167,90 @@ TEST(UBO, MaterialUBOHasOcclusionTextureCanBeSet)
     EXPECT_EQ(ubo.extraFlags[0], 1);
 }
 
+TEST(UBO, MaterialUBOTransmissionDefaultsMatchShaderExpectations)
+{
+    MaterialUBO ubo{};
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[0], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[1], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[2], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[3], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[0], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[1], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[2], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[3], 1.5f);
+}
+
+TEST(UBO, MaterialUBOTransmissionFieldsRoundTrip)
+{
+    MaterialUBO ubo{};
+    ubo.uvTransmission[0] = 0.25f;
+    ubo.uvTransmission[1] = 0.5f;
+    ubo.uvTransmission[2] = 0.75f;
+    ubo.uvTransmission[3] = 1.25f;
+    ubo.uvRotationsExtra[1] = 0.6f;
+    ubo.transmissionParams[0] = 1.0f;
+    ubo.transmissionParams[1] = 1.0f;
+    ubo.transmissionParams[2] = 1.0f;
+    ubo.transmissionParams[3] = 1.0f;
+
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[0], 0.25f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[1], 0.5f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[2], 0.75f);
+    EXPECT_FLOAT_EQ(ubo.uvTransmission[3], 1.25f);
+    EXPECT_FLOAT_EQ(ubo.uvRotationsExtra[1], 0.6f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[0], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[1], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[2], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.transmissionParams[3], 1.0f);
+}
+
+TEST(UBO, MaterialUBOVolumeDefaultsMatchShaderExpectations)
+{
+    MaterialUBO ubo{};
+    EXPECT_FLOAT_EQ(ubo.volumeParams[0], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[1], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[2], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[3], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[0], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[1], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[2], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[3], 1.0e6f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[0], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[1], 0.0f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[2], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[3], 1.0f);
+}
+
+TEST(UBO, MaterialUBOVolumeFieldsRoundTrip)
+{
+    MaterialUBO ubo{};
+    ubo.volumeParams[0] = 0.125f;
+    ubo.volumeParams[1] = 1.0f;
+    ubo.volumeParams[2] = 1.0f;
+    ubo.volumeParams[3] = 0.35f;
+    ubo.attenuation[0] = 0.3f;
+    ubo.attenuation[1] = 0.5f;
+    ubo.attenuation[2] = 0.7f;
+    ubo.attenuation[3] = 4.0f;
+    ubo.uvThickness[0] = 0.1f;
+    ubo.uvThickness[1] = 0.2f;
+    ubo.uvThickness[2] = 0.8f;
+    ubo.uvThickness[3] = 0.9f;
+
+    EXPECT_FLOAT_EQ(ubo.volumeParams[0], 0.125f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[1], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[2], 1.0f);
+    EXPECT_FLOAT_EQ(ubo.volumeParams[3], 0.35f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[0], 0.3f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[1], 0.5f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[2], 0.7f);
+    EXPECT_FLOAT_EQ(ubo.attenuation[3], 4.0f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[0], 0.1f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[1], 0.2f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[2], 0.8f);
+    EXPECT_FLOAT_EQ(ubo.uvThickness[3], 0.9f);
+}
+
 TEST(UBO, MaterialUBOTextureFlagsFieldOrder)
 {
     static_assert(offsetof(MaterialUBO, textureFlags) % 16 == 0,

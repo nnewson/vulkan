@@ -292,6 +292,11 @@ void main() {
 
     vec3 V = normalize(ubo.cameraPos.xyz - fragWorldPos);
     float NdotV = max(dot(N, V), 0.001);
+    // KHR_materials_ior. Use the authored dielectric IOR to derive F0 instead
+    // of the previous hard-coded 0.04 baseline. This keeps Air (IOR = 1.0)
+    // close to fully transmissive while preserving the spec's default 1.5 →
+    // ~0.04 reflectance when the extension is absent.
+    float ior = max(material.transmissionParams.w, 1e-4);
 
     // Sample base colour texture once
     vec4 texColor = vec4(1.0);
@@ -328,7 +333,8 @@ void main() {
     }
     roughness = clamp(roughness, 0.04, 1.0);
 
-    vec3 F0 = mix(vec3(0.04), baseColor, metallic);
+    float dielectricF0 = pow((ior - 1.0) / (ior + 1.0), 2.0);
+    vec3 F0 = mix(vec3(dielectricF0), baseColor, metallic);
     float a = roughness * roughness;
 
     // Direct lighting loop — accumulate contributions from every light in
@@ -522,8 +528,6 @@ void main() {
 
     vec3 transmittedLight = vec3(0.0);
     if (transmission > 0.0) {
-        // KHR_materials_ior. Default 1.5 when extension absent.
-        float ior = material.transmissionParams.w;
         vec3 refractDir = refract(-V, N, 1.0 / ior);
         if (dot(refractDir, refractDir) < 1e-6) refractDir = R;
 
@@ -551,7 +555,15 @@ void main() {
         sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
 
         float maxLod = float(textureQueryLevels(sceneColorMap) - 1);
-        float lod = roughness * maxLod;
+        // Rough transmission blur should collapse as the interface disappears.
+        // For IOR = 1.0 there is no refractive boundary, so even a high authored
+        // roughness should not smear the background into a milky patch. Scale
+        // the blur by interface strength and normalise against the glTF default
+        // dielectric IOR of 1.5 (F0 ~= 0.04) so default materials preserve the
+        // previous look while Air-like materials trend toward no blur.
+        float defaultDielectricF0 = 0.04;
+        float interfaceStrength = sqrt(clamp(dielectricF0 / defaultDielectricF0, 0.0, 1.0));
+        float lod = roughness * interfaceStrength * maxLod;
         vec3 transmissionSample = textureLod(sceneColorMap, sampleUv, lod).rgb;
 
         // Beer-Lambert absorption over the path through the volume.

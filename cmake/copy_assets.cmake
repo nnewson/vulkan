@@ -7,6 +7,7 @@ file(GLOB_RECURSE ASSET_FILES
   "${ASSET_DIR}/*.obj"
   "${ASSET_DIR}/*.gltf"
   "${ASSET_DIR}/*.bin"
+  "${ASSET_DIR}/*.ktx2"
 )
 
 foreach(f IN LISTS ASSET_FILES)

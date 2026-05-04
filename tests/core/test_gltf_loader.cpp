@@ -1,7 +1,10 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -9,6 +12,7 @@
 #include <fastgltf/math.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
+#include <simdjson.h>
 #include <simdjson.h>
 
 #include <fire_engine/core/gltf_loader.hpp>
@@ -753,6 +757,12 @@ TEST(EnsureSupportedExtensions, SupportedExtensionAccepts)
     EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
 }
 
+TEST(EnsureSupportedExtensions, KtxBasisuAccepts)
+{
+    std::vector<std::string_view> required{"KHR_texture_basisu"};
+    EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
+}
+
 TEST(EnsureSupportedExtensions, UnsupportedExtensionThrows)
 {
     std::vector<std::string_view> required{"KHR_draco_mesh_compression"};
@@ -770,7 +780,7 @@ TEST(EnsureSupportedExtensions, UnsupportedExtensionThrows)
 TEST(EnsureSupportedExtensions, MixedThrowsListingOnlyUnsupported)
 {
     std::vector<std::string_view> required{"KHR_materials_emissive_strength",
-                                           "KHR_mesh_quantization", "KHR_texture_basisu"};
+                                           "KHR_mesh_quantization", "KHR_materials_variants"};
     try
     {
         GltfLoader::ensureSupportedExtensions(required);
@@ -780,10 +790,73 @@ TEST(EnsureSupportedExtensions, MixedThrowsListingOnlyUnsupported)
     {
         const std::string what(e.what());
         EXPECT_NE(what.find("KHR_mesh_quantization"), std::string::npos);
-        EXPECT_NE(what.find("KHR_texture_basisu"), std::string::npos);
+        EXPECT_NE(what.find("KHR_materials_variants"), std::string::npos);
         // The supported one must not be listed in the unsupported message.
         EXPECT_EQ(what.find("KHR_materials_emissive_strength"), std::string::npos);
     }
+}
+
+TEST(EnsureSupportedExtensions, StainedGlassLampKtxRequiredExtensionsNowAccept)
+{
+    ASSERT_TRUE(std::filesystem::exists("StainedGlassLampKTX/StainedGlassLamp.gltf"));
+
+    std::ifstream file("StainedGlassLampKTX/StainedGlassLamp.gltf");
+    ASSERT_TRUE(file.is_open());
+    const std::string json((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+
+    simdjson::dom::parser parser;
+    simdjson::dom::element doc;
+    ASSERT_EQ(parser.parse(json).get(doc), simdjson::SUCCESS);
+
+    std::vector<std::string_view> required;
+    std::vector<std::string_view> used;
+    simdjson::dom::array requiredExtensions;
+    ASSERT_EQ(doc["extensionsRequired"].get(requiredExtensions), simdjson::SUCCESS);
+    for (const auto extValue : requiredExtensions)
+    {
+        std::string_view ext;
+        ASSERT_EQ(extValue.get(ext), simdjson::SUCCESS);
+        required.emplace_back(ext);
+    }
+
+    simdjson::dom::array usedExtensions;
+    ASSERT_EQ(doc["extensionsUsed"].get(usedExtensions), simdjson::SUCCESS);
+    for (const auto extValue : usedExtensions)
+    {
+        std::string_view ext;
+        ASSERT_EQ(extValue.get(ext), simdjson::SUCCESS);
+        used.emplace_back(ext);
+    }
+
+    bool hasBasisuTexture = false;
+    simdjson::dom::array textures;
+    ASSERT_EQ(doc["textures"].get(textures), simdjson::SUCCESS);
+    for (const auto textureValue : textures)
+    {
+        simdjson::dom::object textureObject;
+        ASSERT_EQ(textureValue.get(textureObject), simdjson::SUCCESS);
+
+        simdjson::dom::element extensionsElement;
+        if (textureObject["extensions"].get(extensionsElement) != simdjson::SUCCESS)
+        {
+            continue;
+        }
+
+        simdjson::dom::element basisuElement;
+        if (extensionsElement["KHR_texture_basisu"].get(basisuElement) == simdjson::SUCCESS)
+        {
+            hasBasisuTexture = true;
+            break;
+        }
+    }
+    ASSERT_TRUE(hasBasisuTexture);
+    ASSERT_NE(std::find(required.begin(), required.end(), std::string_view{"KHR_texture_basisu"}),
+              required.end());
+    ASSERT_NE(std::find(used.begin(), used.end(), std::string_view{"KHR_materials_variants"}),
+              used.end());
+
+    EXPECT_NO_THROW(GltfLoader::ensureSupportedExtensions(required));
 }
 
 // ==========================================================================

@@ -19,6 +19,7 @@ namespace fire_engine
 
 class Device;
 class Image;
+class KtxImage;
 class Pipeline;
 class Vertex;
 
@@ -51,6 +52,9 @@ public:
     // --- Texture creation ---
 
     [[nodiscard]] TextureHandle createTexture(const Image& image,
+                                              const SamplerSettings& sampler = {},
+                                              TextureEncoding encoding = TextureEncoding::Srgb);
+    [[nodiscard]] TextureHandle createTexture(KtxImage image,
                                               const SamplerSettings& sampler = {},
                                               TextureEncoding encoding = TextureEncoding::Srgb);
     [[nodiscard]] TextureHandle createTexture(const uint8_t* pixels, int width, int height,

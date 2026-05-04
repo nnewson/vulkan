@@ -10,6 +10,7 @@ namespace fire_engine
 {
 
 class Resources;
+class KtxImage;
 
 enum class TextureEncoding : uint8_t
 {
@@ -27,6 +28,14 @@ public:
     static Texture load_from_file(const std::string& path, Resources& resources,
                                   const SamplerSettings& sampler = {},
                                   TextureEncoding encoding = TextureEncoding::Srgb);
+
+    static Texture load_from_ktx_image(KtxImage image, Resources& resources,
+                                       const SamplerSettings& sampler = {},
+                                       TextureEncoding encoding = TextureEncoding::Srgb);
+
+    static Texture load_from_ktx_file(const std::string& path, Resources& resources,
+                                      const SamplerSettings& sampler = {},
+                                      TextureEncoding encoding = TextureEncoding::Srgb);
 
     static Texture load_from_data(const uint8_t* pixels, int width, int height,
                                   Resources& resources, const SamplerSettings& sampler = {},
