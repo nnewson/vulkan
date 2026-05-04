@@ -47,7 +47,7 @@ namespace
 // Mirrors the fastgltf::Extensions mask passed to the parser in parseAsset.
 // Add a string here when enabling a new extension on the parser; the two must
 // stay in lockstep or the loader silently accepts data it can't actually use.
-constexpr std::array<std::string_view, 7> kSupportedExtensions = {
+constexpr std::array<std::string_view, 8> kSupportedExtensions = {
     std::string_view{"KHR_materials_emissive_strength"},
     std::string_view{"KHR_texture_transform"},
     std::string_view{"KHR_materials_unlit"},
@@ -55,6 +55,7 @@ constexpr std::array<std::string_view, 7> kSupportedExtensions = {
     std::string_view{"KHR_materials_transmission"},
     std::string_view{"KHR_materials_ior"},
     std::string_view{"KHR_materials_clearcoat"},
+    std::string_view{"KHR_materials_volume"},
 };
 
 struct ExtrasParseState
@@ -715,8 +716,8 @@ GltfLoader::nodeExtrasPhysics(simdjson::dom::object* extras)
         const Vec3 center = readVec3("Center", {}, "Center");
         if (shape == "Box")
         {
-            config.shape = BoxShape{readVec3("HalfExtents", {0.5f, 0.5f, 0.5f}, "HalfExtents"),
-                                    center};
+            config.shape =
+                BoxShape{readVec3("HalfExtents", {0.5f, 0.5f, 0.5f}, "HalfExtents"), center};
         }
         else if (shape == "Sphere")
         {
@@ -748,7 +749,7 @@ GltfLoader::parseAsset(const std::filesystem::path& gltfPath,
         fastgltf::Extensions::KHR_texture_transform | fastgltf::Extensions::KHR_materials_unlit |
         fastgltf::Extensions::KHR_lights_punctual |
         fastgltf::Extensions::KHR_materials_transmission | fastgltf::Extensions::KHR_materials_ior |
-        fastgltf::Extensions::KHR_materials_clearcoat;
+        fastgltf::Extensions::KHR_materials_clearcoat | fastgltf::Extensions::KHR_materials_volume;
     fastgltf::Parser parser(enabledExtensions);
     ExtrasParseState extrasState{controllableNodeIndices, physicsNodeConfigs};
     if (controllableNodeIndices != nullptr || physicsNodeConfigs != nullptr)
@@ -883,8 +884,7 @@ void GltfLoader::configureAnimatedNode(
     Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
     std::size_t& nextAnimSlot, Node*& activeCamera,
     const std::unordered_set<std::size_t>& controllableNodeIndices,
-    const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
-    PhysicsWorld& physics)
+    const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs, PhysicsWorld& physics)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     validatePhysicsTarget(nodeIndex, controllableNodeIndices, physicsNodeConfigs, gltfNode);
@@ -1045,13 +1045,13 @@ void GltfLoader::configureAnimatedNode(
     }
 }
 
-void GltfLoader::loadNode(
-    const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
-    Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
-    std::size_t& nextAnimSlot, Node*& activeCamera,
-    const std::unordered_set<std::size_t>& controllableNodeIndices,
-    const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
-    PhysicsWorld& physics)
+void GltfLoader::loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
+                          const std::string& baseDir, Resources& resources, Assets& assets,
+                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
+                          Node*& activeCamera,
+                          const std::unordered_set<std::size_t>& controllableNodeIndices,
+                          const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
+                          PhysicsWorld& physics)
 {
     const auto& gltfNode = asset.nodes[nodeIndex];
     validatePhysicsTarget(nodeIndex, controllableNodeIndices, physicsNodeConfigs, gltfNode);
@@ -1391,8 +1391,8 @@ const Texture* GltfLoader::resolveTransmissionTexture(const fastgltf::Asset& ass
 
 const Texture* GltfLoader::resolveClearcoatTexture(const fastgltf::Asset& asset,
                                                    const fastgltf::Primitive& primitive,
-                                                   const std::string& baseDir,
-                                                   Resources& resources, Assets& assets)
+                                                   const std::string& baseDir, Resources& resources,
+                                                   Assets& assets)
 {
     if (primitive.materialIndex.has_value())
     {
@@ -1446,10 +1446,33 @@ const Texture* GltfLoader::resolveClearcoatNormalTexture(const fastgltf::Asset& 
     if (primitive.materialIndex.has_value())
     {
         const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
-        if (gltfMat.clearcoat != nullptr &&
-            gltfMat.clearcoat->clearcoatNormalTexture.has_value())
+        if (gltfMat.clearcoat != nullptr && gltfMat.clearcoat->clearcoatNormalTexture.has_value())
         {
             auto texIndex = gltfMat.clearcoat->clearcoatNormalTexture.value().textureIndex;
+            auto& tex = assets.texture(texIndex);
+            if (!tex.loaded())
+            {
+                auto settings = extractSamplerSettings(asset, texIndex);
+                auto image = loadImage(asset, asset.textures[texIndex].imageIndex.value(), baseDir);
+                tex = Texture::load_from_image(image, resources, settings, TextureEncoding::Linear);
+            }
+            return &tex;
+        }
+    }
+    return nullptr;
+}
+
+const Texture* GltfLoader::resolveThicknessTexture(const fastgltf::Asset& asset,
+                                                   const fastgltf::Primitive& primitive,
+                                                   const std::string& baseDir,
+                                                   Resources& resources, Assets& assets)
+{
+    if (primitive.materialIndex.has_value())
+    {
+        const auto& gltfMat = asset.materials[primitive.materialIndex.value()];
+        if (gltfMat.volume != nullptr && gltfMat.volume->thicknessTexture.has_value())
+        {
+            auto texIndex = gltfMat.volume->thicknessTexture.value().textureIndex;
             auto& tex = assets.texture(texIndex);
             if (!tex.loaded())
             {
@@ -1832,6 +1855,8 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
             resolveClearcoatRoughnessTexture(asset, primitive, baseDir, resources, assets);
         const Texture* ccNormalTexPtr =
             resolveClearcoatNormalTexture(asset, primitive, baseDir, resources, assets);
+        const Texture* thicknessTexPtr =
+            resolveThicknessTexture(asset, primitive, baseDir, resources, assets);
 
         std::size_t geoIdx = geoStartIdx + primIdx;
         auto tangentResult =
@@ -1868,6 +1893,10 @@ Object GltfLoader::loadMesh(const fastgltf::Asset& asset, const fastgltf::Mesh& 
         if (ccNormalTexPtr != nullptr)
         {
             materialData.clearcoatNormalTexture(ccNormalTexPtr);
+        }
+        if (thicknessTexPtr != nullptr)
+        {
+            materialData.thicknessTexture(thicknessTexPtr);
         }
         if (normalTexPtr != nullptr)
         {
@@ -2042,6 +2071,26 @@ Material GltfLoader::loadMaterial(const fastgltf::Asset& asset,
                 material.clearcoatNormalTexCoord(static_cast<int>(info.texCoordIndex));
                 material.clearcoatNormalScale(static_cast<float>(info.scale));
                 material.clearcoatNormalUvTransform(readUvTransform(info));
+            }
+        }
+
+        // KHR_materials_volume. Beer-Lambert absorption + thickness-driven
+        // refraction sampling. Default (volume == nullptr) leaves
+        // thicknessFactor=0 and attenuationDistance=+inf, collapsing to F3
+        // thin-surface behaviour at sample time.
+        if (gltfMat.volume != nullptr)
+        {
+            const auto& vol = *gltfMat.volume;
+            material.thicknessFactor(static_cast<float>(vol.thicknessFactor));
+            material.attenuationColor(Colour3{static_cast<float>(vol.attenuationColor.x()),
+                                              static_cast<float>(vol.attenuationColor.y()),
+                                              static_cast<float>(vol.attenuationColor.z())});
+            material.attenuationDistance(static_cast<float>(vol.attenuationDistance));
+            if (vol.thicknessTexture.has_value())
+            {
+                const auto& info = vol.thicknessTexture.value();
+                material.thicknessTexCoord(static_cast<int>(info.texCoordIndex));
+                material.thicknessUvTransform(readUvTransform(info));
             }
         }
 

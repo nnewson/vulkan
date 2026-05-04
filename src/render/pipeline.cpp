@@ -47,6 +47,11 @@ PipelineConfig Pipeline::forwardConfig(vk::RenderPass renderPass)
         {17, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {18, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
         {19, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 20: sceneColor mip chain — captured post-opaque HDR target used for
+        // KHR_materials_transmission F3 (screen-space refraction).
+        {20, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
+        // 21: KHR_materials_volume thickness texture (G channel multiplies factor).
+        {21, vk::DescriptorType::eCombinedImageSampler, 1, vk::ShaderStageFlagBits::eFragment},
     };
     config.renderPass = renderPass;
     return config;

@@ -430,8 +430,8 @@ TEST(GltfNodeExtras, PhysicsRigidBodyFieldsAreParsed)
 
 TEST(GltfNodeExtras, PhysicsShapeFieldsAreParsed)
 {
-    auto config =
-        nodeExtrasPhysicsFromJson(R"({"Physics":{"Shape":"Sphere","Radius":3.0,"Center":[1,2,3]}})");
+    auto config = nodeExtrasPhysicsFromJson(
+        R"({"Physics":{"Shape":"Sphere","Radius":3.0,"Center":[1,2,3]}})");
 
     ASSERT_TRUE(config.has_value());
     ASSERT_TRUE(config->shape.has_value());
@@ -997,7 +997,7 @@ TEST(LoadMaterialIor, DefaultIsFifteen)
 TEST(LoadMaterialIor, AuthoredValuePropagates)
 {
     fastgltf::Material gltfMat;
-    gltfMat.ior = 2.42f;  // diamond
+    gltfMat.ior = 2.42f; // diamond
     Material material;
     applyIor(gltfMat, material);
     EXPECT_FLOAT_EQ(material.ior(), 2.42f);
@@ -1055,4 +1055,54 @@ TEST(LoadMaterialClearcoat, NormalScalePropagates)
     Material material;
     applyClearcoat(gltfMat, material);
     EXPECT_FLOAT_EQ(material.clearcoatNormalScale(), 0.4f);
+}
+
+// ---------------------------------------------------------------------------
+// KHR_materials_volume — fastgltf surfaces volume via unique_ptr<MaterialVolume>;
+// null when the extension is absent.
+// ---------------------------------------------------------------------------
+
+static void applyVolume(const fastgltf::Material& gltfMat, fire_engine::Material& material)
+{
+    if (gltfMat.volume == nullptr)
+    {
+        return;
+    }
+    const auto& vol = *gltfMat.volume;
+    material.thicknessFactor(static_cast<float>(vol.thicknessFactor));
+    material.attenuationColor(fire_engine::Colour3{static_cast<float>(vol.attenuationColor.x()),
+                                                   static_cast<float>(vol.attenuationColor.y()),
+                                                   static_cast<float>(vol.attenuationColor.z())});
+    material.attenuationDistance(static_cast<float>(vol.attenuationDistance));
+}
+
+TEST(LoadMaterialVolume, AbsentExtensionLeavesDefaults)
+{
+    fastgltf::Material gltfMat;
+    Material material;
+    applyVolume(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.thicknessFactor(), 0.0f);
+    EXPECT_TRUE(std::isinf(material.attenuationDistance()));
+}
+
+TEST(LoadMaterialVolume, ThicknessFactorPropagates)
+{
+    fastgltf::Material gltfMat;
+    gltfMat.volume = std::make_unique<fastgltf::MaterialVolume>();
+    gltfMat.volume->thicknessFactor = 0.5f;
+    Material material;
+    applyVolume(gltfMat, material);
+    EXPECT_FLOAT_EQ(material.thicknessFactor(), 0.5f);
+}
+
+TEST(LoadMaterialVolume, AttenuationColorAndDistancePropagate)
+{
+    fastgltf::Material gltfMat;
+    gltfMat.volume = std::make_unique<fastgltf::MaterialVolume>();
+    gltfMat.volume->attenuationColor = fastgltf::math::nvec3{0.3f, 0.5f, 0.7f};
+    gltfMat.volume->attenuationDistance = 4.0f;
+    Material material;
+    applyVolume(gltfMat, material);
+    EXPECT_EQ(material.attenuationColor(), fire_engine::Colour3(0.3f, 0.5f, 0.7f));
+    EXPECT_FLOAT_EQ(material.attenuationDistance(), 4.0f);
 }

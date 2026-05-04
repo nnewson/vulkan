@@ -91,6 +91,9 @@ private:
         std::vector<DrawCommand> shadow;
         std::vector<DrawCommand> opaque;
         std::vector<DrawCommand> blend;
+        // KHR_materials_transmission F3 — draws deferred to the second forward
+        // sub-pass so they can sample the captured sceneColor target.
+        std::vector<DrawCommand> transmissive;
     };
 
     void updateLightData(Vec3 cameraPosition, Vec3 cameraTarget, float aspect,
@@ -99,6 +102,9 @@ private:
     void recordDrawBucket(vk::CommandBuffer cmd, const std::vector<DrawCommand>& bucket,
                           PipelineHandle& lastBoundPipeline) const;
     void recordForwardPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
+    void recordSceneColorCapture(vk::CommandBuffer cmd);
+    void recordForwardTransmissionPass(vk::CommandBuffer cmd, const DrawBuckets& buckets);
+    void rebuildSceneColorChain(vk::Extent2D extent);
     void recreateSwapchain(const Window& display);
     [[nodiscard]] std::optional<uint32_t> acquireNextImage(Window& display);
     void beginRenderPass(vk::CommandBuffer cmd);
@@ -109,6 +115,7 @@ private:
     Device device_;
     Swapchain swapchain_;
     RenderPass forwardPass_;
+    RenderPass forwardTransmissionPass_;
     Pipeline pipelineOpaque_;
     Pipeline pipelineOpaqueDoubleSided_;
     Pipeline pipelineBlend_;
@@ -125,6 +132,8 @@ private:
     TextureHandle irradianceCubemapHandle_{NullTexture};
     TextureHandle prefilteredCubemapHandle_{NullTexture};
     TextureHandle brdfLutHandle_{NullTexture};
+    TextureHandle sceneColorHandle_{NullTexture};
+    uint32_t sceneColorMipLevels_{0};
     Resources::MappedBufferSet skyboxUbo_;
     std::array<DescriptorSetHandle, MAX_FRAMES_IN_FLIGHT> skyboxDescSets_{};
     BufferHandle skyboxIndexBuffer_{NullBuffer};

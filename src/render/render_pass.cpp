@@ -85,6 +85,92 @@ RenderPass RenderPass::createForward(const Device& device)
     return pass;
 }
 
+RenderPass RenderPass::createForwardTransmission(const Device& device)
+{
+    // KHR_materials_transmission F3: second forward sub-pass that loads the
+    // HDR target's existing contents (already populated by the first forward
+    // pass) and renders transmissive draws on top. The renderer issues an
+    // explicit barrier to bring the HDR target back to ColorAttachmentOptimal
+    // before begin, after the sceneColor blit chain has run.
+    vk::AttachmentDescription colourAtt{
+        .format = vk::Format::eR16G16B16A16Sfloat,
+        .samples = vk::SampleCountFlagBits::e1,
+        .loadOp = vk::AttachmentLoadOp::eLoad,
+        .storeOp = vk::AttachmentStoreOp::eStore,
+        .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+        .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+        .initialLayout = vk::ImageLayout::eColorAttachmentOptimal,
+        .finalLayout = vk::ImageLayout::eShaderReadOnlyOptimal,
+    };
+
+    vk::AttachmentDescription depthAtt{
+        .format = vk::Format::eD32Sfloat,
+        .samples = vk::SampleCountFlagBits::e1,
+        .loadOp = vk::AttachmentLoadOp::eLoad,
+        .storeOp = vk::AttachmentStoreOp::eDontCare,
+        .stencilLoadOp = vk::AttachmentLoadOp::eDontCare,
+        .stencilStoreOp = vk::AttachmentStoreOp::eDontCare,
+        .initialLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+        .finalLayout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+    };
+
+    vk::AttachmentReference colourRef{
+        .attachment = 0,
+        .layout = vk::ImageLayout::eColorAttachmentOptimal,
+    };
+    vk::AttachmentReference depthRef{
+        .attachment = 1,
+        .layout = vk::ImageLayout::eDepthStencilAttachmentOptimal,
+    };
+
+    vk::SubpassDescription subpass{
+        .pipelineBindPoint = vk::PipelineBindPoint::eGraphics,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colourRef,
+        .pDepthStencilAttachment = &depthRef,
+    };
+
+    // Subpass dependencies MUST mirror `createForward` exactly so the same
+    // forward pipelines remain render-pass-compatible across both passes.
+    // The HDR target's TransferSrc → ColorAttachmentOptimal transition is
+    // handled by an explicit pipelineBarrier in recordSceneColorCapture, not
+    // by a dependency on this pass.
+    std::array<vk::SubpassDependency, 2> deps = {
+        vk::SubpassDependency{
+            .srcSubpass = VK_SUBPASS_EXTERNAL,
+            .dstSubpass = 0,
+            .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                            vk::PipelineStageFlagBits::eEarlyFragmentTests,
+            .dstStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput |
+                            vk::PipelineStageFlagBits::eEarlyFragmentTests,
+            .dstAccessMask = vk::AccessFlagBits::eColorAttachmentWrite |
+                             vk::AccessFlagBits::eDepthStencilAttachmentWrite,
+        },
+        vk::SubpassDependency{
+            .srcSubpass = 0,
+            .dstSubpass = VK_SUBPASS_EXTERNAL,
+            .srcStageMask = vk::PipelineStageFlagBits::eColorAttachmentOutput,
+            .dstStageMask = vk::PipelineStageFlagBits::eFragmentShader,
+            .srcAccessMask = vk::AccessFlagBits::eColorAttachmentWrite,
+            .dstAccessMask = vk::AccessFlagBits::eShaderRead,
+        },
+    };
+
+    std::array<vk::AttachmentDescription, 2> attachments = {colourAtt, depthAtt};
+    vk::RenderPassCreateInfo ci{
+        .attachmentCount = static_cast<uint32_t>(attachments.size()),
+        .pAttachments = attachments.data(),
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = static_cast<uint32_t>(deps.size()),
+        .pDependencies = deps.data(),
+    };
+
+    RenderPass pass;
+    pass.renderPass_ = vk::raii::RenderPass(device.device(), ci);
+    return pass;
+}
+
 RenderPass RenderPass::createShadow(const Device& device)
 {
     // MoltenVK quirk: depth-only render passes don't commit storeOp on TBDR.

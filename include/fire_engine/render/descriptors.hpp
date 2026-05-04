@@ -39,6 +39,7 @@ struct GeometryDescriptorInfo
     TextureHandle clearcoatTexture{NullTexture};
     TextureHandle clearcoatRoughnessTexture{NullTexture};
     TextureHandle clearcoatNormalTexture{NullTexture};
+    TextureHandle thicknessTexture{NullTexture};
 };
 
 struct ObjectDescriptorRequest
@@ -49,6 +50,9 @@ struct ObjectDescriptorRequest
     TextureHandle irradianceMap{NullTexture};
     TextureHandle prefilteredMap{NullTexture};
     TextureHandle brdfLut{NullTexture};
+    // KHR_materials_transmission F3 — captured post-opaque HDR scene colour
+    // mip chain. Bound at forward descriptor binding 20.
+    TextureHandle sceneColor{NullTexture};
     std::vector<GeometryDescriptorInfo> geometries;
 };
 

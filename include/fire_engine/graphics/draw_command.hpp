@@ -37,6 +37,10 @@ struct DrawCommand
     DescriptorSetHandle descriptorSet{NullDescriptorSet};
     PipelineHandle pipeline{NullPipeline};
     float sortDepth{0.0f};
+    // KHR_materials_transmission F3: when true, this draw must run AFTER
+    // the scene-colour capture so its fragment shader can sample the
+    // post-opaque HDR target via screen-space refraction.
+    bool transmissive{false};
 };
 
 } // namespace fire_engine

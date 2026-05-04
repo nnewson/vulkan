@@ -49,7 +49,8 @@ PhysicsColliderHandle PhysicsWorld::createCollider(PhysicsBodyHandle bodyHandle,
     collider.collisionMask(desc.collisionMask);
     collider.resetFrame(owner->transform.world());
 
-    colliders_.push_back({handle, bodyHandle, std::move(collider), desc.shape, desc.material, true});
+    colliders_.push_back(
+        {handle, bodyHandle, std::move(collider), desc.shape, desc.material, true});
     owner->colliders.push_back(handle);
     broadPhase_.addCollider(colliders_.back().collider);
     return handle;
@@ -203,18 +204,16 @@ const PhysicsWorld::BodyEntry* PhysicsWorld::findBody(PhysicsBodyHandle handle) 
 
 PhysicsWorld::ColliderEntry* PhysicsWorld::findCollider(PhysicsColliderHandle handle) noexcept
 {
-    const auto found =
-        std::ranges::find_if(colliders_, [handle](const ColliderEntry& entry)
-                             { return entry.active && entry.handle == handle; });
+    const auto found = std::ranges::find_if(colliders_, [handle](const ColliderEntry& entry)
+                                            { return entry.active && entry.handle == handle; });
     return found == colliders_.end() ? nullptr : &*found;
 }
 
 const PhysicsWorld::ColliderEntry*
 PhysicsWorld::findCollider(PhysicsColliderHandle handle) const noexcept
 {
-    const auto found =
-        std::ranges::find_if(colliders_, [handle](const ColliderEntry& entry)
-                             { return entry.active && entry.handle == handle; });
+    const auto found = std::ranges::find_if(colliders_, [handle](const ColliderEntry& entry)
+                                            { return entry.active && entry.handle == handle; });
     return found == colliders_.end() ? nullptr : &*found;
 }
 
@@ -393,8 +392,8 @@ std::optional<PhysicsWorld::SolverContact> PhysicsWorld::contactForPair(const Co
         return std::nullopt;
     }
 
-    return SolverContact{contact->toi, contact->normal, moving, target, movingCollider,
-                         targetCollider};
+    return SolverContact{contact->toi, contact->normal, moving,
+                         target,       movingCollider,  targetCollider};
 }
 
 bool PhysicsWorld::applyResponses(std::vector<SolverContact>& contacts)

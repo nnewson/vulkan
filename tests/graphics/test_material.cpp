@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
+
 #include <fire_engine/graphics/material.hpp>
 #include <fire_engine/graphics/texture.hpp>
 
@@ -205,4 +207,34 @@ TEST(Material, ClearcoatTexturePointersRoundTrip)
     EXPECT_TRUE(mat.hasClearcoatTexture());
     EXPECT_TRUE(mat.hasClearcoatRoughnessTexture());
     EXPECT_TRUE(mat.hasClearcoatNormalTexture());
+}
+
+TEST(Material, VolumeDefaultsAreOff)
+{
+    Material mat;
+    EXPECT_FLOAT_EQ(mat.thicknessFactor(), 0.0f);
+    EXPECT_EQ(mat.attenuationColor(), Colour3(1.0f, 1.0f, 1.0f));
+    EXPECT_TRUE(std::isinf(mat.attenuationDistance()));
+    EXPECT_FALSE(mat.hasThicknessTexture());
+}
+
+TEST(Material, VolumeScalarRoundTrips)
+{
+    Material mat;
+    mat.thicknessFactor(0.7f);
+    mat.attenuationColor(Colour3(0.2f, 0.6f, 0.4f));
+    mat.attenuationDistance(2.5f);
+    EXPECT_FLOAT_EQ(mat.thicknessFactor(), 0.7f);
+    EXPECT_EQ(mat.attenuationColor(), Colour3(0.2f, 0.6f, 0.4f));
+    EXPECT_FLOAT_EQ(mat.attenuationDistance(), 2.5f);
+}
+
+TEST(Material, ThicknessTextureRoundTrip)
+{
+    Material mat;
+    Texture t;
+    mat.thicknessTexture(&t);
+    mat.thicknessTexCoord(1);
+    EXPECT_TRUE(mat.hasThicknessTexture());
+    EXPECT_EQ(mat.thicknessTexCoord(), 1);
 }

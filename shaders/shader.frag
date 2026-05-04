@@ -44,6 +44,17 @@ layout(binding = 1) uniform MaterialUBO {
     vec4 uvClearcoatNormal;
     // Rotations (radians, CCW): .x = factor, .y = roughness, .z = normal.
     vec4 clearcoatRotations;
+    // KHR_materials_volume.
+    //   .x = thicknessFactor (world units, scaled by node max scale)
+    //   .y = thickness texture present (0 / 1)
+    //   .z = thickness texCoord index (0 / 1)
+    //   .w = thickness rotation (radians, CCW)
+    vec4 volumeParams;
+    // .rgb = attenuationColor, .a = attenuationDistance (huge finite when
+    // the spec says +infinity — see Object::toMaterialUBO).
+    vec4 attenuation;
+    // KHR_texture_transform offset.xy + scale.xy for thickness slot.
+    vec4 uvThickness;
 } material;
 
 layout(binding = 2) uniform sampler2D texSampler;
@@ -56,6 +67,14 @@ layout(binding = 16) uniform sampler2D transmissionMap;
 layout(binding = 17) uniform sampler2D clearcoatMap;
 layout(binding = 18) uniform sampler2D clearcoatRoughnessMap;
 layout(binding = 19) uniform sampler2D clearcoatNormalMap;
+// KHR_materials_transmission F3 — captured post-opaque scene colour with mip
+// chain. Transmissive draws sample this at a screen-space UV displaced by
+// the refracted ray; roughness drives the mip level for frosted-glass blur.
+layout(binding = 20) uniform sampler2D sceneColorMap;
+// KHR_materials_volume — thickness texture (G channel multiplies the volume
+// thicknessFactor). Drives both the refracted exit point and the Beer-Lambert
+// path length.
+layout(binding = 21) uniform sampler2D thicknessMap;
 layout(binding = 10) uniform sampler2DArrayShadow shadowMap;
 layout(binding = 12) uniform samplerCube irradianceMap;
 layout(binding = 13) uniform samplerCube prefilteredMap;
@@ -503,25 +522,47 @@ void main() {
 
     vec3 transmittedLight = vec3(0.0);
     if (transmission > 0.0) {
-        // Thin-surface transmission approximation. We pass the basecolor
-        // through as the "transmitted" contribution at unit scale, then mix
-        // in a small fraction of the hemispherical env irradiance for
-        // ambient tint. Multiplying by raw HDR env (irradiance or prefilter)
-        // pushes paper into ACES saturation and collapses text-vs-paper
-        // contrast — the basecolor's 0.05–0.95 range is exactly what ACES
-        // tonemaps cleanly. Proper scene-behind-glass refraction would be F3.
-        // KHR_materials_ior: per-material index of refraction. Default 1.5
-        // when the extension is absent (set by the loader and the UBO field
-        // initialiser). Water 1.33, plastic 1.46, sapphire 1.77, diamond 2.42.
+        // KHR_materials_ior. Default 1.5 when extension absent.
         float ior = material.transmissionParams.w;
         vec3 refractDir = refract(-V, N, 1.0 / ior);
-        if (dot(refractDir, refractDir) < 1e-6) {
-            refractDir = R;
+        if (dot(refractDir, refractDir) < 1e-6) refractDir = R;
+
+        // KHR_materials_volume — sample thickness, scale by node size. When
+        // volume is absent thicknessFactor defaults to 0, worldThickness
+        // becomes 0, the exit point matches the entry point, and Beer-Lambert
+        // collapses to identity. F3 thin-surface fallback is preserved.
+        float thickness = material.volumeParams.x;
+        if (material.volumeParams.y > 0.5) {
+            vec2 uvThick = applyUvTransform(pickUv(int(material.volumeParams.z)),
+                                            material.uvThickness, material.volumeParams.w);
+            thickness *= texture(thicknessMap, uvThick).g;
         }
-        const float kEnvTint = 0.2;
-        vec3 envTint = texture(irradianceMap, refractDir).rgb * light.iblParams.y;
-        vec3 surface = vec3(1.0) + kEnvTint * envTint;
-        transmittedLight = transmission * baseColor * surface;
+        vec3 modelScale = vec3(length(ubo.model[0].xyz),
+                               length(ubo.model[1].xyz),
+                               length(ubo.model[2].xyz));
+        float worldThickness = thickness * max(max(modelScale.x, modelScale.y), modelScale.z);
+
+        // Exit point in world space, projected to screen UV.
+        vec3 exitPos = fragWorldPos + refractDir * worldThickness;
+        vec4 exitClip = ubo.proj * ubo.view * vec4(exitPos, 1.0);
+        vec2 sampleUv = exitClip.xy / max(exitClip.w, 1e-4) * 0.5 + 0.5;
+        // Vulkan screen UV has Y pointing down; clip-space y is inverted.
+        sampleUv.y = 1.0 - sampleUv.y;
+        sampleUv = clamp(sampleUv, vec2(0.0), vec2(1.0));
+
+        float maxLod = float(textureQueryLevels(sceneColorMap) - 1);
+        float lod = roughness * maxLod;
+        vec3 transmissionSample = textureLod(sceneColorMap, sampleUv, lod).rgb;
+
+        // Beer-Lambert absorption over the path through the volume.
+        // attenuationColor at attenuationDistance is the colour the light
+        // takes after travelling that distance through the medium.
+        vec3 attenColour = material.attenuation.rgb;
+        float attenDist = material.attenuation.a;
+        vec3 absorption = -log(max(attenColour, vec3(1e-5))) / max(attenDist, 1e-5);
+        vec3 transmittance = exp(-absorption * worldThickness);
+
+        transmittedLight = transmission * baseColor * transmissionSample * transmittance;
     }
 
     // Diffuse lobes are scaled — NOT replaced — by (1 - transmission). Specular

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <limits>
 #include <string>
 
 #include <fire_engine/graphics/colour3.hpp>
@@ -441,6 +442,65 @@ public:
         ior_ = v;
     }
 
+    // KHR_materials_volume — thicknessFactor + attenuation. Together with
+    // KHR_materials_transmission they control how light refracts through and
+    // is absorbed by the volume. Defaults: factor 0 (no thickness, surface
+    // is thin and refraction collapses to F3 entry-point sampling),
+    // attenuationColor (1,1,1) and attenuationDistance +infinity (no Beer-
+    // Lambert tinting). Thickness texture's G channel multiplies the factor.
+    [[nodiscard]] float thicknessFactor() const noexcept
+    {
+        return thicknessFactor_;
+    }
+    void thicknessFactor(float v) noexcept
+    {
+        thicknessFactor_ = v;
+    }
+    [[nodiscard]] Colour3 attenuationColor() const noexcept
+    {
+        return attenuationColor_;
+    }
+    void attenuationColor(Colour3 c) noexcept
+    {
+        attenuationColor_ = c;
+    }
+    [[nodiscard]] float attenuationDistance() const noexcept
+    {
+        return attenuationDistance_;
+    }
+    void attenuationDistance(float v) noexcept
+    {
+        attenuationDistance_ = v;
+    }
+    [[nodiscard]] const Texture& thicknessTexture() const noexcept
+    {
+        return *thicknessTexture_;
+    }
+    void thicknessTexture(const Texture* t) noexcept
+    {
+        thicknessTexture_ = t;
+    }
+    [[nodiscard]] bool hasThicknessTexture() const noexcept
+    {
+        return thicknessTexture_ != nullptr;
+    }
+    [[nodiscard]] int thicknessTexCoord() const noexcept
+    {
+        return thicknessTexCoord_;
+    }
+    void thicknessTexCoord(int v) noexcept
+    {
+        thicknessTexCoord_ = v;
+    }
+    [[nodiscard]] UvTransform thicknessUvTransform() const noexcept
+    {
+        return thicknessUvTransform_;
+    }
+    void thicknessUvTransform(UvTransform t) noexcept
+    {
+        thicknessUvTransform_ = t;
+    }
+
     [[nodiscard]] AlphaMode alphaMode() const noexcept
     {
         return alphaMode_;
@@ -508,6 +568,11 @@ private:
     float clearcoatFactor_{0.0f};
     float clearcoatRoughness_{0.0f};
     float clearcoatNormalScale_{1.0f};
+    float thicknessFactor_{0.0f};
+    Colour3 attenuationColor_{1.0f, 1.0f, 1.0f};
+    float attenuationDistance_{std::numeric_limits<float>::infinity()};
+    int thicknessTexCoord_{0};
+    UvTransform thicknessUvTransform_{};
     int clearcoatTexCoord_{0};
     int clearcoatRoughnessTexCoord_{0};
     int clearcoatNormalTexCoord_{0};
@@ -526,6 +591,7 @@ private:
     const Texture* clearcoatTexture_{nullptr};
     const Texture* clearcoatRoughnessTexture_{nullptr};
     const Texture* clearcoatNormalTexture_{nullptr};
+    const Texture* thicknessTexture_{nullptr};
 };
 
 } // namespace fire_engine

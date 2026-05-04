@@ -36,6 +36,15 @@ public:
     void createForwardFramebuffer(const Device& device, vk::ImageView colourView,
                                   vk::ImageView depthView, vk::Extent2D extent);
 
+    // Forward-transmission render pass. KHR_materials_transmission F3 splits
+    // the forward pass: the first sub-pass renders opaque + blend into the
+    // HDR target, the renderer then captures sceneColor via a blit chain, and
+    // this pass loads the HDR contents and renders transmissive draws on top.
+    // Differs from createForward in loadOp (eLoad) and initialLayout
+    // (eColorAttachmentOptimal — the renderer issues an explicit barrier
+    // bringing the HDR target back into that layout after the blit).
+    [[nodiscard]] static RenderPass createForwardTransmission(const Device& device);
+
     // Creates a depth-only shadow render pass. A single D32_SFLOAT attachment
     // with eClear loadOp / eStore storeOp and a finalLayout of
     // eShaderReadOnlyOptimal so the implicit transition exposes the depth map

@@ -1,5 +1,6 @@
 #include <fire_engine/graphics/object.hpp>
 
+#include <cmath>
 #include <cstring>
 
 #include <fire_engine/graphics/geometry.hpp>
@@ -35,6 +36,7 @@ void Object::load(Resources& resources)
     req.irradianceMap = resources.irradianceMap();
     req.prefilteredMap = resources.prefilteredMap();
     req.brdfLut = resources.brdfLut();
+    req.sceneColor = resources.sceneColor();
     for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
     {
         req.uniformBufs[i] = uniformSet.buffers[i];
@@ -231,6 +233,19 @@ void Object::load(Resources& resources)
                 resources.fallbackTexture(Resources::FallbackTextureKind::Normal);
         }
 
+        // KHR_materials_volume thickness texture (G-channel modulates factor).
+        // Fall back to white BaseColour — harmless multiplier of 1 when factor
+        // is 0.
+        if (binding.geometry->material().hasThicknessTexture())
+        {
+            geoInfo.thicknessTexture = binding.geometry->material().thicknessTexture().handle();
+        }
+        else
+        {
+            geoInfo.thicknessTexture =
+                resources.fallbackTexture(Resources::FallbackTextureKind::BaseColour);
+        }
+
         req.geometries.push_back(geoInfo);
     }
 
@@ -350,6 +365,21 @@ MaterialUBO Object::toMaterialUBO(const Material& mat)
     ubo.clearcoatRotations[0] = mat.clearcoatUvTransform().rotation;
     ubo.clearcoatRotations[1] = mat.clearcoatRoughnessUvTransform().rotation;
     ubo.clearcoatRotations[2] = mat.clearcoatNormalUvTransform().rotation;
+
+    // KHR_materials_volume.
+    ubo.volumeParams[0] = mat.thicknessFactor();
+    ubo.volumeParams[1] = mat.hasThicknessTexture() ? 1.0f : 0.0f;
+    ubo.volumeParams[2] = static_cast<float>(mat.thicknessTexCoord());
+    ubo.volumeParams[3] = mat.thicknessUvTransform().rotation;
+    ubo.attenuation[0] = mat.attenuationColor().r();
+    ubo.attenuation[1] = mat.attenuationColor().g();
+    ubo.attenuation[2] = mat.attenuationColor().b();
+    // Spec defaults attenuationDistance to +inf (no absorption). Pack as a
+    // very large finite number so the shader's exp(-coeff * d) collapses to
+    // ~1 without inf propagating through GLSL.
+    const float ad = mat.attenuationDistance();
+    ubo.attenuation[3] = (ad <= 0.0f || !std::isfinite(ad)) ? 1.0e6f : ad;
+    packUv(ubo.uvThickness, mat.thicknessUvTransform());
     return ubo;
 }
 
@@ -464,6 +494,10 @@ std::vector<DrawCommand> Object::render(const FrameInfo& frame, const Mat4& worl
         cmd.descriptorSet = binding.descSets[frame.currentFrame];
         cmd.pipeline = pipe;
         cmd.sortDepth = depth;
+        // KHR_materials_transmission F3: defer this draw to the second forward
+        // sub-pass so its fragment shader can sample the post-opaque HDR
+        // target via screen-space refraction.
+        cmd.transmissive = mat.transmissionFactor() > 0.0f || mat.hasTransmissionTexture();
         commands.push_back(cmd);
 
         if (frame.shadowPipeline != NullPipeline &&

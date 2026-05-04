@@ -59,6 +59,19 @@ TEST(DrawCommand, AssignSortDepth)
     EXPECT_FLOAT_EQ(cmd.sortDepth, 42.5f);
 }
 
+TEST(DrawCommand, DefaultTransmissiveIsFalse)
+{
+    DrawCommand cmd;
+    EXPECT_FALSE(cmd.transmissive);
+}
+
+TEST(DrawCommand, AssignTransmissive)
+{
+    DrawCommand cmd;
+    cmd.transmissive = true;
+    EXPECT_TRUE(cmd.transmissive);
+}
+
 // ---------------------------------------------------------------------------
 // Member assignment
 // ---------------------------------------------------------------------------

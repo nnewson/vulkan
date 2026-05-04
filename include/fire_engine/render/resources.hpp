@@ -119,6 +119,16 @@ public:
     [[nodiscard]] vk::ImageView vulkanBloomMipView(TextureHandle handle,
                                                    uint32_t mipLevel) const noexcept;
 
+    // Multi-mip 2D HDR target used by KHR_materials_transmission F3
+    // (screen-space refraction). Sized to the swapchain extent with
+    // floor(log2(maxDim)) + 1 mips. Usage = TransferDst | TransferSrc | Sampled
+    // so the renderer can blit the post-opaque HDR target into mip 0 and then
+    // generate the rest of the chain via vkCmdBlitImage. Sampler uses linear
+    // min/mag + linear mip-map for roughness-driven mip selection in the
+    // shader's transmission lobe.
+    [[nodiscard]] TextureHandle createSceneColorTarget(uint32_t width, uint32_t height,
+                                                       uint32_t mipLevels);
+
     // Releases an existing offscreen / shadow texture entry so it can be
     // rebuilt at a new extent (e.g. on swapchain resize). The handle is
     // invalidated; callers must replace it with the result of a subsequent
@@ -190,6 +200,18 @@ public:
         return brdfLut_;
     }
 
+    // KHR_materials_transmission F3 — captured post-opaque scene-colour
+    // mip chain. Bound at forward descriptor binding 20.
+    void sceneColor(TextureHandle handle) noexcept
+    {
+        sceneColor_ = handle;
+    }
+
+    [[nodiscard]] TextureHandle sceneColor() const noexcept
+    {
+        return sceneColor_;
+    }
+
     // --- Pipeline registry ---
     // Pipelines are owned elsewhere (by Pipeline class); Resources stores raw
     // handles so Renderer can resolve PipelineHandle values stamped on
@@ -255,6 +277,7 @@ private:
 
     std::array<BufferHandle, MAX_FRAMES_IN_FLIGHT> lightBuffers_{NullBuffer, NullBuffer};
     TextureHandle shadowMap_{NullTexture};
+    TextureHandle sceneColor_{NullTexture};
     TextureHandle irradianceMap_{NullTexture};
     TextureHandle prefilteredMap_{NullTexture};
     TextureHandle brdfLut_{NullTexture};

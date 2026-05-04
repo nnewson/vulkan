@@ -78,15 +78,13 @@ public:
     }
 
     [[nodiscard]]
-    friend constexpr bool operator==(PhysicsColliderHandle lhs,
-                                     PhysicsColliderHandle rhs) noexcept
+    friend constexpr bool operator==(PhysicsColliderHandle lhs, PhysicsColliderHandle rhs) noexcept
     {
         return lhs.value_ == rhs.value_;
     }
 
     [[nodiscard]]
-    friend constexpr bool operator!=(PhysicsColliderHandle lhs,
-                                     PhysicsColliderHandle rhs) noexcept
+    friend constexpr bool operator!=(PhysicsColliderHandle lhs, PhysicsColliderHandle rhs) noexcept
     {
         return !(lhs == rhs);
     }

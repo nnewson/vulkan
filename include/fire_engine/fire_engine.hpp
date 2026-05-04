@@ -5,8 +5,8 @@
 
 #include <fire_engine/graphics/assets.hpp>
 #include <fire_engine/input/input.hpp>
-#include <fire_engine/platform/window.hpp>
 #include <fire_engine/physics/physics_world.hpp>
+#include <fire_engine/platform/window.hpp>
 #include <fire_engine/render/renderer.hpp>
 #include <fire_engine/scene/camera.hpp>
 #include <fire_engine/scene/scene_graph.hpp>

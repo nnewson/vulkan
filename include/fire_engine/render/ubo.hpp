@@ -63,6 +63,20 @@ struct MaterialUBO
     alignas(16) float uvClearcoatNormal[4]{0.0f, 0.0f, 1.0f, 1.0f};
     // Rotations (radians, CCW): .x = factor, .y = roughness, .z = normal.
     alignas(16) float clearcoatRotations[4]{};
+    // KHR_materials_volume.
+    //   .x = thicknessFactor (world units, scaled in shader by node max scale)
+    //   .y = thickness texture present (0/1)
+    //   .z = thickness texCoord index (0/1)
+    //   .w = thickness rotation (radians, CCW)
+    alignas(16) float volumeParams[4]{};
+    // .rgb = attenuationColor (default 1,1,1 — no absorption).
+    // .a   = attenuationDistance in world units. Default packs the spec's
+    //        +infinity as a very large finite number so the shader's
+    //        exp(-coeff * d) collapses to 1 for thick surfaces without
+    //        propagating inf through GLSL.
+    alignas(16) float attenuation[4]{1.0f, 1.0f, 1.0f, 1.0e6f};
+    // KHR_texture_transform offset.xy + scale.xy for thickness slot.
+    alignas(16) float uvThickness[4]{0.0f, 0.0f, 1.0f, 1.0f};
 };
 
 struct SkinUBO

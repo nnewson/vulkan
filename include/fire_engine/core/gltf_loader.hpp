@@ -106,8 +106,7 @@ public:
     [[nodiscard]]
     static bool nodeExtrasControllable(simdjson::dom::object* extras) noexcept;
 
-    [[nodiscard]]
-    [[nodiscard]]
+    [[nodiscard]] [[nodiscard]]
     static std::optional<PhysicsConfig> nodeExtrasPhysics(simdjson::dom::object* extras);
 
 private:
@@ -132,21 +131,22 @@ private:
 
     static Node& attachCamera(Node& node, Node*& activeCamera);
 
-    static void configureAnimatedNode(
-        const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node, const std::string& baseDir,
-        Resources& resources, Assets& assets, NodeMap& nodeMap, MeshMap& meshMap,
-        std::size_t& nextAnimSlot, Node*& activeCamera,
-        const std::unordered_set<std::size_t>& controllableNodeIndices,
-        const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
-        PhysicsWorld& physics);
-
     static void
-    loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
-             const std::string& baseDir, Resources& resources, Assets& assets, NodeMap& nodeMap,
-             MeshMap& meshMap, std::size_t& nextAnimSlot, Node*& activeCamera,
-             const std::unordered_set<std::size_t>& controllableNodeIndices,
-             const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
-             PhysicsWorld& physics);
+    configureAnimatedNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& node,
+                          const std::string& baseDir, Resources& resources, Assets& assets,
+                          NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
+                          Node*& activeCamera,
+                          const std::unordered_set<std::size_t>& controllableNodeIndices,
+                          const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
+                          PhysicsWorld& physics);
+
+    static void loadNode(const fastgltf::Asset& asset, std::size_t nodeIndex, Node& parentNode,
+                         const std::string& baseDir, Resources& resources, Assets& assets,
+                         NodeMap& nodeMap, MeshMap& meshMap, std::size_t& nextAnimSlot,
+                         Node*& activeCamera,
+                         const std::unordered_set<std::size_t>& controllableNodeIndices,
+                         const std::unordered_map<std::size_t, PhysicsConfig>& physicsNodeConfigs,
+                         PhysicsWorld& physics);
 
     // Skin loading
     static void loadSkin(const fastgltf::Asset& asset, std::size_t skinIndex,
@@ -202,18 +202,21 @@ private:
                             const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
-    static const Texture*
-    resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
-                                     const fastgltf::Primitive& primitive,
-                                     const std::string& baseDir, Resources& resources,
-                                     Assets& assets);
+    static const Texture* resolveClearcoatRoughnessTexture(const fastgltf::Asset& asset,
+                                                           const fastgltf::Primitive& primitive,
+                                                           const std::string& baseDir,
+                                                           Resources& resources, Assets& assets);
+
+    [[nodiscard]]
+    static const Texture* resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
+                                                        const fastgltf::Primitive& primitive,
+                                                        const std::string& baseDir,
+                                                        Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static const Texture*
-    resolveClearcoatNormalTexture(const fastgltf::Asset& asset,
-                                  const fastgltf::Primitive& primitive,
-                                  const std::string& baseDir, Resources& resources,
-                                  Assets& assets);
+    resolveThicknessTexture(const fastgltf::Asset& asset, const fastgltf::Primitive& primitive,
+                            const std::string& baseDir, Resources& resources, Assets& assets);
 
     [[nodiscard]]
     static Material* resolveMaterial(Material materialData, Assets& assets);

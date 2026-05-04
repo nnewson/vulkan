@@ -758,10 +758,13 @@ TextureHandle Resources::createOffscreenColourTarget(vk::Extent2D extent)
     auto& entry = textures_.back();
     entry.format = vk::Format::eR16G16B16A16Sfloat;
 
+    // KHR_materials_transmission F3 also requires TransferSrc on the HDR
+    // target so the sceneColor capture pass can blit from it.
     vk::ImageCreateInfo imgCi = makeImageCreateInfo(
         {}, vk::ImageType::e2D, entry.format,
         vk::Extent3D{.width = extent.width, .height = extent.height, .depth = 1}, 1, 1,
-        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled);
+        vk::ImageUsageFlagBits::eColorAttachment | vk::ImageUsageFlagBits::eSampled |
+            vk::ImageUsageFlagBits::eTransferSrc);
     entry.image = vk::raii::Image(device_->device(), imgCi);
 
     auto imgReq = entry.image.getMemoryRequirements();
@@ -837,6 +840,70 @@ TextureHandle Resources::createBloomChain(uint32_t width, uint32_t height, uint3
 vk::ImageView Resources::vulkanBloomMipView(TextureHandle handle, uint32_t mipLevel) const noexcept
 {
     return *textures_[static_cast<uint32_t>(handle)].faceViews[mipLevel];
+}
+
+TextureHandle Resources::createSceneColorTarget(uint32_t width, uint32_t height, uint32_t mipLevels)
+{
+    auto id = static_cast<uint32_t>(textures_.size());
+    textures_.emplace_back();
+    auto& entry = textures_.back();
+    entry.format = vk::Format::eR16G16B16A16Sfloat;
+    entry.mipLevels = mipLevels;
+
+    // KHR_materials_transmission F3 — receives a blit copy from the post-opaque
+    // HDR target and then a vkCmdBlitImage chain for the remaining mips.
+    vk::ImageCreateInfo imgCi = makeImageCreateInfo(
+        {}, vk::ImageType::e2D, entry.format,
+        vk::Extent3D{.width = width, .height = height, .depth = 1}, mipLevels, 1,
+        vk::ImageUsageFlagBits::eTransferDst | vk::ImageUsageFlagBits::eTransferSrc |
+            vk::ImageUsageFlagBits::eSampled);
+    entry.image = vk::raii::Image(device_->device(), imgCi);
+
+    auto imgReq = entry.image.getMemoryRequirements();
+    vk::MemoryAllocateInfo imgAi = makeMemoryAllocateInfo(
+        imgReq,
+        device_->findMemoryType(imgReq.memoryTypeBits, vk::MemoryPropertyFlagBits::eDeviceLocal));
+    entry.memory = vk::raii::DeviceMemory(device_->device(), imgAi);
+    entry.image.bindMemory(*entry.memory, 0);
+
+    // Initial transition Undefined → ShaderReadOnlyOptimal for ALL mips. The
+    // forward descriptor set binds sceneColor at binding 20 on every draw —
+    // including the non-transmissive ones in pass 1 — so the layout must
+    // match what the descriptor was written with even before any capture
+    // pass writes meaningful contents.
+    vk::CommandBufferAllocateInfo cmdAi = makeCommandBufferAllocateInfo(*cmdPool_, 1);
+    auto cmds = device_->device().allocateCommandBuffers(cmdAi);
+    auto& cmd = cmds[0];
+    cmd.begin(makeOneTimeSubmitBeginInfo());
+    vk::ImageMemoryBarrier toShader = makeImageMemoryBarrier(
+        {}, vk::AccessFlagBits::eShaderRead, vk::ImageLayout::eUndefined,
+        vk::ImageLayout::eShaderReadOnlyOptimal, *entry.image,
+        makeImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1));
+    cmd.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
+                        vk::PipelineStageFlagBits::eFragmentShader, {}, {}, {}, toShader);
+    cmd.end();
+    vk::CommandBuffer rawCmd = *cmd;
+    vk::SubmitInfo submitInfo{.commandBufferCount = 1, .pCommandBuffers = &rawCmd};
+    device_->graphicsQueue().submit(submitInfo);
+    device_->graphicsQueue().waitIdle();
+
+    // Main view spans all mips so the shader's textureLod sample picks a mip
+    // from a roughness-driven LOD.
+    vk::ImageViewCreateInfo viewCi = makeImageViewCreateInfo(
+        *entry.image, vk::ImageViewType::e2D, entry.format,
+        makeImageSubresourceRange(vk::ImageAspectFlagBits::eColor, 0, mipLevels, 0, 1));
+    entry.view = vk::raii::ImageView(device_->device(), viewCi);
+
+    // Linear min/mag + linear mip filter so frosted-glass roughness blends
+    // smoothly between mips. ClampToEdge — refraction can read off-screen.
+    vk::SamplerCreateInfo samplerCi = makeSamplerCreateInfo(
+        vk::Filter::eLinear, vk::Filter::eLinear, vk::SamplerMipmapMode::eLinear,
+        vk::SamplerAddressMode::eClampToEdge, vk::SamplerAddressMode::eClampToEdge,
+        vk::SamplerAddressMode::eClampToEdge, vk::False, 1.0f, vk::False, vk::CompareOp::eAlways,
+        0.0f, static_cast<float>(mipLevels), vk::BorderColor::eFloatOpaqueBlack);
+    entry.sampler = vk::raii::Sampler(device_->device(), samplerCi);
+
+    return TextureHandle{id};
 }
 
 void Resources::releaseTexture(TextureHandle handle)

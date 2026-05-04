@@ -87,10 +87,11 @@ ObjectDescriptorResult Descriptors::createObjectDescriptors(const ObjectDescript
 
     std::array<vk::DescriptorPoolSize, 3> poolSizes = {{
         {vk::DescriptorType::eUniformBuffer, totalSets * 5},
-        // 14 samplers per set: baseColor, emissive, normal, mr, occlusion,
+        // 16 samplers per set: baseColor, emissive, normal, mr, occlusion,
         // shadowMap (compare), irradiance, prefiltered, brdfLut, shadowMapDepth,
-        // transmission, clearcoat, clearcoatRoughness, clearcoatNormal.
-        {vk::DescriptorType::eCombinedImageSampler, totalSets * 14},
+        // transmission, clearcoat, clearcoatRoughness, clearcoatNormal,
+        // sceneColor, thickness.
+        {vk::DescriptorType::eCombinedImageSampler, totalSets * 16},
         {vk::DescriptorType::eStorageBuffer, totalSets},
     }};
     auto& poolEntry = createDescriptorPool(poolSizes, totalSets);
@@ -148,14 +149,22 @@ ObjectDescriptorResult Descriptors::createObjectDescriptors(const ObjectDescript
                 makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatTexture),
                                         resources_->vulkanImageView(geo.clearcoatTexture),
                                         vk::ImageLayout::eShaderReadOnlyOptimal);
-            vk::DescriptorImageInfo ccRoughTexInfo = makeDescriptorImageInfo(
-                resources_->vulkanSampler(geo.clearcoatRoughnessTexture),
-                resources_->vulkanImageView(geo.clearcoatRoughnessTexture),
-                vk::ImageLayout::eShaderReadOnlyOptimal);
-            vk::DescriptorImageInfo ccNormalTexInfo = makeDescriptorImageInfo(
-                resources_->vulkanSampler(geo.clearcoatNormalTexture),
-                resources_->vulkanImageView(geo.clearcoatNormalTexture),
-                vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo ccRoughTexInfo =
+                makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatRoughnessTexture),
+                                        resources_->vulkanImageView(geo.clearcoatRoughnessTexture),
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo ccNormalTexInfo =
+                makeDescriptorImageInfo(resources_->vulkanSampler(geo.clearcoatNormalTexture),
+                                        resources_->vulkanImageView(geo.clearcoatNormalTexture),
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo sceneColorInfo =
+                makeDescriptorImageInfo(resources_->vulkanSampler(req.sceneColor),
+                                        resources_->vulkanImageView(req.sceneColor),
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
+            vk::DescriptorImageInfo thicknessTexInfo =
+                makeDescriptorImageInfo(resources_->vulkanSampler(geo.thicknessTexture),
+                                        resources_->vulkanImageView(geo.thicknessTexture),
+                                        vk::ImageLayout::eShaderReadOnlyOptimal);
             vk::DescriptorBufferInfo lightBufInfo = makeDescriptorBufferInfo(
                 resources_->vulkanBuffer(req.lightBufs[i]), sizeof(LightUBO));
             vk::DescriptorImageInfo shadowTexInfo =
@@ -178,7 +187,7 @@ ObjectDescriptorResult Descriptors::createObjectDescriptors(const ObjectDescript
                 resources_->vulkanSampler(req.brdfLut), resources_->vulkanImageView(req.brdfLut),
                 vk::ImageLayout::eShaderReadOnlyOptimal);
 
-            std::array<vk::WriteDescriptorSet, 20> writes = {{
+            std::array<vk::WriteDescriptorSet, 22> writes = {{
                 vk::WriteDescriptorSet{.dstSet = *sets[i],
                                        .dstBinding = 0,
                                        .descriptorCount = 1,
@@ -279,6 +288,16 @@ ObjectDescriptorResult Descriptors::createObjectDescriptors(const ObjectDescript
                                        .descriptorCount = 1,
                                        .descriptorType = vk::DescriptorType::eCombinedImageSampler,
                                        .pImageInfo = &ccNormalTexInfo},
+                vk::WriteDescriptorSet{.dstSet = *sets[i],
+                                       .dstBinding = 20,
+                                       .descriptorCount = 1,
+                                       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                       .pImageInfo = &sceneColorInfo},
+                vk::WriteDescriptorSet{.dstSet = *sets[i],
+                                       .dstBinding = 21,
+                                       .descriptorCount = 1,
+                                       .descriptorType = vk::DescriptorType::eCombinedImageSampler,
+                                       .pImageInfo = &thicknessTexInfo},
             }};
             device_->device().updateDescriptorSets(writes, {});
 
